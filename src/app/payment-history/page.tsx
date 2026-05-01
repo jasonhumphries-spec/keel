@@ -224,6 +224,6 @@ export default function PaymentHistoryPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
