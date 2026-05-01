@@ -550,11 +550,14 @@ export async function POST(req: NextRequest) {
       if (!subject && !decodeBody(detail)) continue
       const existingStatus = threadToStatus.get(threadId)
       if (existingStatus && ['done', 'paid', 'archived'].includes(existingStatus)) continue
-      // Skip if this thread already exists and no new messages since last scan
+      // Skip if this thread already exists and no new messages since last scan.
+      // Exception: never skip threads with open signals — the situation may have resolved
+      // (payment made, reply received) without a new email arriving in the scan window.
       if (processedThreadIds.has(threadId)) {
         const internalDate  = parseInt(detail.internalDate ?? '0', 10)
         const lastProcessed = threadToUpdatedAt.get(threadId) ?? 0
-        if (internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) {
+        const hasOpenSignal = ['awaiting_reply', 'awaiting_action', 'payment_due', 'action_required'].includes(existingStatus ?? '')
+        if (!hasOpenSignal && internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) {
           unchangedSkipped++
           continue
         }
