@@ -204,6 +204,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       clearInterval(messageTimer)
+      if (res.status === 401) {
+        // Gmail token expired — surface a clear re-auth message rather than generic failure
+        setScanProgress({ status: 'error', processed: 0, total: 0, message: 'Session expired — please sign in again' })
+        setTimeout(() => setScanProgress(IDLE), 6000)
+        return
+      }
       if (!res.ok) throw new Error(`Scan failed: ${res.status}`)
       const data = await res.json()
 

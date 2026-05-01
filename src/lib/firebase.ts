@@ -29,7 +29,7 @@ googleProvider.addScope('https://www.googleapis.com/auth/calendar')
 // Request offline access to get refresh token
 googleProvider.setCustomParameters({
   access_type: 'offline',
-  prompt: 'consent', // force consent screen so Gmail/Calendar scopes are always granted
+  prompt: 'select_account', // force consent screen so Gmail/Calendar scopes are always granted
 })
 
 export default app
