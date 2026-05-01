@@ -1,0 +1,341 @@
+/* ============================================================
+   KEEL — Theme System
+   6 themes × 17 palette values → 27 semantic tokens
+   All components reference tokens only, never palette vars.
+   Switch themes by setting data-theme on <html> element.
+   ============================================================ */
+
+/* ---- CHALK (default) ---- */
+:root,
+[data-theme="chalk"] {
+  --n0: #ffffff;
+  --n1: #fafaf8;
+  --n2: #f0efeb;
+  --n3: #dddbd4;
+  --n4: #b0ada4;
+  --n5: #787570;
+  --n6: #3a3830;
+  --n7: #18160f;
+  --accent:     #4a7c5a;
+  --accent-sub: #d6e4da;
+  --pos:        #3d6e4a;
+  --warn:       #8a6020;
+  --urg:        #8a3028;
+  --new:        #284e78;
+}
+
+/* ---- SAND ---- */
+[data-theme="sand"] {
+  --n0: #faf9f7;
+  --n1: #f2f0ec;
+  --n2: #e6e2db;
+  --n3: #cdc8be;
+  --n4: #a8a09a;
+  --n5: #78706a;
+  --n6: #3c3830;
+  --n7: #1c1914;
+  --accent:     #3a4e8c;
+  --accent-sub: #d0d6e8;
+  --pos:        #3a6b4a;
+  --warn:       #8a6020;
+  --urg:        #8a3028;
+  --new:        #284e78;
+}
+
+/* ---- SLATE ---- */
+[data-theme="slate"] {
+  --n0: #f8f9fb;
+  --n1: #f0f2f6;
+  --n2: #e2e6ed;
+  --n3: #c6ccd6;
+  --n4: #98a2b0;
+  --n5: #687280;
+  --n6: #323c4a;
+  --n7: #151d28;
+  --accent:     #b04a36;
+  --accent-sub: #e8d0cc;
+  --pos:        #2e6844;
+  --warn:       #826018;
+  --urg:        #8a3028;
+  --new:        #2a4270;
+}
+
+/* ---- DUSK ---- */
+[data-theme="dusk"] {
+  --n0: #f9f8fc;
+  --n1: #f2f0f8;
+  --n2: #e4e0f0;
+  --n3: #cac4dc;
+  --n4: #9e96b8;
+  --n5: #686080;
+  --n6: #302c46;
+  --n7: #15121e;
+  --accent:     #b08c1a;
+  --accent-sub: #ede0b8;
+  --pos:        #366648;
+  --warn:       #8a6020;
+  --urg:        #882a38;
+  --new:        #383888;
+}
+
+/* ---- SAGE ---- */
+[data-theme="sage"] {
+  --n0: #f7faf8;
+  --n1: #eef3ef;
+  --n2: #dde8de;
+  --n3: #bed0c0;
+  --n4: #94a896;
+  --n5: #627864;
+  --n6: #2c3e2e;
+  --n7: #121a14;
+  --accent:     #9e3a2e;
+  --accent-sub: #e4cecc;
+  --pos:        #2c5e3c;
+  --warn:       #7a5c18;
+  --urg:        #882a2a;
+  --new:        #264878;
+}
+
+/* ---- HARBOUR ---- */
+[data-theme="harbour"] {
+  --n0: #f6f9fb;
+  --n1: #edf2f6;
+  --n2: #dce6ee;
+  --n3: #c0cfd8;
+  --n4: #90a4b2;
+  --n5: #5e7a8a;
+  --n6: #28404e;
+  --n7: #101c24;
+  --accent:     #9e8040;
+  --accent-sub: #e8dfc8;
+  --pos:        #2e6048;
+  --warn:       #7a5e18;
+  --urg:        #882a2a;
+  --new:        #1e3e6e;
+}
+
+/* ---- NEON DARK ---- */
+[data-theme="neon"] {
+  --n0: #111118;
+  --n1: #0a0a0f;
+  --n2: #16161f;
+  --n3: #22222e;
+  --n4: #3a3a50;
+  --n5: #7070a0;
+  --n6: #c0c0e0;
+  --n7: #eeeeff;
+  --accent:     #00f5ff;
+  --accent-sub: #001a1c;
+  --pos:        #39ff14;
+  --warn:       #ffea00;
+  --urg:        #ff0066;
+  --new:        #00f5ff;
+}
+
+/* ---- NEO-PASTEL LIGHT ---- */
+[data-theme="neopastel"] {
+  --n0: #ffffff;
+  --n1: #f9fafb;
+  --n2: #f0f0ff;
+  --n3: #ddd8f8;
+  --n4: #b8b0e8;
+  --n5: #7c72c8;
+  --n6: #3730a3;
+  --n7: #111827;
+  --accent:     #8b5cf6;
+  --accent-sub: #ede9fe;
+  --pos:        #22c55e;
+  --warn:       #f59e0b;
+  --urg:        #f472b6;
+  --new:        #22d3ee;
+}
+
+/* ---- ELECTRIC BLUE ---- */
+[data-theme="electric-blue"] {
+  --n0: #ffffff;
+  --n1: #f5f5f5;
+  --n2: #ebebeb;
+  --n3: #d4d4d4;
+  --n4: #a3a3a3;
+  --n5: #737373;
+  --n6: #262626;
+  --n7: #0a0a0a;
+  --accent:     #3b82f6;
+  --accent-sub: #dbeafe;
+  --pos:        #22c55e;
+  --warn:       #f59e0b;
+  --urg:        #ef4444;
+  --new:        #3b82f6;
+}
+
+/* ---- ELECTRIC LIME ---- */
+[data-theme="electric-lime"] {
+  --n0: #ffffff;
+  --n1: #f5f5f5;
+  --n2: #ebebeb;
+  --n3: #d4d4d4;
+  --n4: #a3a3a3;
+  --n5: #737373;
+  --n6: #262626;
+  --n7: #0a0a0a;
+  --accent:     #84cc16;
+  --accent-sub: #ecfccb;
+  --pos:        #22c55e;
+  --warn:       #f59e0b;
+  --urg:        #ef4444;
+  --new:        #84cc16;
+}
+
+/* ============================================================
+   SEMANTIC TOKEN MAP — identical for every theme
+   Components reference ONLY these tokens.
+   ============================================================ */
+:root, [data-theme] {
+  /* Surfaces */
+  --color-bg:               var(--n1);
+  --color-surface:          var(--n0);
+  --color-surface-raised:   var(--n1);
+  --color-surface-recessed: var(--n2);
+
+  /* Borders */
+  --color-border:           var(--n3);
+  --color-border-strong:    var(--n4);
+
+  /* Text */
+  --color-text-primary:     var(--n7);
+  --color-text-secondary:   var(--n5);
+  --color-text-muted:       var(--n4);
+  --color-text-inverse:     var(--n0);
+
+  /* Status */
+  --color-status-positive:  var(--pos);
+  --color-status-warning:   var(--warn);
+  --color-status-urgent:    var(--urg);
+  --color-status-new:       var(--new);
+  --color-status-neutral:   var(--n4);
+
+  /* Actions */
+  --color-action-primary:   var(--n7);
+  --color-action-text:      var(--n0);
+
+  /* Accent */
+  --color-accent:           var(--accent);
+  --color-accent-sub:       var(--accent-sub);
+
+  /* Semantic */
+  --color-payment:          var(--warn);
+  --color-recurring:        var(--n4);
+  --color-sidebar-bg:       var(--n0);
+  --color-sidebar-active:   var(--n2);
+  --color-topbar-bg:        var(--n0);
+  --color-cal-bg:           var(--n0);
+  --color-focus-ring:       var(--accent);
+  --color-overlay:          rgba(0, 0, 0, 0.35);
+
+  /* Layout — scales with font size */
+  --sidebar-width:    216px;
+  --cal-width:        220px;
+  --topbar-height:    48px;
+
+  /* Radii */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.09);
+  --shadow-lg:   0 8px 32px rgba(0, 0, 0, 0.12);
+
+  /* Typography */
+  --font-ui:   'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+/* Layout widths scale with font size */
+html[data-fontsize="sm"] {
+  --sidebar-width: 188px;
+  --cal-width:     190px;
+}
+html[data-fontsize="md"] {
+  --sidebar-width: 216px;
+  --cal-width:     220px;
+}
+html[data-fontsize="lg"] {
+  --sidebar-width: 240px;
+  --cal-width:     248px;
+}
+html[data-fontsize="xl"] {
+  --sidebar-width: 268px;
+  --cal-width:     276px;
+}
+
+/* Neon theme is always dark — override light semantic tokens */
+[data-theme="neon"] {
+  --color-bg:               #0a0a0f;
+  --color-surface:          #111118;
+  --color-surface-raised:   #16161f;
+  --color-surface-recessed: #0d0d14;
+  --color-border:           #22222e;
+  --color-border-strong:    #3a3a50;
+  --color-text-primary:     #eeeeff;
+  --color-text-secondary:   #c0c0e0;
+  --color-text-muted:       #7070a0;
+  --color-topbar-bg:        #111118;
+  --color-cal-bg:           #111118;
+  --color-overlay:          rgba(0, 0, 0, 0.7);
+  --flag-bg:                #001a1c;
+  --flag-text:              #00f5ff;
+}
+
+/* Neo-pastel sidebar */
+[data-theme="neopastel"] {
+  --color-sidebar-bg: #1e1b4b;
+}
+
+/* Electric themes sidebar */
+[data-theme="electric-blue"],
+[data-theme="electric-lime"] {
+  --color-sidebar-bg: #0f0f0f;
+}
+
+/* ============================================================
+   DARK MODE OVERRIDES
+   Applies when data-dark is true or system prefers dark.
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-dark="false"]) {
+    --n0: #1c1914;
+    --n1: #221f18;
+    --n2: #2a2720;
+    --n3: #3a3730;
+    --n4: #5a5750;
+    --n5: #8a8780;
+    --n6: #c8c5be;
+    --n7: #fafaf8;
+    --accent:     #6aac7a;
+    --accent-sub: #1a3020;
+    --pos:        #5aae6a;
+    --warn:       #c49040;
+    --urg:        #c45048;
+    --new:        #6a8ec4;
+  }
+}
+
+[data-dark="true"] {
+  --n0: #1c1914;
+  --n1: #221f18;
+  --n2: #2a2720;
+  --n3: #3a3730;
+  --n4: #5a5750;
+  --n5: #8a8780;
+  --n6: #c8c5be;
+  --n7: #fafaf8;
+  --accent:     #6aac7a;
+  --accent-sub: #1a3020;
+  --pos:        #5aae6a;
+  --warn:       #c49040;
+  --urg:        #c45048;
+  --new:        #6a8ec4;
+}

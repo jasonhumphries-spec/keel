@@ -1,26 +1,119 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html {
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Font size tokens — referenced throughout the app */
+/* Default (md) */
+html, html[data-fontsize="md"] {
+  --fs-xs:   10px;
+  --fs-sm:   11px;
+  --fs-base: 13px;
+  --fs-md:   14px;
+  --fs-lg:   16px;
+  --fs-xl:   18px;
+  --fs-2xl:  22px;
+}
+
+html[data-fontsize="sm"] {
+  --fs-xs:   9px;
+  --fs-sm:   10px;
+  --fs-base: 11px;
+  --fs-md:   12px;
+  --fs-lg:   14px;
+  --fs-xl:   16px;
+  --fs-2xl:  19px;
+}
+
+html[data-fontsize="lg"] {
+  --fs-xs:   11px;
+  --fs-sm:   12px;
+  --fs-base: 15px;
+  --fs-md:   16px;
+  --fs-lg:   18px;
+  --fs-xl:   21px;
+  --fs-2xl:  26px;
+}
+
+html[data-fontsize="xl"] {
+  --fs-xs:   12px;
+  --fs-sm:   13px;
+  --fs-base: 17px;
+  --fs-md:   18px;
+  --fs-lg:   21px;
+  --fs-xl:   24px;
+  --fs-2xl:  30px;
+}
+
+/* Apply base font size to body and common elements */
+body {
+  font-size: var(--fs-base);
+}
+
+/* Key UI elements that should scale */
+button, input, textarea, select {
+  font-size: var(--fs-base);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
+
+/* Focus ring — always use accent colour */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Utility classes */
+.font-mono {
+  font-family: var(--font-dm-mono), 'DM Mono', monospace;
+}
+
+.text-primary   { color: var(--color-text-primary); }
+.text-secondary { color: var(--color-text-secondary); }
+.text-muted     { color: var(--color-text-muted); }
+.text-accent    { color: var(--color-accent); }
+.text-positive  { color: var(--color-status-positive); }
+.text-warning   { color: var(--color-status-warning); }
+.text-urgent    { color: var(--color-status-urgent); }
+.text-new       { color: var(--color-status-new); }
+
+.bg-surface          { background: var(--color-surface); }
+.bg-surface-raised   { background: var(--color-surface-raised); }
+.bg-surface-recessed { background: var(--color-surface-recessed); }
+
+/* Transitions */
+.transition-fast { transition: all 0.1s ease; }
+.transition-base { transition: all 0.2s ease; }

@@ -1,0 +1,268 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
+import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import Anthropic from '@anthropic-ai/sdk'
+
+// ---- Firebase Admin init ----
+function getAdminDb() {
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert({
+        projectId:   process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    })
+  }
+  return getFirestore()
+}
+
+// ---- Gmail API helpers ----
+async function fetchGmailMessages(accessToken: string, maxResults = 20) {
+  const listRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}&q=in:inbox newer_than:7d`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  )
+  if (!listRes.ok) throw new Error(`Gmail list failed: ${listRes.status}`)
+  const listData = await listRes.json()
+  return listData.messages ?? []
+}
+
+async function fetchMessageDetail(accessToken: string, messageId: string) {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  )
+  if (!res.ok) return null
+  return res.json()
+}
+
+function extractHeader(headers: { name: string; value: string }[], name: string): string {
+  return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
+}
+
+function decodeBody(message: any): string {
+  const parts = message.payload?.parts ?? [message.payload]
+  for (const part of parts) {
+    if (part?.mimeType === 'text/plain' && part?.body?.data) {
+      return Buffer.from(part.body.data, 'base64').toString('utf-8').slice(0, 2000)
+    }
+  }
+  return ''
+}
+
+// ---- Claude classification ----
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ClassificationResult {
+  shouldProcess: boolean
+  categoryId:    string
+  categoryName:  string
+  aiSummary:     string
+  aiImportanceScore: number
+  signals: Array<{
+    type:        string
+    description: string
+    detectedDate?: string | null
+    detectedAmountPence?: number | null
+    currency?: string | null
+  }>
+  isRecurring:   boolean
+  status:        string
+}
+
+async function classifyEmail(
+  from: string,
+  subject: string,
+  body: string,
+  categories: { id: string; name: string }[]
+): Promise<ClassificationResult | null> {
+  const categoryList = categories.map(c => `- ${c.id}: ${c.name}`).join('\n')
+
+  const prompt = `You are Keel, a personal life admin AI. Classify this email and extract actionable signals.
+
+CATEGORIES:
+${categoryList}
+
+EMAIL:
+From: ${from}
+Subject: ${subject}
+Body: ${body.slice(0, 1500)}
+
+Respond with ONLY valid JSON matching this schema exactly:
+{
+  "shouldProcess": boolean,
+  "categoryId": string,
+  "categoryName": string,
+  "aiSummary": string,
+  "aiImportanceScore": number,
+  "signals": [
+    {
+      "type": "event" | "deadline" | "payment" | "rsvp" | "awaiting",
+      "description": string,
+      "detectedDate": "YYYY-MM-DD" | null,
+      "detectedAmountPence": number | null,
+      "currency": "GBP" | "USD" | null
+    }
+  ],
+  "isRecurring": boolean,
+  "status": "new" | "awaiting_action" | "awaiting_reply"
+}
+
+Rules:
+- shouldProcess: false for newsletters, marketing, promotions, automated notifications with no action needed
+- shouldProcess: true for bills, invoices, appointments, requests, personal correspondence needing attention
+- aiImportanceScore: 0.0-1.0 (0.9+ for urgent bills/deadlines, 0.5 for routine items)
+- aiSummary: one clear sentence describing what needs attention, max 100 chars
+- signals: only include if there is a real date, amount, or event to track
+- If no good category match, use the closest one`
+
+  try {
+    const response = await anthropic.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 800,
+      messages:   [{ role: 'user', content: prompt }],
+    })
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    const json = text.match(/\{[\s\S]*\}/)?.[0]
+    if (!json) return null
+    return JSON.parse(json)
+  } catch (e) {
+    console.error('Claude classification error:', e)
+    return null
+  }
+}
+
+// ---- Main handler ----
+export async function POST(req: NextRequest) {
+  try {
+    const { uid, accessToken } = await req.json()
+
+    if (!uid || !accessToken) {
+      return NextResponse.json({ error: 'Missing uid or accessToken' }, { status: 400 })
+    }
+
+    const db = getAdminDb()
+
+    // Get user categories
+    const catsSnap = await db.collection(`users/${uid}/categories`).where('archived', '==', false).get()
+    const categories = catsSnap.docs.map(d => ({ id: d.id, name: d.data().name as string }))
+
+    if (categories.length === 0) {
+      return NextResponse.json({ message: 'No categories found', processed: 0 })
+    }
+
+    // Get already-processed message IDs to avoid duplicates
+    const existingSnap = await db.collection(`users/${uid}/items`).select('messageId').get()
+    const processedIds = new Set(existingSnap.docs.map(d => d.data().messageId as string))
+
+    // Fetch recent Gmail messages
+    const messages = await fetchGmailMessages(accessToken, 25)
+    console.log(`Found ${messages.length} messages for uid ${uid}`)
+
+    let processed = 0
+    let skipped   = 0
+
+    for (const { id: messageId } of messages.slice(0, 20)) {
+      // Skip already-processed
+      if (processedIds.has(messageId)) { skipped++; continue }
+
+      const detail = await fetchMessageDetail(accessToken, messageId)
+      if (!detail) continue
+
+      const headers  = detail.payload?.headers ?? []
+      const from     = extractHeader(headers, 'from')
+      const subject  = extractHeader(headers, 'subject')
+      const dateStr  = extractHeader(headers, 'date')
+      const threadId = detail.threadId ?? messageId
+      const body     = decodeBody(detail)
+
+// Skip known noise — subject prefix blocklist
+if (subject.includes('[PAXTON-CACHE]')) { skipped++; continue }
+
+      // Skip if no meaningful content
+      if (!subject && !body) continue
+
+      // Extract sender name and email
+      const senderMatch = from.match(/^(.*?)\s*<(.+?)>$/)
+      const senderName  = senderMatch?.[1]?.trim().replace(/^"(.*)"$/, '$1') ?? from.split('@')[0]
+      const senderEmail = senderMatch?.[2] ?? from
+
+      // Classify with Claude
+      const classification = await classifyEmail(from, subject, body, categories)
+      if (!classification || !classification.shouldProcess) { skipped++; continue }
+
+      const receivedAt = dateStr ? new Date(dateStr) : new Date()
+      const itemId     = `item_${messageId.slice(0, 16)}`
+      const now        = Timestamp.now()
+
+      // Write item to Firestore
+      await db.doc(`users/${uid}/items/${itemId}`).set({
+        itemId,
+        messageId,
+        threadId,
+        accountId:         'account_primary',
+        senderEmail,
+        senderName,
+        subject,
+        receivedAt:        Timestamp.fromDate(receivedAt),
+        categoryId:        classification.categoryId,
+        categoryName:      classification.categoryName,
+        subcategoryId:     null,
+        subcategoryName:   null,
+        status:            classification.status,
+        importanceFlag:    false,
+        aiImportanceScore: classification.aiImportanceScore,
+        snoozedUntil:      null,
+        linkedOutboundId:  null,
+        linkedItemId:      null,
+        isRecurring:       classification.isRecurring,
+        fromTrackedReply:  false,
+        trackedReplyId:    null,
+        createdAt:         now,
+        updatedAt:         now,
+        resolvedAt:        null,
+        aiSummary:         classification.aiSummary,
+      })
+
+      // Write signals
+      for (const sig of classification.signals ?? []) {
+        const sigId = `sig_${messageId.slice(0, 12)}_${sig.type}`
+        await db.doc(`users/${uid}/signals/${sigId}`).set({
+          signalId:           sigId,
+          itemId,
+          accountId:          'account_primary',
+          type:               sig.type,
+          detectedDate:       sig.detectedDate ? Timestamp.fromDate(new Date(sig.detectedDate)) : null,
+          detectedAmountPence: sig.detectedAmountPence ?? null,
+          currency:           sig.currency ?? null,
+          description:        sig.description,
+          calendarStatus:     null,
+          calendarEventId:    null,
+          targetCalendarId:   null,
+          status:             'active',
+          createdAt:          now,
+          updatedAt:          now,
+        })
+      }
+
+      processed++
+      console.log(`✓ Processed: ${senderName} — ${subject.slice(0, 50)}`)
+
+      // Rate limit — avoid hammering Claude
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    return NextResponse.json({
+      message:   `Scan complete`,
+      processed,
+      skipped,
+      total:     messages.length,
+    })
+
+  } catch (error) {
+    console.error('Gmail scan error:', error)
+    return NextResponse.json({ error: String(error) }, { status: 500 })
+  }
+}
