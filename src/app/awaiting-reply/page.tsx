@@ -32,6 +32,8 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     aiTitle:           d.aiTitle ?? d.subject ?? '',
     aiSummary:         d.aiSummary ?? '',
     aiDetailedSummary: d.aiDetailedSummary ?? '',
+    manuallyIgnored:   d.manuallyIgnored ?? false,
+    mergedThreadIds:   d.mergedThreadIds ?? [],
   }
 }
 

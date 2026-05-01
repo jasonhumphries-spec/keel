@@ -22,7 +22,7 @@ function MobileScanButton() {
   const isDone     = scanProgress.status === 'done'
   return (
     <button
-      onClick={triggerScan}
+      onClick={() => triggerScan('manual')}
       disabled={isScanning}
       style={{ display: 'flex', alignItems: 'center', gap: 5, background: isDone ? '#f0f6f2' : 'var(--color-surface-recessed)', border: `1px solid ${isDone ? '#2e6848' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '6px 10px', fontSize: 12, fontWeight: 500, color: isDone ? '#2e6848' : isScanning ? 'var(--color-accent)' : 'var(--color-text-secondary)', cursor: isScanning ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-dm-sans)', opacity: isScanning ? 0.7 : 1 }}
     >

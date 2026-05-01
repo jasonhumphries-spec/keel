@@ -13,7 +13,7 @@ export type ItemStatus =
 
 export type SignalType = 'event' | 'deadline' | 'payment' | 'rsvp' | 'awaiting'
 
-export type SignalCalendarStatus = 'on_cal' | 'not_on_cal' | 'ignored' | null
+export type SignalCalendarStatus = 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | null
 
 export interface KeelCategory {
   categoryId:   string
@@ -46,6 +46,7 @@ export interface KeelItem {
   importanceFlag:   boolean
   aiImportanceScore: number
   manualPriority:    boolean
+  manuallyIgnored:   boolean
   snoozedUntil:     Date | null
   linkedOutboundId: string | null
   linkedItemId:     string | null

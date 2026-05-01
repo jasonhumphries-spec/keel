@@ -30,6 +30,10 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     participants: d.participants ?? [],
     aiTitle:   d.aiTitle ?? d.subject ?? '',
     aiSummary: d.aiSummary ?? '',
+    aiDetailedSummary: d.aiDetailedSummary ?? '',
+    manualPriority:    d.manualPriority ?? false,
+    manuallyIgnored:   d.manuallyIgnored ?? false,
+    mergedThreadIds:   d.mergedThreadIds ?? [],
   }
 }
 

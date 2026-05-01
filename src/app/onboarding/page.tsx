@@ -265,7 +265,7 @@ function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATE
 
   const addCustom = () => {
     if (!newCat.trim()) return
-    setCats(prev => [...prev, { id: `cat_${Date.now()}`, name: newCat.trim(), selected: true }])
+    setCats(prev => [...prev, { id: `cat_${Date.now()}`, name: newCat.trim(), selected: true, description: '' }])
     setNewCat('')
   }
 

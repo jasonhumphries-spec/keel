@@ -44,6 +44,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     status: d.status ?? 'new', importanceFlag: false,
     aiImportanceScore: d.aiImportanceScore ?? 0.5,
     manualPriority: d.manualPriority ?? false,
+    manuallyIgnored: d.manuallyIgnored ?? false,
     snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
     isRecurring: d.isRecurring ?? false, fromTrackedReply: false, trackedReplyId: null,
     createdAt: toDate(d.createdAt), updatedAt: toDate(d.updatedAt), resolvedAt: null,

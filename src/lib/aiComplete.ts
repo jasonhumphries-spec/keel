@@ -47,7 +47,7 @@ export interface AICompleteResult {
 
 // ─── Pricing (per million tokens) ────────────────────────────────────────────
 
-const PRICING: Record<string, { input: number; output: number }> = {
+const PRICING: Record<string, { input: number; output: number; thinking?: number }> = {
   'claude-haiku-4-5-20251001':      { input: 0.80,  output: 4.00  },
   'claude-sonnet-4-6':              { input: 3.00,  output: 15.00 },
   'gemini-2.5-flash':               { input: 0.15,  output: 0.60,  thinking: 3.50 },
