@@ -501,7 +501,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   ))}
                 </div>
 
-                {/* Priority control — signal bars, consistent with card view */}
+                {/* Priority control — dot + label, consistent with card view */}
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
                   <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     Priority
@@ -526,16 +526,14 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     {[
-                      { band: 0.25, label: 'Low',    level: 1, colour: 'var(--color-text-muted)' },
-                      { band: 0.50, label: 'Med',    level: 2, colour: 'var(--color-status-new)' },
-                      { band: 0.70, label: 'High',   level: 3, colour: 'var(--color-status-warning)' },
-                      { band: 0.90, label: 'Urgent', level: 4, colour: 'var(--color-status-urgent)' },
+                      { band: 0.25, label: 'Low',    level: 1, colour: '#6B7A82' },
+                      { band: 0.50, label: 'Med',    level: 2, colour: '#C4A265' },
+                      { band: 0.70, label: 'High',   level: 3, colour: '#B8964E' },
+                      { band: 0.90, label: 'Urgent', level: 4, colour: '#9C5E2B' },
                     ].map(({ band, label, level, colour }) => {
                       const score        = localScore ?? item.aiImportanceScore ?? 0.5
-                      const manual       = localManual ?? item.manualPriority ?? false
                       const currentLevel = score >= 0.85 ? 4 : score >= 0.70 ? 3 : score >= 0.40 ? 2 : 1
                       const isActive     = currentLevel === level
-                      const barColour    = manual ? 'var(--color-accent)' : colour
                       return (
                         <button
                           key={band}
@@ -552,37 +550,29 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                           title={label}
                           style={{
                             flex: 1,
-                            padding: '7px 4px',
+                            padding: '10px 4px 8px',
                             borderRadius: 'var(--radius-md)',
-                            border: `1.5px solid ${isActive ? (item.manualPriority ? 'var(--color-accent)' : colour) : 'var(--color-border)'}`,
-                            background: isActive ? 'var(--color-surface-raised)' : 'transparent',
+                            border: `1.5px solid ${isActive ? colour : 'var(--color-border)'}`,
+                            background: isActive ? `${colour}18` : 'transparent',
                             cursor: 'pointer',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            gap: 5,
-                            transition: 'all 0.1s',
+                            gap: 6,
+                            transition: 'all 0.15s',
                           }}
                         >
-                          {/* Signal bars */}
-                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-                            {[1,2,3,4].map(bar => (
-                              <div key={bar} style={{
-                                width: 4,
-                                height: bar * 4,
-                                borderRadius: 1,
-                                background: isActive
-                                  ? (bar <= level ? barColour : 'var(--color-border)')
-                                  : 'var(--color-border)',
-                                transition: 'background 0.15s',
-                              }} />
-                            ))}
-                          </div>
+                          {/* Priority dot */}
+                          <div style={{
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: isActive ? colour : 'var(--color-border)',
+                            transition: 'background 0.15s',
+                          }} />
                           {/* Label */}
                           <span style={{
                             fontFamily: 'var(--font-dm-mono)',
                             fontSize: 'var(--fs-xs)',
-                            color: isActive ? (item.manualPriority ? 'var(--color-accent)' : colour) : 'var(--color-text-muted)',
+                            color: isActive ? colour : 'var(--color-text-muted)',
                             fontWeight: isActive ? 600 : 400,
                           }}>
                             {label}
