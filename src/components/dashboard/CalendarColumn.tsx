@@ -116,8 +116,11 @@ function SignalCard({
         )}
       </div>
 
-      {/* Signal description if different from item title */}
-      {item?.aiTitle && signal.description && signal.description !== item.aiTitle && (
+      {/* Signal description — only if meaningfully different from title and concise */}
+      {item?.aiTitle && signal.description &&
+        signal.description !== item.aiTitle &&
+        signal.description.length < 60 &&
+        !item.aiTitle.toLowerCase().includes(signal.description.toLowerCase().slice(0, 15)) && (
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 3, lineHeight: 1.4 }}>
           {signal.description}
         </div>
@@ -228,9 +231,24 @@ export function CalendarColumn({
 
   const itemsMap = new Map<string, KeelItem>(items.map(i => [i.itemId, i]))
 
-  // Group by date
-  const grouped = new Map<string, KeelSignal[]>()
+  // Deduplicate: one signal per item per date
+  // Priority: event > rsvp > deadline > payment — avoids same item appearing multiple times
+  const TYPE_RANK: Record<string, number> = { event: 4, rsvp: 3, deadline: 2, payment: 1 }
+  const dedupMap = new Map<string, KeelSignal>() // key: `${itemId}:${dateKey}`
   for (const sig of signals) {
+    if (!sig.detectedDate) continue
+    const dateKey = sig.detectedDate.toISOString().split('T')[0]
+    const key     = `${sig.itemId}:${dateKey}`
+    const existing = dedupMap.get(key)
+    if (!existing || (TYPE_RANK[sig.type] ?? 0) > (TYPE_RANK[existing.type] ?? 0)) {
+      dedupMap.set(key, sig)
+    }
+  }
+  const dedupedSignals = Array.from(dedupMap.values())
+
+  // Group deduplicated signals by date
+  const grouped = new Map<string, KeelSignal[]>()
+  for (const sig of dedupedSignals) {
     if (!sig.detectedDate) continue
     const key = sig.detectedDate.toISOString().split('T')[0]
     if (!grouped.has(key)) grouped.set(key, [])
@@ -243,10 +261,11 @@ export function CalendarColumn({
   const lastDate = sortedDates.length > 0
     ? new Date(sortedDates[sortedDates.length - 1])
     : new Date(now.getTime() + 30 * 86400000)
-  const fmt      = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const fmt       = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   const dateRange = `${fmt(now)} – ${fmt(lastDate)}`
+  const totalCount = dedupedSignals.length
 
-  const needAdding = signals.filter(s =>
+  const needAdding = dedupedSignals.filter(s =>
     s.calendarStatus !== 'on_cal' && s.calendarStatus !== 'pending' && s.type !== 'payment'
   ).length
 
@@ -270,7 +289,7 @@ export function CalendarColumn({
         <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>
           {loading
             ? 'Loading…'
-            : signals.length === 0
+            : totalCount === 0
             ? 'Nothing upcoming'
             : `${dateRange} · ${needAdding > 0 ? `${needAdding} to add` : 'all on calendar'}`
           }
