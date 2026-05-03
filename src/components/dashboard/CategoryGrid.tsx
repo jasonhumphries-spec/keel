@@ -218,16 +218,146 @@ function MiniPill({ signal }: { signal: KeelSignal }) {
   )
 }
 
+// ── Calendar URL builder ─────────────────────────────────────────────────────
+
+function buildCalUrl(signal: KeelSignal, itemTitle?: string): string {
+  const date   = signal.detectedDate!
+  const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const pad    = (n: number) => String(n).padStart(2, '0')
+  const fmt    = (d: Date) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
+  const start  = fmt(date)
+  const end    = fmt(new Date(date.getTime() + 60 * 60 * 1000))
+  const params = new URLSearchParams({
+    action: 'TEMPLATE', text: itemTitle || signal.description || 'Event',
+    dates: `${start}/${end}`, details: signal.description || 'Added by Keel.', ctz: userTz,
+  })
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
+// ── Calendar badge ────────────────────────────────────────────────────────────
+
+const CAL_TEAL = '#3D7A6B'
+const CAL_GREY = '#9CA3AF'
+
+function CalendarBadge({
+  signal, uid, priorityColour, itemTitle,
+}: {
+  signal:        KeelSignal
+  uid:           string
+  priorityColour: string
+  itemTitle?:    string
+}) {
+  const [status, setStatus] = useState(signal.calendarStatus)
+  const [open,   setOpen]   = useState(false)
+  const [acting, setActing] = useState(false)
+
+  const colour = status === 'on_cal' || status === 'pending' ? CAL_TEAL
+               : status === 'ignored' ? CAL_GREY
+               : priorityColour
+
+  const glyph = status === 'on_cal'  ? '✓'
+              : status === 'ignored' ? '×'
+              : status === 'pending' ? '?'
+              : '+'
+
+  const isDone = status === 'on_cal' || status === 'pending' || status === 'ignored'
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!signal.detectedDate) return
+    window.open(buildCalUrl(signal, itemTitle), '_blank')
+    setStatus('pending')
+    setOpen(false)
+  }
+
+  const handleIgnore = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActing(true)
+    try {
+      await updateDoc(doc(db, `users/${uid}/signals`, signal.signalId), {
+        calendarStatus: 'ignored', updatedAt: Timestamp.now(),
+      })
+      setStatus('ignored')
+    } catch (err) { console.error(err) }
+    finally { setActing(false); setOpen(false) }
+  }
+
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', flexShrink: 0 }}
+      onClick={e => e.stopPropagation()}
+    >
+      <button
+        onClick={() => !isDone && setOpen(o => !o)}
+        title={signal.description || 'Calendar event'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 2,
+          background: `${colour}14`, border: `1px solid ${colour}44`,
+          borderRadius: 3, cursor: isDone ? 'default' : 'pointer',
+          padding: '1px 4px 1px 3px', color: colour,
+        }}
+      >
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9, fontWeight: 700, lineHeight: 1 }}>
+          {glyph}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: '100%', left: 0, zIndex: 200,
+            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+            borderRadius: 6, boxShadow: 'var(--shadow-md)',
+            padding: 5, display: 'flex', gap: 4, whiteSpace: 'nowrap', marginTop: 3,
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            onClick={handleAdd}
+            style={{
+              fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-dm-sans)', fontWeight: 600,
+              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+              border: `1px solid ${priorityColour}`, background: priorityColour, color: '#fff',
+            }}
+          >
+            + Add
+          </button>
+          <button
+            onClick={handleIgnore}
+            disabled={acting}
+            style={{
+              fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-dm-sans)',
+              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+              border: '1px solid var(--color-border)', background: 'transparent',
+              color: 'var(--color-text-muted)', opacity: acting ? 0.4 : 1,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CategoryCard({
   data,
   onItemClick,
   resolvedItems,
   signals,
+  uid,
 }: {
   data:          CategoryWithItems
   onItemClick:   (item: KeelItem) => void
   resolvedItems: Map<string, KeelItem>
   signals:       KeelSignal[]
+  uid:           string
 }) {
   const { category, items: liveItems } = data
   const [hovered, setHovered] = useState<string | null>(null)
@@ -253,7 +383,7 @@ function CategoryCard({
   const isQuiet     = allItems.length === 0
 
   return (
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', height: '100%' }}>
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'visible', boxShadow: 'var(--shadow-sm)', height: '100%' }}>
 
       {/* Header */}
       <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isQuiet ? 0.5 : 1 }}>
@@ -361,6 +491,27 @@ function CategoryCard({
                     </div>
                   )}
 
+                  {/* Calendar badges — for event/rsvp/deadline signals with dates */}
+                  {(() => {
+                    const calSigs = itemSignals.filter(s =>
+                      ['event','rsvp','deadline'].includes(s.type) && s.detectedDate
+                    )
+                    if (calSigs.length === 0) return null
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                        {calSigs.map(sig => (
+                          <CalendarBadge
+                            key={sig.signalId}
+                            signal={sig}
+                            uid={uid}
+                            priorityColour={getPriorityColour(item)}
+                            itemTitle={item.aiTitle}
+                          />
+                        ))}
+                      </div>
+                    )
+                  })()}
+
                   {/* Summary */}
                   <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', lineHeight: 1.5, marginTop: 4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
                     {item.aiSummary}
@@ -436,6 +587,7 @@ export function CategoryGrid({
   priorityFilter?: string
   singleColumn?:   boolean
 }) {
+  const { user }               = useAuth()
   const { categoryData, loading } = useDashboardData()
 
   // Apply priority filter
@@ -503,6 +655,7 @@ export function CategoryGrid({
               onItemClick={onItemClick}
               resolvedItems={resolvedItems}
               signals={signals}
+              uid={user?.uid ?? ''}
             />
           </div>
         ))}
