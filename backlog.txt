@@ -22,6 +22,108 @@ CRITICAL / PRE-BETA
     - items: (status, receivedAt) — needed for reclassify quietly_logged query
 
 ═══════════════════════════════════════════════
+UX / DESIGN — SESSION 5 (approved for implementation)
+═══════════════════════════════════════════════
+
+[ ] Priority system — full replacement (Session 5 design doc §1)
+    Remove 4-bar WiFi-style signal strength icon entirely.
+    Replace with two complementary indicators:
+    A. Filled circle dot — right-aligned on card header, colour = priority level
+    B. Coloured left border on card — 3–4px vertical bar, same colour as dot
+    Temperature ramp:
+      Low    #6B7A82  slate-brass, cool, recedes
+      Med    #C4A265  warm sand / light amber
+      High   #B8964E  full brass (core brand accent)
+      Urgent #9C5E2B  deep burnt amber / rust
+    Snoozed state renders dot + border in neutral grey.
+    Expanded panel: same four levels as clickable pill buttons (Low/Med/High/Urgent).
+    Manual override → manualPriority:true. "Reset to AI" clears it.
+    Optimistic local state — UI updates immediately.
+
+[ ] Button role system — standardise across whole app (Session 5 design doc §2)
+    Primary    — brass filled #B8964E, white text (Run Scan, Mark as Paid, Add to Cal)
+    Secondary  — brass outline #B8964E border+text (Open in Gmail, Move, Reclassify)
+    Neutral    — mist filled #E7E9E6, muted text #4A5568 (Cancel, Undo, Reset to AI)
+    Destructive— rust outline #9C5E2B border+text (Ignore, Delete)
+    Confirm    — teal filled #3D7A6B, white text — ONLY Mark Done + Payment Recorded
+    Hover states: Primary→#A07C3A, Confirm→#2E6558, Secondary→brass tint 8%,
+                  Destructive→rust tint 8%, Neutral→#D8DAD8
+
+[ ] Calendar column — full redesign (Session 5 design doc §3)
+    Dynamic date range driven by active sidebar filter (not fixed 10-day strip).
+    Three event states:
+      on_cal     — teal #3D7A6B + tick, title from GCal entry (fallback aiTitle)
+      not_on_cal + High/Urgent — rust/brass (match priority), aiTitle, prominent Add
+      not_on_cal + Low/Med    — sand #C4A265, aiTitle, quieter Add
+      ignored ("Don't add")  — disappears from calendar column; card stays
+    "Don't add" writes ignored to SignalCalendarStatus on the signal (not the item).
+    Tapping a calendar event opens the corresponding item card (carry itemId).
+    GCal title matching: approximate date+title similarity; fallback to aiTitle if unsure.
+    SignalCalendarStatus: on_cal | not_on_cal | ignored | pending
+    pending shown as muted ? indicator (calendar check not yet complete).
+
+[ ] Snooze (Session 5 design doc §4)
+    Snooze button on every item card (card actions row or ... menu).
+    Popover with three options: 1 day / 3 days / 7 days. No free-form entry.
+    Data model: add snoozedUntil:Timestamp + preSnoozePriority:number to KeelItem.
+    During snooze: priority -> -1, card greyed with "Snoozed until [date]" label.
+    Card visible in category views but hidden from High & above / Urgent filter views.
+    On app load: check elapsed snoozedUntil -> restore preSnoozePriority, clear field.
+    Dedicated "Snoozed" sidebar view shows all snoozed items with wake date.
+
+[ ] Card calendar badges (Session 5 design doc §5)
+    Small calendar icon badge on every card with date signals.
+    States: on_cal (teal+tick), not_on_cal (priority colour+plus), ignored (grey+x), pending (?).
+    Tapping badge opens same add/don't-add popover as calendar column.
+    Multiple date signals -> multiple icons side by side, each with small text label.
+    Inline action only — does not open expanded panel or navigate to calendar column.
+
+[ ] Sidebar — new filter views + scrollable category list (Session 5 design doc §6)
+    New views:
+      Overdue      — near top, prominent, rust colour treatment
+      Payment Due  — near top, items with unpaid payment signal
+      Snoozed      — mid-section, all snoozed items with wake date
+      Archived     — bottom, quiet/muted, reference only
+    Existing views retained: Awaiting Reply, Ignored, To categorise, High & above, Urgent.
+    Category list: place in fixed-height scrollable container (scroll internal to list only).
+    Category show/hide toggles: parked — do not implement.
+
+[ ] Onboarding additions (Session 5 design doc §7)
+    A. Alpha code gate — post sign-in, pre-onboarding.
+       Single input "Enter your access code". Code: HELM3X (env var ALPHA_ACCESS_CODE).
+       Case-insensitive. On success: write alphaVerified:true to account doc.
+       Checked once only — skip if alphaVerified:true on subsequent sign-ins.
+       On failure: inline error, allow retry, no lockout.
+    B. Post-scan thread volume reaction — shown after onboarding scan completes.
+       Rate = threadsFound / daysBack:
+         <10/day  -> "A steady inbox — Keel should have this organised quickly."
+         10-25    -> "That's a healthy amount of email. You're in good hands."
+         25-50    -> "Busy inbox. Keel's going to earn its keep here."
+         50+      -> "That's a lot. Keel's built for this — let's get it sorted."
+    C. Top banner — persistent thread count "243 threads · last 7 days".
+       Updates when date range changes. Rescan button inline. "counting..." during scan.
+
+[ ] Version display in sidebar footer (Session 5 design doc §8)
+    Format: "Keel · Alpha · v0.x.x" — same row as Feedback + Privacy links.
+    Source: NEXT_PUBLIC_APP_VERSION via next.config.js env: { npm_package_version }.
+
+[ ] Themes — reduce to three (Session 5 design doc §9)
+    Remove 7 of current 10 themes. Keep:
+      Harbour  (default) — warm maritime, brass #B8964E accent, sidebar #1e3a4a
+      Slate               — cool professional, steel blue #4A7FA5, sidebar #1E2A35
+      Obsidian            — dark premium, copper #C47B3A, sidebar #141414
+    All three use same CSS custom property token system — swap theme = swap values.
+    Urgent for Obsidian = #D4521A (slightly more saturated for legibility on near-black).
+    Confirm teal #3D7A6B same across all three themes.
+    Settings panel: three named options with colour swatch previews.
+    Dark mode works independently of theme choice.
+
+[ ] Reclassify All — progress indicator
+    Currently shows no feedback during reclassify run which can take 20-30s.
+    Add live progress similar to scan feed — show count of items processed / total
+    so user knows it's working. Mirror the onboarding scan feed pattern.
+
+═══════════════════════════════════════════════
 INFRASTRUCTURE
 ═══════════════════════════════════════════════
 
