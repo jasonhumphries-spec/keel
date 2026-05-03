@@ -1,0 +1,124 @@
+KEEL — BACKLOG
+Last updated: 2026-05-03 Session 5
+Status key: [ ] todo  [~] in progress  [x] done
+
+═══════════════════════════════════════════════
+CRITICAL / PRE-BETA
+═══════════════════════════════════════════════
+
+[ ] Google OAuth app verification
+    Required before public beta. Currently unverified — works for test users only.
+    Submit via Google Cloud Console → OAuth consent screen.
+
+[ ] Security/GDPR doc
+    UK GDPR compliance, data handling, retention policy. Required before any real
+    user testing beyond developer accounts.
+
+[ ] Replace privacy@keel.app placeholder
+    Also update LAST_UPDATED date in privacy policy page.
+
+[ ] Firestore indexes
+    - scanRuns: scanAt desc (Firebase will prompt with link on first query)
+    - items: (status, receivedAt) — needed for reclassify quietly_logged query
+
+═══════════════════════════════════════════════
+INFRASTRUCTURE
+═══════════════════════════════════════════════
+
+[ ] Scan file parity — STANDING NOTE
+    functions/src/scan.ts is a near-copy of src/app/api/gmail/scan/route.ts.
+    ANY prompt or skip logic change must be applied to BOTH files.
+    Manual scans hit the Cloud Function; Vercel route is fallback only.
+    Always deploy both: git push + firebase deploy --only functions.
+
+[ ] Terminate active scan before dev reset
+    AbortController on scan fetch in AuthContext; call from DevTools wipe button
+    before data reset.
+
+[ ] Phase 2: Gmail Pub/Sub webhooks
+    Automatic background scanning ~5min latency, no user action needed.
+    Requires Cloud Function + Gmail watch() API + Pub/Sub topic.
+
+═══════════════════════════════════════════════
+PERFORMANCE / COST
+═══════════════════════════════════════════════
+
+[ ] threadIds[] array on account doc
+    Flat existence index to eliminate full items collection read per scan.
+    Biggest remaining Firestore read saving. Currently ~582 reads/incremental scan.
+
+[ ] Efficiency review
+    Firestore reads per scan, batch sizes, onSnapshot listener counts.
+
+[ ] AI cost review
+    Prompt lengths, token usage per classification, compression opportunities.
+    Current: ~$0.0008–0.002/scan (Gemini Flash). Very cheap but worth auditing.
+
+[ ] DB cost review
+    Read/write counts, index usage, data shape optimisation.
+
+═══════════════════════════════════════════════
+FEATURES
+═══════════════════════════════════════════════
+
+[ ] Email preview drawer
+    Slide-in panel replacing "Open in Gmail" button. User setting to toggle
+    preference (open in Gmail vs preview in-app).
+
+[ ] Nightly auto-archive Cloud Function
+    Scheduled Cloud Function: date/info signals → archived;
+    payment_due/action_required → OVERDUE status.
+
+[ ] Multi-account support
+    Account switcher in sidebar (Slack-style). Multiple Gmail accounts per user.
+
+[ ] Beta landing page
+    Partially built in a separate session. Needs completion + copy.
+
+═══════════════════════════════════════════════
+CODE QUALITY
+═══════════════════════════════════════════════
+
+[ ] Code review
+    Structure, patterns, remaining dead code (check for any orphaned files).
+    Standardise docToItem pattern across all pages.
+
+[ ] Field-level encryption (V2)
+    Before public launch. Encrypt sensitive Firestore fields client-side.
+
+[ ] Gemini Flash billing / testing
+    Gemini 2.5 Flash confirmed working. Needs Google AI billing enabled for
+    production scale (free tier quota = 0 for some endpoints).
+    Current cost: ~$0.0008–0.002/scan — monitor as user count grows.
+
+═══════════════════════════════════════════════
+DONE (this project)
+═══════════════════════════════════════════════
+
+[x] Scan stability fix — Session 5
+    Removed hasOpenSignal bypass from skip gate (was re-processing 9-13 threads
+    on every scan regardless of new emails). Added temperature:0 to both Claude
+    and Gemini calls to prevent score/status drift on any re-processed threads.
+    Fixed in BOTH src/app/api/gmail/scan/route.ts AND functions/src/scan.ts.
+
+[x] Improved aiDetailedSummary prompt — Session 5
+    Structured as Purpose / Evolution / Current State / Next Step.
+    Produces specific, actionable summaries rather than participant catalogues.
+    Applied to both scan route and Cloud Function.
+
+[x] Deploy keel to Vercel (www.jaison.app) ← Session 4
+[x] Deploy keel-admin to Vercel (keel-admin.vercel.app) ← Session 4
+[x] Cloud Function (gmailScan) deployed + IAM fixed ← Session 4
+[x] Custom domain www.jaison.app live ← Session 4
+[x] All env vars set in Vercel ← Session 4
+[x] Google OAuth + Firebase Auth domains configured ← Session 4
+[x] Gemini 2.5 Flash integration + cost confirmed ← Session 3
+[x] Scan run logging (users/{uid}/scanRuns) ← Session 3
+[x] Admin per-user drill-down ← Session 3
+[x] Reclassify all ← Session 3
+[x] Categorise modal (nav, ignore, bail-out) ← Session 3
+[x] Ignored list (renamed from Quietly Logged) ← Session 3
+[x] AI provider abstraction (aiComplete.ts) ← Session 2
+[x] Admin console light theme ← Sessions 2–3
+[x] Onboarding overhaul (email type, SVG icons, live feed) ← Session 2
+[x] Signal bars priority UI ← Session 2
