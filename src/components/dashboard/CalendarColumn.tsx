@@ -3,129 +3,145 @@
 import { useState } from 'react'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { useCalendarSignals } from '@/lib/hooks'
+import { useCalendarSignals, useActiveItems } from '@/lib/hooks'
 import { useAuth } from '@/contexts/AuthContext'
-import type { KeelSignal } from '@/lib/types'
+import type { KeelSignal, KeelItem } from '@/lib/types'
 
-function addToCalendarUrl(signal: KeelSignal): string {
-  const date    = signal.detectedDate!
-  const userTz  = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const pad     = (n: number) => String(n).padStart(2, '0')
-  const fmt     = (d: Date) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
-  const start   = fmt(date)
-  const end     = fmt(new Date(date.getTime() + 60 * 60 * 1000))
-  const params  = new URLSearchParams({
+// ── Colour helpers ────────────────────────────────────────────────────────────
+
+const TEAL  = '#3D7A6B'
+const BRASS = '#B8964E'
+const RUST  = '#9C5E2B'
+const SAND  = '#C4A265'
+
+function signalColour(score: number, calStatus: string | null): string {
+  if (calStatus === 'on_cal' || calStatus === 'pending') return TEAL
+  if (score >= 0.85) return RUST
+  if (score >= 0.70) return BRASS
+  return SAND
+}
+
+function isHighPriority(score: number): boolean {
+  return score >= 0.70
+}
+
+// ── Google Calendar URL ───────────────────────────────────────────────────────
+
+function addToCalendarUrl(signal: KeelSignal, item?: KeelItem): string {
+  const date   = signal.detectedDate!
+  const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const pad    = (n: number) => String(n).padStart(2, '0')
+  const fmt    = (d: Date) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
+  const start  = fmt(date)
+  const end    = fmt(new Date(date.getTime() + 60 * 60 * 1000))
+  const params = new URLSearchParams({
     action:  'TEMPLATE',
-    text:    signal.description || 'Event',
+    text:    item?.aiTitle || signal.description || 'Event',
     dates:   `${start}/${end}`,
-    details: 'Added by Keel from email.',
+    details: signal.description || 'Added by Keel from email.',
     ctz:     userTz,
   })
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
-// Three tiers of card treatment
-function getSignalTier(signal: KeelSignal): 'on_cal' | 'urgent' | 'normal' {
-  if (signal.calendarStatus === 'on_cal') return 'on_cal'
-  if (signal.calendarStatus === 'ignored') return 'on_cal' // treated same as done
-  // Urgent = payment signal OR high-importance (tied to item importance)
-  if (signal.type === 'payment') return 'urgent'
-  if (signal.type === 'deadline') return 'urgent'
-  if (signal.type === 'rsvp') return 'urgent'
-  return 'normal'
-}
+// ── Signal card ───────────────────────────────────────────────────────────────
 
-const TIER_STYLES = {
-  on_cal: {
-    border:     '1px solid var(--color-border)',
-    borderLeft: '3px solid var(--color-status-positive)',
-    bg:         'transparent',
-    textColour: 'var(--color-text-muted)',
-    btnLabel:   '✓ On calendar',
-  },
-  urgent: {
-    border:     '1px solid rgba(138,48,40,0.3)',
-    borderLeft: '3px solid var(--color-status-urgent)',
-    bg:         'rgba(138,48,40,0.04)',
-    textColour: 'var(--color-text-primary)',
-    btnLabel:   '+ Add',
-  },
-  normal: {
-    border:     '1px solid var(--color-border)',
-    borderLeft: '3px solid var(--color-border-strong)',
-    bg:         'transparent',
-    textColour: 'var(--color-text-secondary)',
-    btnLabel:   '+ Add',
-  },
-}
-
-function SignalCard({ signal, uid }: { signal: KeelSignal; uid: string }) {
+function SignalCard({
+  signal, item, uid, onItemClick,
+}: {
+  signal:      KeelSignal
+  item:        KeelItem | undefined
+  uid:         string
+  onItemClick: (item: KeelItem) => void
+}) {
   const [calStatus, setCalStatus] = useState(signal.calendarStatus)
   const [ignoring,  setIgnoring]  = useState(false)
 
-  const effectiveTier = calStatus === 'on_cal' || calStatus === 'pending' || calStatus === 'ignored'
-    ? 'on_cal'
-    : getSignalTier(signal)
-  const styles = TIER_STYLES[effectiveTier]
+  const score     = item?.aiImportanceScore ?? 0.5
+  const colour    = signalColour(score, calStatus)
+  const isHigh    = isHighPriority(score)
+  const isDone    = calStatus === 'on_cal'
+  const isPending = calStatus === 'pending'
 
   const formatAmount = (p: number | null, c: string | null) =>
     p ? `${c === 'GBP' ? '£' : '$'}${(p / 100).toFixed(2)}` : null
-
   const amount = signal.type === 'payment'
     ? formatAmount(signal.detectedAmount, signal.currency)
     : null
 
   const handleAdd = () => {
     if (!signal.detectedDate) return
-    window.open(addToCalendarUrl(signal), '_blank')
+    window.open(addToCalendarUrl(signal, item), '_blank')
     setCalStatus('pending')
   }
 
-  const handleIgnore = async () => {
+  const handleIgnore = async (e: React.MouseEvent) => {
+    e.stopPropagation()
     setIgnoring(true)
     try {
+      // calendarStatus only — status stays 'active' so card badges still see it
       await updateDoc(doc(db, `users/${uid}/signals`, signal.signalId), {
-        status: 'ignored', updatedAt: Timestamp.now(),
+        calendarStatus: 'ignored', updatedAt: Timestamp.now(),
       })
       setCalStatus('ignored')
-    } catch (e) { console.error(e) }
+    } catch (err) { console.error(err) }
     finally { setIgnoring(false) }
   }
 
-  const isDone    = effectiveTier === 'on_cal'
-  const isPending = calStatus === 'pending'
+  // Ignored signals are filtered out by the hook — this handles optimistic hide
+  if (calStatus === 'ignored') return null
 
   return (
-    <div style={{
-      background:  styles.bg,
-      border:      styles.border,
-      borderLeft:  styles.borderLeft,
-      borderRadius: 'var(--radius-md)',
-      padding:     '7px 9px',
-    }}>
-      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 500, color: styles.textColour, lineHeight: 1.3, marginBottom: 3 }}>
-        {signal.description}
+    <div
+      onClick={() => item && onItemClick(item)}
+      style={{
+        borderRadius: 'var(--radius-md)',
+        borderLeft:   `3px solid ${colour}`,
+        border:       `1px solid ${colour}22`,
+        background:   `${colour}0d`,
+        padding:      '7px 9px',
+        cursor:       item ? 'pointer' : 'default',
+        transition:   'background 0.15s',
+      }}
+      onMouseOver={e => { if (item) (e.currentTarget as HTMLElement).style.background = `${colour}18` }}
+      onMouseOut={e =>  { if (item) (e.currentTarget as HTMLElement).style.background = `${colour}0d` }}
+    >
+      {/* Title + amount */}
+      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1.3, marginBottom: 2 }}>
+        {item?.aiTitle || signal.description}
         {amount && (
-          <span style={{ fontFamily: 'var(--font-dm-mono)', fontWeight: 700, color: 'var(--color-status-warning)', marginLeft: 6 }}>
+          <span style={{ fontFamily: 'var(--font-dm-mono)', fontWeight: 700, color: colour, marginLeft: 6 }}>
             {amount}
           </span>
         )}
       </div>
 
+      {/* Signal description if different from item title */}
+      {item?.aiTitle && signal.description && signal.description !== item.aiTitle && (
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 3, lineHeight: 1.4 }}>
+          {signal.description}
+        </div>
+      )}
+
+      {/* State row */}
       {isDone ? (
-        <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-status-positive)' }}>
-          {isPending ? '↗ Opened in calendar' : '✓ On calendar'}
+        <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: TEAL, marginTop: 2 }}>
+          ✓ On calendar
+        </div>
+      ) : isPending ? (
+        <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: TEAL, marginTop: 2 }}>
+          ↗ Opened in calendar
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 4, marginTop: 5 }} onClick={e => e.stopPropagation()}>
           <button
             onClick={handleAdd}
             style={{
               flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600, fontFamily: 'var(--font-dm-sans)',
               padding: '3px 6px', borderRadius: 4, cursor: 'pointer',
-              border: `1px solid ${effectiveTier === 'urgent' ? 'var(--color-status-urgent)' : 'var(--color-border-strong)'}`,
-              background: effectiveTier === 'urgent' ? 'rgba(138,48,40,0.08)' : 'var(--color-surface-recessed)',
-              color: effectiveTier === 'urgent' ? 'var(--color-status-urgent)' : 'var(--color-text-secondary)',
+              border:     `1px solid ${colour}`,
+              background: isHigh ? colour : 'transparent',
+              color:      isHigh ? '#fff' : colour,
             }}
           >
             + Add
@@ -134,15 +150,15 @@ function SignalCard({ signal, uid }: { signal: KeelSignal; uid: string }) {
             onClick={handleIgnore}
             disabled={ignoring}
             style={{
-              flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 500, fontFamily: 'var(--font-dm-sans)',
-              padding: '3px 6px', borderRadius: 4, cursor: 'pointer',
+              fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-dm-sans)',
+              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
               border: '1px solid var(--color-border)',
               background: 'transparent',
               color: 'var(--color-text-muted)',
-              opacity: ignoring ? 0.5 : 1,
+              opacity: ignoring ? 0.4 : 1,
             }}
           >
-            Ignore
+            ✕
           </button>
         </div>
       )}
@@ -150,10 +166,20 @@ function SignalCard({ signal, uid }: { signal: KeelSignal; uid: string }) {
   )
 }
 
-function DayGroup({ date, signals, uid }: { date: string; signals: KeelSignal[]; uid: string }) {
-  const d       = new Date(date)
-  const today   = new Date()
-  const isToday = d.toDateString() === today.toDateString()
+// ── Day group ─────────────────────────────────────────────────────────────────
+
+function DayGroup({
+  date, signals, itemsMap, uid, onItemClick,
+}: {
+  date:        string
+  signals:     KeelSignal[]
+  itemsMap:    Map<string, KeelItem>
+  uid:         string
+  onItemClick: (item: KeelItem) => void
+}) {
+  const d          = new Date(date)
+  const today      = new Date()
+  const isToday    = d.toDateString() === today.toDateString()
   const isTomorrow = d.toDateString() === new Date(today.getTime() + 86400000).toDateString()
 
   const dayLabel = isToday
@@ -165,55 +191,64 @@ function DayGroup({ date, signals, uid }: { date: string; signals: KeelSignal[];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{
-        fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)',
-        color: isToday ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        fontFamily:    'var(--font-dm-mono)', fontSize: 'var(--fs-xs)',
+        color:         isToday ? 'var(--color-accent)' : 'var(--color-text-muted)',
         letterSpacing: '0.08em',
-        fontWeight: isToday ? 700 : 400,
+        fontWeight:    isToday ? 700 : 400,
         paddingBottom: 3,
-        borderBottom: '1px solid var(--color-border)',
+        borderBottom:  '1px solid var(--color-border)',
       }}>
         {dayLabel}
       </div>
       {signals.map(sig => (
-        <SignalCard key={sig.signalId} signal={sig} uid={uid} />
+        <SignalCard
+          key={sig.signalId}
+          signal={sig}
+          item={itemsMap.get(sig.itemId)}
+          uid={uid}
+          onItemClick={onItemClick}
+        />
       ))}
     </div>
   )
 }
 
-function SkeletonCard() {
-  return (
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ width: '40%', height: 9, background: 'var(--color-surface-recessed)', borderRadius: 3 }} />
-      <div style={{ width: '80%', height: 11, background: 'var(--color-surface-recessed)', borderRadius: 3 }} />
-    </div>
-  )
-}
+// ── Main export ───────────────────────────────────────────────────────────────
 
-export function CalendarColumn({ onSettingsOpen }: { onSettingsOpen: () => void }) {
-  const { user } = useAuth()
-  const { signals, loading } = useCalendarSignals(10)
+export function CalendarColumn({
+  onSettingsOpen,
+  onItemClick,
+}: {
+  onSettingsOpen: () => void
+  onItemClick:    (item: KeelItem) => void
+}) {
+  const { user }             = useAuth()
+  const { signals, loading } = useCalendarSignals()
+  const { items }            = useActiveItems()
 
-  // Group signals by date
+  const itemsMap = new Map<string, KeelItem>(items.map(i => [i.itemId, i]))
+
+  // Group by date
   const grouped = new Map<string, KeelSignal[]>()
   for (const sig of signals) {
     if (!sig.detectedDate) continue
-    const dateKey = sig.detectedDate.toISOString().split('T')[0]
-    if (!grouped.has(dateKey)) grouped.set(dateKey, [])
-    grouped.get(dateKey)!.push(sig)
+    const key = sig.detectedDate.toISOString().split('T')[0]
+    if (!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key)!.push(sig)
   }
   const sortedDates = Array.from(grouped.keys()).sort()
 
-  const needAdding  = signals.filter(s =>
-    s.calendarStatus !== 'on_cal' &&
-    s.calendarStatus !== 'pending' &&
-    s.calendarStatus !== 'ignored' &&
-    s.type !== 'payment'
-  ).length
+  // Date range label driven by actual data
+  const now      = new Date()
+  const lastDate = sortedDates.length > 0
+    ? new Date(sortedDates[sortedDates.length - 1])
+    : new Date(now.getTime() + 30 * 86400000)
+  const fmt      = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const dateRange = `${fmt(now)} – ${fmt(lastDate)}`
 
-  const now       = new Date()
-  const endDate   = new Date(now.getTime() + 10 * 86400000)
-  const dateRange = `${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+  const needAdding = signals.filter(s =>
+    s.calendarStatus !== 'on_cal' && s.calendarStatus !== 'pending' && s.type !== 'payment'
+  ).length
 
   return (
     <div style={{ width: 'var(--cal-width)', flexShrink: 0, borderLeft: '1px solid var(--color-border)', background: 'var(--color-cal-bg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -224,7 +259,7 @@ export function CalendarColumn({ onSettingsOpen }: { onSettingsOpen: () => void 
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: 'var(--color-text-primary)', flex: 1 }}>Next 10 days</span>
+          <span style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: 'var(--color-text-primary)', flex: 1 }}>Upcoming</span>
           <button onClick={onSettingsOpen} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', padding: 1 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3"/>
@@ -235,18 +270,25 @@ export function CalendarColumn({ onSettingsOpen }: { onSettingsOpen: () => void 
         <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>
           {loading
             ? 'Loading…'
+            : signals.length === 0
+            ? 'Nothing upcoming'
             : `${dateRange} · ${needAdding > 0 ? `${needAdding} to add` : 'all on calendar'}`
           }
         </div>
       </div>
 
-      {/* Events grouped by day */}
+      {/* Events */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {loading ? (
-          [1,2,3].map(i => <SkeletonCard key={i} />)
+          [1,2,3].map(i => (
+            <div key={i} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ width: '40%', height: 9, background: 'var(--color-surface-recessed)', borderRadius: 3 }} />
+              <div style={{ width: '80%', height: 11, background: 'var(--color-surface-recessed)', borderRadius: 3 }} />
+            </div>
+          ))
         ) : sortedDates.length === 0 ? (
           <div style={{ padding: '20px 8px', textAlign: 'center', fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-            No events or payments<br />in the next 10 days
+            No upcoming events<br />in the next 30 days
           </div>
         ) : (
           sortedDates.map(date => (
@@ -254,24 +296,12 @@ export function CalendarColumn({ onSettingsOpen }: { onSettingsOpen: () => void 
               key={date}
               date={date}
               signals={grouped.get(date)!}
+              itemsMap={itemsMap}
               uid={user?.uid ?? ''}
+              onItemClick={onItemClick}
             />
           ))
         )}
-      </div>
-
-      {/* Legend */}
-      <div style={{ padding: '8px 10px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {[
-          { colour: 'var(--color-status-positive)', label: 'On calendar' },
-          { colour: 'var(--color-status-urgent)',   label: 'Needs adding — important' },
-          { colour: 'var(--color-border-strong)',   label: 'Needs adding' },
-        ].map(item => (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 3, height: 12, borderRadius: 2, background: item.colour, flexShrink: 0 }} />
-            <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>{item.label}</span>
-          </div>
-        ))}
       </div>
 
     </div>

@@ -184,7 +184,7 @@ export function DashboardShell({ priorityFilter = '' }: { priorityFilter?: strin
             <CategoryGrid {...gridProps} />
           </div>
           <div style={{ flexShrink: 0 }}>
-            <CalendarColumn onSettingsOpen={() => setSettingsOpen(true)} />
+            <CalendarColumn onSettingsOpen={() => setSettingsOpen(true)} onItemClick={item => setSelectedItem(item)} />
           </div>
         </div>
       </div>

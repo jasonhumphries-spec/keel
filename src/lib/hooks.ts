@@ -227,7 +227,7 @@ export function useAllSignals() {
 }
 
 // Calendar strip — date-filtered signals
-export function useCalendarSignals(daysAhead = 10) {
+export function useCalendarSignals(daysAhead = 30) {
   const { user } = useAuth()
   const [signals, setSignals] = useState<KeelSignal[]>([])
   const [loading, setLoading] = useState(true)
@@ -238,14 +238,15 @@ export function useCalendarSignals(daysAhead = 10) {
     const then = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
     const q = query(
       collection(db, `users/${user.uid}/signals`),
-      where('type', 'in', ['event', 'payment']),
+      where('type', 'in', ['event', 'payment', 'rsvp', 'deadline']),
       where('status', '==', 'active'),
       where('detectedDate', '>=', Timestamp.fromDate(now)),
       where('detectedDate', '<=', Timestamp.fromDate(then)),
       orderBy('detectedDate', 'asc'),
     )
     const unsub = onSnapshot(q, snap => {
-      setSignals(snap.docs.map(d => docToSignal(d.id, d.data())))
+      // Filter ignored client-side so card badges still see them via useAllSignals
+      setSignals(snap.docs.map(d => docToSignal(d.id, d.data())).filter(s => s.calendarStatus !== 'ignored'))
       setLoading(false)
     })
     return unsub
