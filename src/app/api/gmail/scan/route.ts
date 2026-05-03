@@ -556,8 +556,14 @@ export async function POST(req: NextRequest) {
       if (processedThreadIds.has(threadId)) {
         const internalDate  = parseInt(detail.internalDate ?? '0', 10)
         const lastProcessed = threadToUpdatedAt.get(threadId) ?? 0
-        const hasOpenSignal = ['awaiting_reply', 'awaiting_action', 'payment_due', 'action_required'].includes(existingStatus ?? '')
-        if (!hasOpenSignal && internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) {
+        // Skip if no new messages since we last processed this thread.
+        // We previously exempted awaiting_reply/awaiting_action threads here on the theory
+        // that a resolution might arrive without a new email — but re-running the AI on
+        // identical content doesn't detect resolution either, and causes non-deterministic
+        // output (scores shifting, status flipping) on every scan. If the user has resolved
+        // something, they mark it manually; if a new email arrives, internalDate advances
+        // past lastProcessed and the thread is picked up naturally.
+        if (internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) {
           unchangedSkipped++
           continue
         }

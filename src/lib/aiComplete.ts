@@ -119,6 +119,7 @@ async function completeWithClaude(model: string, prompt: string, maxTokens: numb
   const response = await getAnthropic().messages.create({
     model,
     max_tokens: maxTokens,
+    temperature: 0,
     messages:   [{ role: 'user', content: prompt }],
   })
   const text         = response.content[0].type === 'text' ? response.content[0].text : ''
@@ -143,7 +144,8 @@ async function completeWithGemini(model: string, prompt: string): Promise<AIComp
   const genModel  = getGemini().getGenerativeModel({
     model,
     // Disable thinking — adds ~10-30s per call, not needed for JSON classification
-    generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as any,
+    // temperature: 0 — deterministic output, prevents score/status drift on re-scans
+    generationConfig: { thinkingConfig: { thinkingBudget: 0 }, temperature: 0 } as any,
   })
   const result    = await genModel.generateContent(prompt)
   const text      = result.response.text()
