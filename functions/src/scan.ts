@@ -94,7 +94,7 @@ interface AIResult {
 
 async function completeWithClaude(model: string, prompt: string, maxTokens: number): Promise<AIResult> {
   const res = await getAnthropic().messages.create({
-    model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }],
+    model, max_tokens: maxTokens, temperature: 0, messages: [{ role: 'user', content: prompt }],
   })
   const text         = res.content[0].type === 'text' ? res.content[0].text : ''
   const inputTokens  = res.usage.input_tokens
@@ -105,7 +105,7 @@ async function completeWithClaude(model: string, prompt: string, maxTokens: numb
 async function completeWithGemini(model: string, prompt: string): Promise<AIResult> {
   const genModel = getGemini().getGenerativeModel({
     model,
-    generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as any,
+    generationConfig: { thinkingConfig: { thinkingBudget: 0 }, temperature: 0 } as any,
   })
   const result         = await genModel.generateContent(prompt)
   const text           = result.response.text()
@@ -136,6 +136,7 @@ async function fetchGmailMessages(accessToken: string, daysBack = 7) {
     url.searchParams.set('q', `in:inbox newer_than:${daysBack}d -category:promotions -category:social`)
     if (pageToken) url.searchParams.set('pageToken', pageToken)
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (res.status === 401) throw Object.assign(new Error("Gmail token expired"), { code: "GMAIL_401" })
     if (!res.ok) throw new Error(`Gmail list failed: ${res.status}`)
     const data = await res.json()
     messages.push(...(data.messages ?? []))
@@ -447,10 +448,47 @@ export async function handleGmailScan(req: any, res: any) {
 
     const scanStartedAt = Date.now()
 
-    // Read OAuth token from Firestore — avoids stale client tokens
+    // Read OAuth token from Firestore — refresh if expired or expiring within 5 minutes
     const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
     if (!accountSnap.exists) { res.status(404).json({ error: 'Account not found' }); return }
-    const accessToken = accountSnap.data()?.accessToken as string
+
+    const accountData    = accountSnap.data()!
+    let   accessToken    = accountData.accessToken as string
+    const refreshToken   = accountData.refreshToken as string | undefined
+    const tokenExpiresAt = accountData.tokenExpiresAt?.toMillis?.() ?? 0
+    const fiveMinutes    = 5 * 60 * 1000
+    // Refresh if: expiry unknown (0), already expired, or expiring within 5 min
+    const tokenExpired   = tokenExpiresAt === 0 || tokenExpiresAt < Date.now() + fiveMinutes
+
+    if ((!accessToken || tokenExpired) && refreshToken) {
+      logger.info(`[Keel] Access token expired or missing — refreshing for uid=${uid.slice(0,8)}`)
+      try {
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id:     process.env.GOOGLE_CLIENT_ID!,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+            refresh_token: refreshToken,
+            grant_type:    'refresh_token',
+          }),
+        })
+        if (!tokenRes.ok) throw new Error(`Token refresh HTTP ${tokenRes.status}`)
+        const tokenData    = await tokenRes.json()
+        accessToken        = tokenData.access_token as string
+        const expiresIn    = tokenData.expires_in as number
+        await db.doc(`users/${uid}/accounts/account_primary`).update({
+          accessToken,
+          tokenUpdatedAt: Timestamp.now(),
+          tokenExpiresAt: Timestamp.fromMillis(Date.now() + expiresIn * 1000),
+        })
+        logger.info(`[Keel] Token refreshed successfully for uid=${uid.slice(0,8)}`)
+      } catch (e) {
+        logger.error(`[Keel] Token refresh failed:`, e)
+        res.status(401).json({ error: 'Token refresh failed — please sign in again' }); return
+      }
+    }
+
     if (!accessToken) { res.status(401).json({ error: 'No access token — please sign in again' }); return }
 
     // Cost tracking
@@ -564,6 +602,10 @@ export async function handleGmailScan(req: any, res: any) {
       if (processedThreadIds.has(threadId)) {
         const internalDate  = parseInt(detail.internalDate ?? '0', 10)
         const lastProcessed = threadToUpdatedAt.get(threadId) ?? 0
+        // DEBUG — remove after diagnosis
+        logger.info(`[SKIP CHECK] ${threadId.slice(0,12)} internalDate=${internalDate} lastProcessed=${lastProcessed} diff=${internalDate - lastProcessed}ms status=${existingStatus ?? 'none'}`)
+        // Previously exempted awaiting_reply/awaiting_action threads — removed because
+        // re-running AI on identical content causes non-deterministic output (score/status drift).
         if (internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) { unchangedSkipped++; continue }
       }
       toProcess.push({ threadId, messageId, detail })
@@ -750,8 +792,13 @@ export async function handleGmailScan(req: any, res: any) {
       usage: { inputTokens: totalInputTok, outputTokens: totalOutputTok, costUsd: Number(totalCostUsd.toFixed(4)) },
     })
 
-  } catch (error) {
-    logger.error('Gmail scan error:', error)
-    res.status(500).json({ error: String(error) })
+  } catch (error: any) {
+    if (error?.code === 'GMAIL_401') {
+      logger.warn('Gmail token expired — client must re-authenticate')
+      res.status(401).json({ error: 'token_expired', message: 'Gmail access token expired — please sign in again' })
+    } else {
+      logger.error('Gmail scan error:', error)
+      res.status(500).json({ error: String(error) })
+    }
   }
 }
