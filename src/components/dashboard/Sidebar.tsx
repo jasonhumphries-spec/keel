@@ -238,7 +238,7 @@ function SidebarInner() {
       </div>
 
       {/* Categories — live from Firestore, editable */}
-      <div style={{ padding: '4px 8px' }}>
+      <div style={{ padding: '4px 8px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
           <div style={sectionLabel}>Categories</div>
           <Link
@@ -257,24 +257,24 @@ function SidebarInner() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ padding: '8px 10px 10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      {/* Footer — always anchored to bottom */}
+      <div style={{ padding: '8px 10px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
         {/* Account + sign out */}
         <button onClick={signOut} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 8px', borderRadius: 'var(--radius-md)', cursor: 'pointer', width: '100%', background: 'transparent', border: 'none', textAlign: 'left', fontFamily: 'var(--font-dm-sans)', transition: 'background 0.15s' }}
           onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
           onMouseOut={e => e.currentTarget.style.background = 'transparent'}
         >
           {user?.photoURL
-            ? <img src={user.photoURL} alt="" width={30} height={30} style={{ borderRadius: '50%', flexShrink: 0 }} />
-            : <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(184,150,78,0.3)', border: '1px solid #B8964E', flexShrink: 0 }} />
+            ? <img src={user.photoURL} alt="" width={32} height={32} style={{ borderRadius: '50%', flexShrink: 0 }} />
+            : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(184,150,78,0.3)', border: '1px solid #B8964E', flexShrink: 0 }} />
           }
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 'var(--fs-base)', fontWeight: 500, color: 'rgba(255,255,255,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 500, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user?.displayName ?? 'Account'}
             </div>
-            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>Sign out</div>
+            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>Sign out</div>
           </div>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
           </svg>
         </button>
@@ -282,32 +282,32 @@ function SidebarInner() {
         {/* Separator */}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 8px' }} />
 
-        {/* Version + Feedback + Privacy row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
-          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.04em', userSelect: 'none' }}>
-            Keel · Alpha · v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.x.x'}
-          </span>
-        </div>
+        {/* Feedback + Privacy row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
           <a
             href="mailto:feedback@keel.app?subject=Keel feedback"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'rgba(184,150,78,0.7)', textDecoration: 'none', letterSpacing: '0.04em', padding: '4px 4px', transition: 'color 0.15s' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(184,150,78,0.75)', textDecoration: 'none', letterSpacing: '0.04em', padding: '4px 4px', transition: 'color 0.15s' }}
             onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(184,150,78,1)'}
-            onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(184,150,78,0.7)'}
+            onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(184,150,78,0.75)'}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
             Feedback
           </a>
           <Link
             href="/privacy"
-            style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'rgba(255,255,255,0.35)', textDecoration: 'none', padding: '4px 4px', letterSpacing: '0.04em', transition: 'color 0.15s' }}
-            onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(255,255,255,0.65)'}
-            onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+            style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(255,255,255,0.4)', textDecoration: 'none', padding: '4px 4px', letterSpacing: '0.04em', transition: 'color 0.15s' }}
+            onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(255,255,255,0.7)'}
+            onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
           >
-            Privacy &amp; GDPR
+            Privacy
           </Link>
+        </div>
+
+        {/* Version string */}
+        <div style={{ padding: '4px 8px 0', fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(255,255,255,0.22)', letterSpacing: '0.04em', userSelect: 'none' }}>
+          Keel · Alpha · v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.x.x'}
         </div>
       </div>
 
