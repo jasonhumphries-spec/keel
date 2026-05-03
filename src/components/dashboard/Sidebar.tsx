@@ -188,9 +188,9 @@ function SidebarInner() {
 
         {/* Priority filters — indented under Dashboard */}
         {[
-          { label: 'High & above', filter: '3', minLevel: 3, colour: '#d4a017', count: counts.highPlus },
-          { label: 'Urgent only',  filter: '4', minLevel: 4, colour: '#c45048', count: counts.urgentOnly },
-        ].map(({ label, filter, minLevel, colour, count }) => {
+          { label: 'High & above', filter: '3', colour: '#B8964E', count: counts.highPlus },
+          { label: 'Urgent only',  filter: '4', colour: '#9C5E2B', count: counts.urgentOnly },
+        ].map(({ label, filter, colour, count }) => {
           const isFilterActive = isActive('/dashboard') && currentFilter === filter
           return (
             <Link
@@ -199,11 +199,7 @@ function SidebarInner() {
               scroll={false}
               style={{ ...navStyle(isFilterActive), paddingLeft: 28, fontSize: 'var(--fs-base)' }}
             >
-              <span style={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, flexShrink: 0 }}>
-                {[1,2,3,4].map(bar => (
-                  <div key={bar} style={{ width: 3, height: bar * 3, borderRadius: 1, background: bar >= minLevel ? colour : 'rgba(255,255,255,0.2)' }} />
-                ))}
-              </span>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: colour, flexShrink: 0 }} />
               <span style={{ color: isFilterActive ? colour : 'rgba(255,255,255,0.45)' }}>{label}</span>
               <NavBadge count={count} variant="mute" />
             </Link>

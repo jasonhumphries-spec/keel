@@ -40,6 +40,18 @@ function getPriorityColour(item: KeelItem): string {
   return LEVEL_BANDS[level - 1].colour
 }
 
+function getPriorityBg(item: KeelItem): string {
+  if (item.snoozedUntil) return 'rgba(156,163,175,0.04)'
+  const level = scoreToLevel(item.aiImportanceScore ?? 0.5)
+  const alphas = { 1: '0.03', 2: '0.05', 3: '0.07', 4: '0.09' }
+  const hex    = LEVEL_BANDS[level - 1].colour
+  // Convert hex to rgb for rgba usage
+  const r = parseInt(hex.slice(1,3),16)
+  const g = parseInt(hex.slice(3,5),16)
+  const b = parseInt(hex.slice(5,7),16)
+  return `rgba(${r},${g},${b},${alphas[level as 1|2|3|4]})`
+}
+
 function PriorityDot({ item }: { item: KeelItem }) {
   const { user } = useAuth()
   const [open,   setOpen]   = useState(false)
@@ -297,9 +309,9 @@ function CategoryCard({
                   cursor: 'pointer',
                   background: isResolved
                     ? '#f0f6f2'
-                    : isUrgent
-                    ? 'rgba(138, 48, 40, 0.04)'
-                    : hovered === item.itemId ? 'var(--color-surface-raised)' : 'transparent',
+                    : hovered === item.itemId
+                    ? getPriorityBg(item)
+                    : getPriorityBg(item),
                   borderTop: '1px solid transparent',
                   borderRight: '1px solid transparent',
                   borderBottom: '1px solid transparent',
