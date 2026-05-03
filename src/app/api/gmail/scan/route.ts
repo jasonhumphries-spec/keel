@@ -556,8 +556,6 @@ export async function POST(req: NextRequest) {
       if (processedThreadIds.has(threadId)) {
         const internalDate  = parseInt(detail.internalDate ?? '0', 10)
         const lastProcessed = threadToUpdatedAt.get(threadId) ?? 0
-        // DEBUG — remove after diagnosis
-        console.log(`[SKIP CHECK] ${threadId.slice(0,12)} internalDate=${internalDate} lastProcessed=${lastProcessed} diff=${internalDate - lastProcessed}ms status=${existingStatus ?? 'none'}`)
         // Skip if no new messages since we last processed this thread.
         // We previously exempted awaiting_reply/awaiting_action threads here on the theory
         // that a resolution might arrive without a new email — but re-running the AI on

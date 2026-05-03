@@ -602,8 +602,6 @@ export async function handleGmailScan(req: any, res: any) {
       if (processedThreadIds.has(threadId)) {
         const internalDate  = parseInt(detail.internalDate ?? '0', 10)
         const lastProcessed = threadToUpdatedAt.get(threadId) ?? 0
-        // DEBUG — remove after diagnosis
-        logger.info(`[SKIP CHECK] ${threadId.slice(0,12)} internalDate=${internalDate} lastProcessed=${lastProcessed} diff=${internalDate - lastProcessed}ms status=${existingStatus ?? 'none'}`)
         // Previously exempted awaiting_reply/awaiting_action threads — removed because
         // re-running AI on identical content causes non-deterministic output (score/status drift).
         if (internalDate > 0 && lastProcessed > 0 && internalDate <= lastProcessed) { unchangedSkipped++; continue }
