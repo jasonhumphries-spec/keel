@@ -276,7 +276,11 @@ RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do N
 
 - aiTitle: 4-7 words, more useful than raw subject
 - aiSummary: one sentence, current state, max 120 chars
-- aiDetailedSummary: 2-5 bullet points "• " prefix. Only if genuine substance. No padding.
+- aiDetailedSummary: 2-5 bullet points "• " prefix, structured as follows — only include bullets with genuine substance, no padding or repetition of aiSummary:
+  • PURPOSE: What is this thread actually about and why does it matter? Include key context (e.g. the underlying goal, relationship, or project).
+  • EVOLUTION (only if meaningful): How did the thread develop — what was asked/proposed and what changed or was agreed along the way? Skip if single-message thread.
+  • CURRENT STATE: The final agreed outcome with all concrete details — dates, times, locations, amounts, names, reference numbers. Be specific.
+  • NEXT STEP: What does the user need to do next, and by when? If nothing is needed, omit this bullet.
 - Payment amounts: exact pence. £45.99 = 4599. Never null if amount visible.
 - Consider full thread — a reply may have resolved original action
 - CLIPPED MESSAGES: Gmail clips long messages. If an outbound reply exists but body is empty or very short, assume the user sent a normal reply (likely confirming/accepting). Do NOT classify as awaiting_reply just because the body is empty or clipped.
