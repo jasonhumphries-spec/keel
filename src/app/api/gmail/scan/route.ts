@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/aiComplete'
+import { runCalendarCheck } from '@/lib/server/calendarCheck'
 
 // ---- Firebase Admin init ----
 function getAdminDb() {
@@ -836,6 +837,9 @@ export async function POST(req: NextRequest) {
         durationMs,
       })
     } catch (e) { /* non-fatal */ }
+
+    // Fire-and-forget calendar status check — non-fatal, runs after scan completes
+    runCalendarCheck(db, uid, accessToken).catch(e => console.warn('[CalCheck] Non-fatal error:', e))
 
     console.log(`Scan complete — ${processed} new, ${updated} updated, ${skipped} skipped. AI: $${aiCostUsd.toFixed(4)} · FB: ${fbReads}r/${fbWrites}w ($${fbCostUsd.toFixed(4)}) · Total: $${totalCostUsd.toFixed(4)}`)
 

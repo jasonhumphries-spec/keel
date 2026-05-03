@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useCalendarSignals, useActiveItems } from '@/lib/hooks'
@@ -228,6 +228,16 @@ export function CalendarColumn({
   const { user }             = useAuth()
   const { signals, loading } = useCalendarSignals()
   const { items }            = useActiveItems()
+
+  // Auto-check calendar status on mount and after user changes
+  useEffect(() => {
+    if (!user?.uid) return
+    fetch('/api/calendar/check', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ uid: user.uid }),
+    }).catch(err => console.warn('[CalCheck] Auto-check failed:', err))
+  }, [user?.uid])
 
   const itemsMap = new Map<string, KeelItem>(items.map(i => [i.itemId, i]))
 

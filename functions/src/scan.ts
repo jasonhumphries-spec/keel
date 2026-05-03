@@ -125,6 +125,95 @@ async function aiComplete(prompt: string, maxTokens = 1024): Promise<AIResult> {
   return completeWithClaude(model, prompt, maxTokens)
 }
 
+// ─── Calendar check ──────────────────────────────────────────────────────────
+
+const CAL_STOP = new Set(['the','and','for','with','from','this','that','have','will','your','their'])
+
+function calSigWords(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(w => w.length > 3 && !CAL_STOP.has(w))
+}
+
+function calTitlesMatch(a: string, b: string): boolean {
+  const wa = new Set(calSigWords(a)), wb = calSigWords(b)
+  if (!wa.size || !wb.length) return false
+  const hits = wb.filter(w => wa.has(w)).length
+  return hits >= 2 || (Math.min(wa.size, wb.length) <= 2 && hits >= 1)
+}
+
+async function runCalendarCheck(uid: string, accessToken: string): Promise<void> {
+  try {
+    const now    = new Date()
+    const past   = new Date(now.getTime() -  7 * 86400000)
+    const future = new Date(now.getTime() + 35 * 86400000)
+
+    const calUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+    calUrl.searchParams.set('timeMin', past.toISOString())
+    calUrl.searchParams.set('timeMax', future.toISOString())
+    calUrl.searchParams.set('singleEvents', 'true')
+    calUrl.searchParams.set('maxResults', '500')
+    calUrl.searchParams.set('orderBy', 'startTime')
+
+    const calRes = await fetch(calUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!calRes.ok) { logger.warn(`[CalCheck] GCal API failed: ${calRes.status}`); return }
+    const calEvents = ((await calRes.json()).items ?? []) as Array<{ summary?: string; start?: { date?: string; dateTime?: string } }>
+
+    const signalsSnap = await db.collection(`users/${uid}/signals`)
+      .where('status', '==', 'active')
+      .where('type', 'in', ['event', 'rsvp', 'deadline'])
+      .where('detectedDate', '>=', Timestamp.fromDate(past))
+      .where('detectedDate', '<=', Timestamp.fromDate(future))
+      .get()
+
+    if (signalsSnap.empty) return
+
+    const itemIds   = [...new Set(signalsSnap.docs.map(d => d.data().itemId as string).filter(Boolean))]
+    const itemTitles = new Map<string, string>()
+    if (itemIds.length > 0) {
+      const chunks: string[][] = []
+      for (let i = 0; i < itemIds.length; i += 10) chunks.push(itemIds.slice(i, i + 10))
+      await Promise.all(chunks.map(async chunk => {
+        const docs = await Promise.all(chunk.map(id => db.doc(`users/${uid}/items/${id}`).get()))
+        for (const d of docs) if (d.exists) itemTitles.set(d.id, d.data()?.aiTitle ?? '')
+      }))
+    }
+
+    const batch = db.batch()
+    let matched = 0, notMatched = 0
+
+    for (const sigDoc of signalsSnap.docs) {
+      const sig       = sigDoc.data()
+      if (sig.calendarStatus === 'ignored') continue
+      const sigDate   = (sig.detectedDate.toDate()) as Date
+      const sigDesc   = (sig.description ?? '') as string
+      const itemTitle = itemTitles.get(sig.itemId as string) ?? ''
+
+      const dayStart = new Date(sigDate); dayStart.setHours(0,0,0,0)
+      const dayEnd   = new Date(dayStart.getTime() + 2 * 86400000)
+
+      const sameDay  = calEvents.filter(e => {
+        const d = new Date(e.start?.dateTime ?? e.start?.date ?? '')
+        return d >= dayStart && d < dayEnd
+      })
+
+      const isOnCal = sameDay.some(e => {
+        const t = e.summary ?? ''
+        return (sigDesc && calTitlesMatch(sigDesc, t)) || (itemTitle && calTitlesMatch(itemTitle, t))
+      })
+
+      const newStatus = isOnCal ? 'on_cal' : 'not_on_cal'
+      if (sig.calendarStatus !== newStatus) {
+        batch.update(sigDoc.ref, { calendarStatus: newStatus, updatedAt: Timestamp.now() })
+      }
+      if (isOnCal) matched++; else notMatched++
+    }
+
+    await batch.commit()
+    logger.info(`[CalCheck] ${matched} on_cal · ${notMatched} not_on_cal · ${signalsSnap.size} total`)
+  } catch (e) {
+    logger.warn('[CalCheck] Non-fatal error:', e)
+  }
+}
+
 // ─── Gmail helpers ─────────────────────────────────────────────────────────────
 
 async function fetchGmailMessages(accessToken: string, daysBack = 7) {
@@ -785,6 +874,9 @@ export async function handleGmailScan(req: any, res: any) {
         model: activeModel, provider: activeProvider, job, durationMs,
       })
     } catch { /* ok */ }
+
+    // Fire-and-forget calendar check
+    runCalendarCheck(uid, accessToken).catch(e => logger.warn('[CalCheck] Non-fatal:', e))
 
     logger.info(`Scan complete — ${processed} new, ${updated} updated, ${skipped} skipped. AI: $${aiCostUsd.toFixed(4)} FB: $${fbCostUsd.toFixed(4)}`)
 
