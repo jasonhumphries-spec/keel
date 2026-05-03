@@ -221,9 +221,11 @@ function DayGroup({
 export function CalendarColumn({
   onSettingsOpen,
   onItemClick,
+  priorityFilter = '',
 }: {
   onSettingsOpen: () => void
   onItemClick:    (item: KeelItem) => void
+  priorityFilter?: string
 }) {
   const { user }             = useAuth()
   const { signals, loading } = useCalendarSignals()
@@ -241,11 +243,17 @@ export function CalendarColumn({
 
   const itemsMap = new Map<string, KeelItem>(items.map(i => [i.itemId, i]))
 
+  // Apply priority filter — match what's visible in the main grid
+  const minScore = priorityFilter === '4' ? 0.85 : priorityFilter === '3' ? 0.70 : 0
+  const visibleSignals = minScore > 0
+    ? signals.filter(sig => (itemsMap.get(sig.itemId)?.aiImportanceScore ?? 0) >= minScore)
+    : signals
+
   // Deduplicate: one signal per item per date
   // Priority: event > rsvp > deadline > payment — avoids same item appearing multiple times
   const TYPE_RANK: Record<string, number> = { event: 4, rsvp: 3, deadline: 2, payment: 1 }
   const dedupMap = new Map<string, KeelSignal>() // key: `${itemId}:${dateKey}`
-  for (const sig of signals) {
+  for (const sig of visibleSignals) {
     if (!sig.detectedDate) continue
     const dateKey = sig.detectedDate.toISOString().split('T')[0]
     const key     = `${sig.itemId}:${dateKey}`
@@ -300,8 +308,8 @@ export function CalendarColumn({
           {loading
             ? 'Loading…'
             : totalCount === 0
-            ? 'Nothing upcoming'
-            : `${dateRange} · ${needAdding > 0 ? `${needAdding} to add` : 'all on calendar'}`
+            ? (minScore > 0 ? 'No upcoming events at this priority' : 'Nothing upcoming')
+            : `${dateRange} · ${needAdding > 0 ? `${needAdding} to add` : 'all on calendar'}${minScore > 0 ? ` · filtered` : ''}`
           }
         </div>
       </div>
