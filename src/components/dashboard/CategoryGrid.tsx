@@ -19,20 +19,35 @@ function scoreToLevel(score: number): 1 | 2 | 3 | 4 {
   return 1
 }
 
+// Priority temperature ramp — Session 5 design doc
+const PRIORITY_COLOURS = {
+  low:    '#6B7A82',
+  med:    '#C4A265',
+  high:   '#B8964E',
+  urgent: '#9C5E2B',
+}
+
 const LEVEL_BANDS = [
-  { level: 1 as const, band: 0.25, label: 'Low',    colour: 'var(--color-text-muted)' },
-  { level: 2 as const, band: 0.50, label: 'Medium', colour: 'var(--color-status-new)' },
-  { level: 3 as const, band: 0.70, label: 'High',   colour: 'var(--color-status-warning)' },
-  { level: 4 as const, band: 0.90, label: 'Urgent', colour: 'var(--color-status-urgent)' },
+  { level: 1 as const, band: 0.25, label: 'Low',    colour: PRIORITY_COLOURS.low    },
+  { level: 2 as const, band: 0.50, label: 'Medium', colour: PRIORITY_COLOURS.med    },
+  { level: 3 as const, band: 0.70, label: 'High',   colour: PRIORITY_COLOURS.high   },
+  { level: 4 as const, band: 0.90, label: 'Urgent', colour: PRIORITY_COLOURS.urgent },
 ]
 
-function SignalStrength({ item }: { item: KeelItem }) {
+function getPriorityColour(item: KeelItem): string {
+  if (item.snoozedUntil) return '#9CA3AF' // grey for snoozed
+  const level = scoreToLevel(item.aiImportanceScore ?? 0.5)
+  return LEVEL_BANDS[level - 1].colour
+}
+
+function PriorityDot({ item }: { item: KeelItem }) {
   const { user } = useAuth()
   const [open,   setOpen]   = useState(false)
   const [saving, setSaving] = useState(false)
 
   const currentLevel = scoreToLevel(item.aiImportanceScore ?? 0.5)
   const currentCfg   = LEVEL_BANDS[currentLevel - 1]
+  const dotColour    = getPriorityColour(item)
 
   const setLevel = async (e: React.MouseEvent, band: number) => {
     e.stopPropagation()
@@ -56,19 +71,20 @@ function SignalStrength({ item }: { item: KeelItem }) {
     })
   }
 
-  const barColour = item.manualPriority ? 'var(--color-accent)' : currentCfg.colour
-
   return (
     <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-      {/* Signal bars — always visible */}
+      {/* Filled circle dot */}
       <button
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         title={`Priority: ${currentCfg.label}${item.manualPriority ? ' (manual)' : ''}`}
-        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 3px', display: 'flex', alignItems: 'flex-end', gap: 2, opacity: saving ? 0.5 : 1 }}
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.4 : 1, transition: 'opacity 0.15s' }}
       >
-        {[1, 2, 3, 4].map(bar => (
-          <div key={bar} style={{ width: 4, height: bar * 4, borderRadius: 1, background: bar <= currentLevel ? barColour : 'var(--color-border)', transition: 'background 0.15s' }} />
-        ))}
+        <div style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: dotColour,
+          boxShadow: item.manualPriority ? `0 0 0 2px ${dotColour}33` : 'none',
+          transition: 'background 0.2s',
+        }} />
       </button>
 
       {/* Dropdown picker */}
@@ -88,11 +104,7 @@ function SignalStrength({ item }: { item: KeelItem }) {
                 onClick={e => setLevel(e, band)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', borderRadius: 5, border: 'none', background: isActive ? 'var(--color-surface-raised)' : 'transparent', cursor: 'pointer', fontFamily: 'var(--font-dm-sans)', fontSize: 'var(--fs-sm)', color: isActive ? colour : 'var(--color-text-secondary)', fontWeight: isActive ? 600 : 400 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, flexShrink: 0 }}>
-                  {[1,2,3,4].map(bar => (
-                    <div key={bar} style={{ width: 3, height: bar * 3, borderRadius: 1, background: bar <= level ? colour : 'var(--color-border)' }} />
-                  ))}
-                </div>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: colour, flexShrink: 0 }} />
                 {label}
                 {isActive && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)' }}>✓</span>}
               </button>
@@ -281,18 +293,17 @@ function CategoryCard({
                 onClick={() => onItemClick(item)}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 9,
-                  padding: '8px 8px', borderRadius: 'var(--radius-md)',
+                  padding: '8px 8px 8px 10px', borderRadius: 'var(--radius-md)',
                   cursor: 'pointer',
                   background: isResolved
                     ? '#f0f6f2'
                     : isUrgent
-                    ? 'rgba(138, 48, 40, 0.06)'
+                    ? 'rgba(138, 48, 40, 0.04)'
                     : hovered === item.itemId ? 'var(--color-surface-raised)' : 'transparent',
-                  border: isResolved
-                    ? '1px solid #d0e8d8'
-                    : isUrgent
-                    ? '1px solid rgba(138, 48, 40, 0.15)'
-                    : '1px solid transparent',
+                  borderTop: '1px solid transparent',
+                  borderRight: '1px solid transparent',
+                  borderBottom: '1px solid transparent',
+                  borderLeft: isResolved ? '3px solid #2e6848' : `3px solid ${getPriorityColour(item)}`,
                   opacity: isResolved ? 0.65 : 1,
                   transition: 'background 0.1s, opacity 0.2s',
                 }}
@@ -363,7 +374,7 @@ function CategoryCard({
                   ) : (
                     <Tag label={display.tag} style={display.tagStyle} />
                   )}
-                  {!isResolved && <SignalStrength item={item} />}
+                  {!isResolved && <PriorityDot item={item} />}
                 </div>
               </div>
             )

@@ -238,7 +238,7 @@ function SidebarInner() {
       </div>
 
       {/* Categories — live from Firestore, editable */}
-      <div style={{ padding: '4px 8px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '4px 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
           <div style={sectionLabel}>Categories</div>
           <Link
@@ -249,9 +249,12 @@ function SidebarInner() {
             Edit all →
           </Link>
         </div>
-        {categories.map(cat => (
-          <CategoryItem key={cat.categoryId} cat={cat} uid={user?.uid ?? ''} navStyle={navStyle} count={categoryCounts.get(cat.categoryId) ?? 0} />
-        ))}
+        {/* Scrollable container — fixed height so sidebar footer stays anchored */}
+        <div style={{ maxHeight: 240, overflowY: 'auto', overflowX: 'hidden' }}>
+          {categories.map(cat => (
+            <CategoryItem key={cat.categoryId} cat={cat} uid={user?.uid ?? ''} navStyle={navStyle} count={categoryCounts.get(cat.categoryId) ?? 0} />
+          ))}
+        </div>
       </div>
 
       {/* Footer */}
@@ -279,7 +282,12 @@ function SidebarInner() {
         {/* Separator */}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 8px' }} />
 
-        {/* Feedback + Privacy row */}
+        {/* Version + Feedback + Privacy row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
+          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.04em', userSelect: 'none' }}>
+            Keel · Alpha · v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.x.x'}
+          </span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
           <a
             href="mailto:feedback@keel.app?subject=Keel feedback"
