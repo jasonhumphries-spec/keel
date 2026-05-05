@@ -265,9 +265,11 @@ STATUS RULES:
 
 RECEIPT vs INVOICE — critical distinction:
 - RECEIPT (payment already made): status="new", aiImportanceScore=0.15-0.25, aiTitle MUST start with "Receipt:" e.g. "Receipt: Paxton singing £117.50", aiSummary MUST say "Receipt for £X paid to Y — no action needed", paymentSignal detectedDate = date paid (past). NEVER "awaiting_action" for completed payment.
-- INVOICE/BILL (payment still due): status="awaiting_action", aiImportanceScore=0.70-0.95, paymentSignal detectedDate = due date (future)
+- AUTO-PAY BILL (payment will be taken automatically — direct debit, standing order, automatic card charge, or any payment service that requires no user action): status="new", aiImportanceScore=0.15-0.25, aiTitle MUST start with "Bill:" e.g. "Bill: EDF Energy £87.40 — direct debit", aiSummary MUST say "£X will be automatically collected on [date] — no action needed". Treat identically to a receipt in terms of priority and status. NEVER "awaiting_action".
+- Auto-pay clues: "direct debit", "standing order", "will be collected from your account", "will be charged to your card", "will be debited", "automatic payment", "auto-pay", "payment will be taken automatically", "no action is required", "nothing further is required from you", "will be paid automatically", any wording that makes clear no user intervention is needed for payment.
+- INVOICE/BILL (payment still due, user must act): status="awaiting_action", aiImportanceScore=0.70-0.95, paymentSignal detectedDate = due date (future)
 - Receipt clues: "receipt", "thank you for your payment", "payment received", "you paid", "paid to", "has been paid", "final invoice paid", past tense payment, confirmation number
-- Invoice clues: "invoice", "bill", "amount due", "payment due", "please pay", future tense
+- Invoice clues: "invoice", "bill", "amount due", "payment due", "please pay", future tense, bank details or payment link provided (implying user needs to pay manually)
 
 RESOLVED THREADS: If fully closed with zero further action (e.g. "now resolved", "has been fixed", "all sorted", "issue closed", "no further action") — set status="quietly_logged", aiImportanceScore=0.10. When in doubt, lean toward quietly_logged.
 
