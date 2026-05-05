@@ -630,7 +630,7 @@ function SectNote({ children }: { children: ReactNode }) {
 // ─── Main Shell ───────────────────────────────────────────────────────────────
 
 export function DashboardShell2() {
-  const { user, lastScanned } = useAuth()
+  const { user, lastScanned, triggerScan } = useAuth()
   const { isMobile, isTablet }   = useBreakpoint()
   const scanDaysBack = typeof window !== 'undefined'
     ? parseInt(localStorage.getItem('keel_scan_days_back') ?? '7', 10)
@@ -641,16 +641,27 @@ export function DashboardShell2() {
   const [selectedItem,   setSelectedItem]   = useState<KeelItem | null>(null)
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
-  const [triageDismissed, setTriageDismissed] = useState(() =>
-    typeof window !== 'undefined' && localStorage.getItem('keel_triage_dismissed') === 'true'
-  )
+  const [triageDismissed, setTriageDismissed] = useState(false)
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
+  const [initialScanDone, setInitialScanDone] = useState(false)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
 
+  // On mount: trigger a scan so section 1 shows fresh data, not stale Firestore
+  // Respects a 5-min debounce so navigating back doesn't re-scan every time
+  useEffect(() => {
+    const lastScanAt = lastScanned ? lastScanned.getTime() : 0
+    const minsAgo = (Date.now() - lastScanAt) / 60000
+    if (minsAgo < 5) {
+      setInitialScanDone(true)
+      return
+    }
+    triggerScan('auto').finally(() => setInitialScanDone(true))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
-    localStorage.setItem('keel_triage_dismissed', 'true')
     setTriageDismissed(true)
     setTimeout(() => {
       scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -660,16 +671,6 @@ export function DashboardShell2() {
   const { categoryData, loading } = useDashboardData()
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
-
-  // If new items arrive after a scan and triage was dismissed, re-show section 1
-  useEffect(() => {
-    if (uncatItems.length > 0 && triageDismissed) {
-      localStorage.removeItem('keel_triage_dismissed')
-      setTriageDismissed(false)
-    }
-  // Only fire when uncatItems changes — not on triageDismissed change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uncatItems.length])
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -816,13 +817,27 @@ export function DashboardShell2() {
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
           flex: 1, overflowY: 'auto', background: '#eeeeec',
-          paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 20,
+          paddingTop: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 20,
           paddingBottom: 40,
           transition: 'padding-top 0.4s ease',
         }}>
 
-          {/* ── Step 1: Sort your inbox ── */}
-          {uncatItems.length > 0 && !triageDismissed && (
+          {/* ── Step 1: Sort your inbox (only shown once initial scan is complete) ── */}
+          {!initialScanDone ? (
+            <div style={{ margin: '0 16px' }}>
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: '28px 20px',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.06)',
+                display: 'flex', alignItems: 'center', gap: 14,
+              }}>
+                <div style={{ width: 20, height: 20, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>Scanning your inbox so nothing gets missed</div>
+                </div>
+              </div>
+            </div>
+          ) : uncatItems.length > 0 && !triageDismissed && (
             <div>
               <StepRow
                 wash="rgba(184,150,78,0.08)"
