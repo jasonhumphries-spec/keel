@@ -217,16 +217,16 @@ function CalBandEvent({
 // ─── Calendar band ────────────────────────────────────────────────────────────
 
 const BAND_LABELS: Record<string, string> = {
-  urgent: 'Urgent & high',
-  med:    'Needs attention',
-  low:    'Everything else',
+  urgent: 'Urgent',
+  high:   'High priority',
+  fyi:    'Everything else',
   triage: 'Unclassified',
 }
 
 const BAND_COLOURS: Record<string, string> = {
   urgent: '#9C5E2B',
-  med:    '#C4A265',
-  low:    '#6B7A82',
+  high:   '#B8964E',
+  fyi:    '#6B7A82',
   triage: '#B8964E',
 }
 
@@ -236,7 +236,7 @@ function CalBand({
   uid,
   note,
 }: {
-  band:   'urgent' | 'med' | 'low' | 'triage'
+  band:   'urgent' | 'high' | 'fyi' | 'triage'
   events: { signal: KeelSignal; item: KeelItem }[]
   uid:    string
   note?:  string
@@ -332,7 +332,14 @@ function StepRow({
         </div>
         {calBand}
       </div>
-      {!last && <div style={{ height: '0.5px', background: 'var(--color-border)', flexShrink: 0 }} />}
+      {!last && (
+        <div style={{
+          height: 10,
+          background: 'var(--color-bg)',
+          borderTop: '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-border)',
+        }} />
+      )}
     </>
   )
 }
@@ -342,7 +349,7 @@ function StepRow({
 const STEP_COLOURS = {
   1: { num: '#FFF3D6', text: '#7A5C1A', border: '#B8964E', badge: '#FFF3D6', badgeText: '#7A5C1A' },
   2: { num: '#FDEADF', text: '#7A3A10', border: '#9C5E2B', badge: '#FDEADF', badgeText: '#7A3A10' },
-  3: { num: '#FFF8EC', text: '#7A5C1A', border: '#C4A265', badge: '#f0f0ee', badgeText: '#888' },
+  3: { num: '#FFF3D6', text: '#7A5C1A', border: '#B8964E', badge: '#f0f0ee', badgeText: '#888' },
   4: { num: '#f0f0ee', text: '#888',    border: '#ccc',    badge: '#f0f0ee', badgeText: '#888' },
 }
 
@@ -484,51 +491,103 @@ function TriagePanel({
 
 // ─── FYI rows (step 4) ────────────────────────────────────────────────────────
 
-function FyiSection({ categoryData }: { categoryData: CategoryWithItems[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const visible = expanded ? categoryData : categoryData.slice(0, 4)
-  const hidden  = categoryData.length - 4
+function FyiSection({
+  categoryData,
+  onItemClick,
+  resolvedItems,
+  signals,
+  uid,
+}: {
+  categoryData:  CategoryWithItems[]
+  onItemClick:   (item: KeelItem) => void
+  resolvedItems: Map<string, KeelItem>
+  signals:       KeelSignal[]
+  uid:           string
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showAll,    setShowAll]    = useState(false)
+
+  const visible = showAll ? categoryData : categoryData.slice(0, 5)
+  const hidden  = categoryData.length - 5
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {visible.map(({ category, items }) => (
-        <div
-          key={category.categoryId}
-          style={{
+      {visible.map(({ category, items }) => {
+        const isExpanded = expandedId === category.categoryId
+        return (
+          <div key={category.categoryId} style={{
             background: 'var(--color-surface)',
             border: '0.5px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
-            padding: '7px 12px',
-            display: 'flex',
-            gap: 10,
-            alignItems: 'center',
-          }}
-        >
-          <div style={{
-            fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
-            width: 110, flexShrink: 0, whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis',
+            overflow: 'hidden',
           }}>
-            {category.name}
+            {/* Collapsed row — always visible */}
+            <div
+              onClick={() => setExpandedId(isExpanded ? null : category.categoryId)}
+              style={{
+                padding: '7px 12px',
+                display: 'flex',
+                gap: 10,
+                alignItems: 'center',
+                cursor: 'pointer',
+                background: isExpanded ? 'var(--color-surface-recessed)' : 'transparent',
+                transition: 'background 0.1s',
+              }}
+            >
+              <div style={{
+                fontSize: 'var(--fs-sm)', fontWeight: isExpanded ? 600 : 400,
+                color: isExpanded ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                width: 110, flexShrink: 0,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {category.name}
+              </div>
+              <div style={{
+                fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
+                flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {items.slice(0, 3).map(i => i.aiTitle || i.senderName).join(' · ')}
+                {items.length > 3 && ` · +${items.length - 3} more`}
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)',
+                color: 'var(--color-text-muted)', flexShrink: 0, marginRight: 4,
+              }}>
+                {items.length}
+              </div>
+              {/* Chevron */}
+              <svg
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                style={{
+                  flexShrink: 0, color: 'var(--color-text-muted)',
+                  transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.15s',
+                }}
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+
+            {/* Expanded: full CategoryCard */}
+            {isExpanded && (
+              <div style={{ borderTop: '0.5px solid var(--color-border)' }}>
+                <CategoryCard
+                  data={{ category, items }}
+                  onItemClick={onItemClick}
+                  resolvedItems={resolvedItems}
+                  signals={signals}
+                  uid={uid}
+                />
+              </div>
+            )}
           </div>
-          <div style={{
-            fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)',
-            flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {items.slice(0, 3).map(i => i.aiTitle || i.senderName).join(' · ')}
-            {items.length > 3 && ` · +${items.length - 3} more`}
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)',
-            color: 'var(--color-text-muted)', flexShrink: 0,
-          }}>
-            {items.length}
-          </div>
-        </div>
-      ))}
-      {!expanded && hidden > 0 && (
+        )
+      })}
+
+      {!showAll && hidden > 0 && (
         <button
-          onClick={() => setExpanded(true)}
+          onClick={() => setShowAll(true)}
           style={{
             background: 'transparent', border: '0.5px dashed var(--color-border)',
             borderRadius: 'var(--radius-md)', padding: '6px 12px',
@@ -604,20 +663,20 @@ export function DashboardShell2() {
   }, [user])
 
   // ── Priority bands ──────────────────────────────────────────────────────────
-  const urgentHighData = filterByBand(categoryData, 3, 4, resolvedItems)
-  const medData        = filterByBand(categoryData, 2, 2, resolvedItems)
-  const lowData        = filterByBand(categoryData, 1, 1, resolvedItems)
+  const urgentData  = filterByBand(categoryData, 4, 4, resolvedItems)
+  const highData    = filterByBand(categoryData, 3, 3, resolvedItems)
+  const fyiData     = filterByBand(categoryData, 1, 2, resolvedItems)
 
-  const urgentCount  = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) >= 3 && !resolvedItems.has(i.itemId)).length
-  const medCount     = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 2 && !resolvedItems.has(i.itemId)).length
-  const lowCount     = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 1 && !resolvedItems.has(i.itemId)).length
-  const urgentOnly   = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4).length
-  const highPlus     = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) >= 3).length
+  const urgentCount = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
+  const highCount   = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId)).length
+  const fyiCount    = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
+  const urgentOnly  = urgentCount
+  const highPlus    = urgentCount + highCount
 
   // ── Calendar signals per band ───────────────────────────────────────────────
-  const urgentHighCal = calSignalsForBand(categoryData, signals, 3, 4)
-  const medCal        = calSignalsForBand(categoryData, signals, 2, 2)
-  const lowCal        = calSignalsForBand(categoryData, signals, 1, 1)
+  const urgentCal = calSignalsForBand(categoryData, signals, 4, 4)
+  const highCal   = calSignalsForBand(categoryData, signals, 3, 3)
+  const fyiCal    = calSignalsForBand(categoryData, signals, 1, 2)
 
   const uid = user?.uid ?? ''
 
@@ -672,12 +731,12 @@ export function DashboardShell2() {
               onSort={() => setCategoriseOpen(true)}
               onDismiss={() => setTriageDismissed(true)} />
           )}
-          {urgentHighData.map(d => (
+          {urgentData.map(d => (
             <div key={d.category.categoryId} style={{ marginTop: 10 }}>
               <CategoryCard data={d} {...cardProps} />
             </div>
           ))}
-          {medData.map(d => (
+          {highData.map(d => (
             <div key={d.category.categoryId} style={{ marginTop: 10 }}>
               <CategoryCard data={d} {...cardProps} />
             </div>
@@ -744,90 +803,96 @@ export function DashboardShell2() {
                   onDismiss={() => setTriageDismissed(true)}
                 />
               </StepRow>
-              <div style={{ height: '0.5px', background: 'var(--color-border)', flexShrink: 0 }} />
+              <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
             </>
           )}
 
-          {/* ── Step 2: Urgent & high ── */}
+          {/* ── Step 2: Urgent ── */}
           <StepRow
             calBand={
-              <CalBand band="urgent" events={urgentHighCal} uid={uid} />
+              <CalBand band="urgent" events={urgentCal} uid={uid} />
             }
           >
             <StepHeader
               step={2}
-              title="Urgent & high priority"
-              subtitle="Needs your attention now or soon"
+              title="Urgent"
+              subtitle="Needs your attention now — time-sensitive"
               badge={`${urgentCount} item${urgentCount !== 1 ? 's' : ''}`}
             />
-            {urgentHighData.length === 0 ? (
+            {urgentData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
                 Nothing urgent right now.
               </div>
             ) : (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
-                  {urgentHighData.map(d => (
+                  {urgentData.map(d => (
                     <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
                   ))}
                 </div>
-                {categoryData.length - urgentHighData.length > 0 && (
+                {categoryData.length - urgentData.length > 0 && (
                   <SectNote>
-                    Only categories with urgent or high items — {categoryData.length - urgentHighData.length} others have nothing pressing.
+                    Only categories with urgent items — {categoryData.length - urgentData.length} others have nothing at this level.
                   </SectNote>
                 )}
               </>
             )}
           </StepRow>
 
-          <div style={{ height: '0.5px', background: 'var(--color-border)', flexShrink: 0 }} />
+          <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
 
-          {/* ── Step 3: Needs attention ── */}
+          {/* ── Step 3: High priority ── */}
           <StepRow
             calBand={
-              <CalBand band="med" events={medCal} uid={uid} />
+              <CalBand band="high" events={highCal} uid={uid} />
             }
           >
             <StepHeader
               step={3}
-              title="Needs attention"
-              subtitle="Worth reviewing soon — not time-critical"
-              badge={`${medCount} item${medCount !== 1 ? 's' : ''}`}
+              title="High priority"
+              subtitle="Worth acting on soon — not immediately time-critical"
+              badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
             />
-            {medData.length === 0 ? (
+            {highData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
                 Nothing in this tier right now.
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
-                {medData.map(d => (
+                {highData.map(d => (
                   <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
                 ))}
               </div>
             )}
           </StepRow>
 
-          <div style={{ height: '0.5px', background: 'var(--color-border)', flexShrink: 0 }} />
+          <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
 
           {/* ── Step 4: Everything else ── */}
           <StepRow
             last
             calBand={
-              <CalBand band="low" events={lowCal} uid={uid} />
+              <CalBand band="fyi" events={fyiCal} uid={uid} />
             }
           >
             <StepHeader
               step={4}
               title="Everything else"
-              subtitle="FYI, receipts, auto-pay bills"
-              badge={`${lowCount} item${lowCount !== 1 ? 's' : ''}`}
+              subtitle="FYI, receipts, auto-pay bills, low-priority"
+              badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}
             />
-            {lowData.length === 0 ? (
+            {fyiData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
-                Nothing here either — tidy inbox!
+                Nothing here — tidy inbox!
               </div>
             ) : (
-              <FyiSection categoryData={lowData} />
+              <FyiSection
+                categoryData={fyiData}
+                onItemClick={cardProps.onItemClick}
+                resolvedItems={resolvedItems}
+                signals={signals}
+                uid={uid}
+              />
             )}
           </StepRow>
 
