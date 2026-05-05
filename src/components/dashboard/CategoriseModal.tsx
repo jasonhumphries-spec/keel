@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useCategories } from '@/lib/hooks'
@@ -15,7 +15,7 @@ interface CategoriseModalProps {
 const DEFAULT_CATS = new Set(['cat_other', '', 'uncategorised'])
 
 export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalProps) {
-  const { user, triggerScan } = useAuth()
+  const { user } = useAuth()
   const { categories }        = useCategories()
 
   // Snapshot items on mount — ignore Firestore updates while modal is open
@@ -31,10 +31,9 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const [newDesc,      setNewDesc]      = useState('')
   const [creatingError,setCreatingError]= useState('')
 
-  // Post-classification scan state
-  const [scanning,     setScanning]     = useState(false)
-  const [scanDone,     setScanDone]     = useState(false)
-  const scanFired = useRef(false)
+  // Post-classification scan state (removed — scan caused confusion by finding new items)
+  const scanning = false
+  const scanDone = false
 
   const item        = items[currentIndex] ?? null
   const isAssigned  = item ? assigned.has(item.itemId) : false
@@ -46,28 +45,6 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const canGoNext   = currentIndex < items.length - 1
   const isIgnored   = item ? ignored.has(item.itemId) : false
   const allDone     = (doneCount + ignored.size) === items.length
-
-  // When all items are done, trigger a scan (not reclassify) to extract signals
-  // on newly-categorised items. Guard with ref so it only fires once.
-  useEffect(() => {
-    if (!allDone || scanFired.current) return
-    scanFired.current = true
-    const run = async () => {
-      setScanning(true)
-      try {
-        await triggerScan('manual')
-        // Brief pause so dashboard Firestore listeners catch up
-        await new Promise(r => setTimeout(r, 3000))
-      } catch (e) {
-        console.error('Post-categorise scan failed:', e)
-      } finally {
-        setScanning(false)
-        setScanDone(true)
-      }
-    }
-    run()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allDone])
 
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
@@ -137,7 +114,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'var(--color-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-      onClick={scanning ? undefined : onClose}
+      onClick={onClose}
     >
       <div
         style={{ width: '100%', maxWidth: 520, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
@@ -159,7 +136,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
                 Do the rest later
               </button>
             )}
-            <button onClick={creating ? () => setCreating(false) : scanning ? undefined : onClose} style={{ background: 'transparent', border: 'none', cursor: scanning ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4, opacity: scanning ? 0.3 : 1 }}>
+            <button onClick={creating ? () => setCreating(false) : onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4 }}>
               {creating ? '←' : '×'}
             </button>
           </div>
@@ -202,32 +179,16 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
 
         ) : allDone ? (
           <div style={{ padding: '40px 20px', textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 14 }}>
-            {scanning ? (
-              <>
-                <div style={{ width: 36, height: 36, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>Updating your dashboard…</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
-                  Keel is scanning your newly-categorised items to extract payments, dates, and priorities.
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>
-                  Please wait — this takes around 20 seconds
-                </div>
-              </>
-            ) : (
-              <>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-status-positive)', opacity: 0.8 }}>
-                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>All done!</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
-                  {items.length} item{items.length !== 1 ? 's' : ''} categorised. Your dashboard is ready.
-                </div>
-                <button onClick={onClose} style={{ ...S.btn(true), marginTop: 4, padding: '8px 24px' }}>
-                  View dashboard
-                </button>
-              </>
-            )}
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-status-positive)', opacity: 0.8 }}>
+              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>All done!</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
+              {items.length} item{items.length !== 1 ? 's' : ''} categorised. Your dashboard is updated.
+            </div>
+            <button onClick={onClose} style={{ ...S.btn(true), marginTop: 4, padding: '8px 24px' }}>
+              View dashboard
+            </button>
           </div>
 
         ) : item ? (

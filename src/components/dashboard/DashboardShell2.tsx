@@ -652,7 +652,7 @@ export function DashboardShell2() {
   useEffect(() => {
     const lastScanAt = lastScanned ? lastScanned.getTime() : 0
     const minsAgo = (Date.now() - lastScanAt) / 60000
-    if (minsAgo < 5) {
+    if (minsAgo < 10) {
       setInitialScanDone(true)
       return
     }
@@ -824,7 +824,7 @@ export function DashboardShell2() {
 
           {/* ── Step 1: Sort your inbox (only shown once initial scan is complete) ── */}
           {!initialScanDone ? (
-            <div style={{ margin: '0 16px' }}>
+            <div style={{ margin: '0 16px 20px' }}>
               <div style={{
                 background: '#fff', borderRadius: 16, padding: '28px 20px',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.06)',
