@@ -1,0 +1,48 @@
+/* ─────────────────────────────────────────────
+   Keel — Pill Style Tokens
+   Toggled via data-pills="v1|v2" on <html>
+   Applied by src/lib/pillStyle.ts on load + change
+   ───────────────────────────────────────────── */
+
+/* ── V1 default (also :root fallback) ── */
+:root,
+[data-pills="v1"] {
+  /* Signal types */
+  --pill-payment-bg:  #9C5E2B;   --pill-payment-text:  #ffffff;
+  --pill-event-bg:    #3D7A6B;   --pill-event-text:    #ffffff;
+  --pill-awaiting-bg: #B8964E;   --pill-awaiting-text: #ffffff;
+  --pill-rsvp-bg:     #B8964E;   --pill-rsvp-text:     #ffffff;
+  --pill-action-bg:   #9C5E2B;   --pill-action-text:   #ffffff;
+  --pill-info-bg:     #6B7A82;   --pill-info-text:     #ffffff;
+
+  /* Priority */
+  --pill-urgent-bg:   #9C5E2B;   --pill-urgent-text:   #ffffff;
+  --pill-high-bg:     #B8964E;   --pill-high-text:     #ffffff;
+  --pill-med-bg:      #C4A265;   --pill-med-text:      #ffffff;
+  --pill-low-bg:      #6B7A82;   --pill-low-text:      #ffffff;
+}
+
+/* ── V2 — Tinted (Claude-style: same hue, low weight) ── */
+[data-pills="v2"] {
+  /* Signal types */
+  --pill-payment-bg:  #F7E5D8;   --pill-payment-text:  #7A3A10;
+  --pill-event-bg:    #DDF0EC;   --pill-event-text:    #1E5C50;
+  --pill-awaiting-bg: #F5EDDA;   --pill-awaiting-text: #6B5420;
+  --pill-rsvp-bg:     #F5EDDA;   --pill-rsvp-text:     #6B5420;
+  --pill-action-bg:   #F7E5D8;   --pill-action-text:   #7A3A10;
+  --pill-info-bg:     #EAECEE;   --pill-info-text:     #3A4549;
+
+  /* Priority */
+  --pill-urgent-bg:   #F7E5D8;   --pill-urgent-text:   #7A3A10;
+  --pill-high-bg:     #F5EDDA;   --pill-high-text:     #6B5420;
+  --pill-med-bg:      #F8F2E4;   --pill-med-text:      #7A6030;
+  --pill-low-bg:      #EAECEE;   --pill-low-text:      #3A4549;
+}
+
+/* ── Priority dot colours — always the solid ramp value, both v1 + v2 ── */
+:root {
+  --dot-urgent: #9C5E2B;
+  --dot-high:   #B8964E;
+  --dot-med:    #C4A265;
+  --dot-low:    #6B7A82;
+}
