@@ -709,7 +709,11 @@ export function DashboardShell2() {
 
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        <Topbar onSidebarOpen={() => setSidebarOpen(true)} onSettingsOpen={() => setSettingsOpen(true)} />
+        <Topbar
+          greeting={`${greeting()}, ${firstName}`}
+          onSettingsOpen={() => setSettingsOpen(true)}
+          onCategoriseOpen={() => setCategoriseOpen(true)}
+        />
 
         {/* Single scroll container — each step-row shares height with its cal band */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
