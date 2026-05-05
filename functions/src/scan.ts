@@ -797,7 +797,7 @@ export async function handleGmailScan(req: any, res: any) {
           aiDetailedSummary: classification.aiDetailedSummary ?? '', participants,
           ...(!threadManualPrio.get(threadId) ? { aiImportanceScore: classification.aiImportanceScore } : {}),
           ...(!isTerminal2 ? { status: effectiveStatus } : {}),
-          ...(!threadManualCategory.get(threadId) ? { categoryId: classification.categoryId, categoryName: classification.categoryName } : {}),
+          // categoryId intentionally NOT updated — never overwrite existing category assignment
           senderName, senderEmail, subject,
           updatedAt: now, receivedAt: Timestamp.fromDate(receivedAt),
         })

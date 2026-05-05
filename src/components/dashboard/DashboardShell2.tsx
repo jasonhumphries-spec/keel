@@ -330,17 +330,22 @@ function StepRow({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'stretch', background: wash ?? '#ffffff' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        background: wash ?? '#ffffff',
+        borderRadius: 16,
+        overflow: 'hidden',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.06)',
+        margin: '0 16px',
+      }}>
         <div style={{ flex: 1, minWidth: 0, padding: '28px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
         {calBand}
       </div>
       {!last && (
-        <div style={{
-          height: 40,
-          background: 'var(--color-bg)',
-        }} />
+        <div style={{ height: 20, background: 'transparent' }} />
       )}
     </>
   )
@@ -636,13 +641,16 @@ export function DashboardShell2() {
   const [selectedItem,   setSelectedItem]   = useState<KeelItem | null>(null)
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
-  const [triageDismissed, setTriageDismissed] = useState(false)
+  const [triageDismissed, setTriageDismissed] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('keel_triage_dismissed') === 'true'
+  )
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
 
   // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
+    localStorage.setItem('keel_triage_dismissed', 'true')
     setTriageDismissed(true)
     setTimeout(() => {
       scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -652,6 +660,16 @@ export function DashboardShell2() {
   const { categoryData, loading } = useDashboardData()
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
+
+  // If new items arrive after a scan and triage was dismissed, re-show section 1
+  useEffect(() => {
+    if (uncatItems.length > 0 && triageDismissed) {
+      localStorage.removeItem('keel_triage_dismissed')
+      setTriageDismissed(false)
+    }
+  // Only fire when uncatItems changes — not on triageDismissed change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uncatItems.length])
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -798,7 +816,8 @@ export function DashboardShell2() {
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
           flex: 1, overflowY: 'auto', background: '#eeeeec',
-          paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 0,
+          paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 20,
+          paddingBottom: 40,
           transition: 'padding-top 0.4s ease',
         }}>
 
@@ -830,7 +849,7 @@ export function DashboardShell2() {
                   onDismiss={handleTriageDone}
                 />
               </StepRow>
-              <div style={{ height: 40, background: '#eeeeec' }} />
+              <div style={{ height: 20, background: 'transparent' }} />
             </div>
           )}
 
@@ -869,7 +888,7 @@ export function DashboardShell2() {
           </StepRow>
           </div>
 
-          <div style={{ height: 40, background: '#eeeeec' }} />
+          <div style={{ height: 20, background: 'transparent' }} />
 
           {/* ── Step 3: High priority ── */}
           <StepRow
@@ -897,7 +916,7 @@ export function DashboardShell2() {
             )}
           </StepRow>
 
-          <div style={{ height: 40, background: '#eeeeec' }} />
+          <div style={{ height: 20, background: 'transparent' }} />
 
           {/* ── Step 4: Everything else ── */}
           <StepRow

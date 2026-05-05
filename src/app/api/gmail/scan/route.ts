@@ -706,10 +706,7 @@ export async function POST(req: NextRequest) {
             : {}),
           // Never overwrite a terminal status (done / archived / paid) — user explicitly resolved this
           ...(!isTerminal ? { status: effectiveStatus } : {}),
-          // Never overwrite a category the user manually assigned
-          ...(!threadManualCategory.get(threadId)
-            ? { categoryId: classification.categoryId, categoryName: classification.categoryName }
-            : {}),
+          // categoryId is intentionally NOT updated here — never overwrite existing category assignment
           senderName, senderEmail, subject,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),
