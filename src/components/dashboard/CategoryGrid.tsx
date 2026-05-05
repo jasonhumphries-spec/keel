@@ -402,7 +402,7 @@ export function CategoryCard({
           Nothing needs attention
         </div>
       ) : (
-        <div style={{ padding: 6, overflowY: 'auto', maxHeight: 420 }}>
+        <div style={{ padding: 6, overflowY: 'auto', maxHeight: 420, display: 'flex', flexDirection: 'column', gap: 3 }}>
           {allItems.map(item => {
             const isResolved   = resolvedItems.has(item.itemId)
             const display      = getItemDisplay(item)

@@ -235,11 +235,13 @@ function CalBand({
   events,
   uid,
   note,
+  wash,
 }: {
   band:   'urgent' | 'high' | 'fyi' | 'triage'
   events: { signal: KeelSignal; item: KeelItem }[]
   uid:    string
   note?:  string
+  wash?:  string
 }) {
   const colour = BAND_COLOURS[band]
   const label  = BAND_LABELS[band]
@@ -249,7 +251,7 @@ function CalBand({
       width: 188,
       flexShrink: 0,
       borderLeft: '0.5px solid var(--color-border)',
-      background: 'var(--color-surface-raised)',
+      background: wash ?? 'var(--color-surface-raised)',
       display: 'flex',
       flexDirection: 'column',
     }}>
@@ -499,15 +501,18 @@ function FyiSection({
   resolvedItems,
   signals,
   uid,
+  expandedId,
+  onExpandChange,
 }: {
-  categoryData:  CategoryWithItems[]
-  onItemClick:   (item: KeelItem) => void
-  resolvedItems: Map<string, KeelItem>
-  signals:       KeelSignal[]
-  uid:           string
+  categoryData:    CategoryWithItems[]
+  onItemClick:     (item: KeelItem) => void
+  resolvedItems:   Map<string, KeelItem>
+  signals:         KeelSignal[]
+  uid:             string
+  expandedId:      string | null
+  onExpandChange:  (id: string | null) => void
 }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [showAll,    setShowAll]    = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   const visible = showAll ? categoryData : categoryData.slice(0, 5)
   const hidden  = categoryData.length - 5
@@ -525,7 +530,7 @@ function FyiSection({
           }}>
             {/* Collapsed row — always visible */}
             <div
-              onClick={() => setExpandedId(isExpanded ? null : category.categoryId)}
+              onClick={() => onExpandChange(expandedId === category.categoryId ? null : category.categoryId)}
               style={{
                 padding: '7px 12px',
                 display: 'flex',
@@ -633,6 +638,7 @@ export function DashboardShell2() {
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
   const [triageDismissed, setTriageDismissed] = useState(false)
+  const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
 
   const { categoryData, loading } = useDashboardData()
   const { signals }               = useAllSignals()
@@ -678,7 +684,11 @@ export function DashboardShell2() {
   // ── Calendar signals per band ───────────────────────────────────────────────
   const urgentCal = calSignalsForBand(categoryData, signals, 4, 4)
   const highCal   = calSignalsForBand(categoryData, signals, 3, 3)
-  const fyiCal    = calSignalsForBand(categoryData, signals, 1, 2)
+  // FYI cal: only show events from the currently expanded category
+  const fyiCalAll = calSignalsForBand(categoryData, signals, 1, 2)
+  const fyiCal    = fyiExpandedId
+    ? fyiCalAll.filter(({ item }) => item.categoryId === fyiExpandedId)
+    : []
 
   const uid = user?.uid ?? ''
 
@@ -789,6 +799,7 @@ export function DashboardShell2() {
                     band="triage"
                     events={[]}
                     uid={uid}
+                    wash="rgba(184,150,78,0.06)"
                     note="Some unclassified items may have dates. Classify them first to see events here."
                   />
                 }
@@ -812,9 +823,9 @@ export function DashboardShell2() {
 
           {/* ── Step 2: Urgent ── */}
           <StepRow
-            wash="rgba(156,94,43,0.05)"
+            wash="rgba(140,65,18,0.09)"
             calBand={
-              <CalBand band="urgent" events={urgentCal} uid={uid} />
+              <CalBand band="urgent" events={urgentCal} uid={uid} wash="rgba(140,65,18,0.09)" />
             }
           >
             <StepHeader
@@ -847,9 +858,9 @@ export function DashboardShell2() {
 
           {/* ── Step 3: High priority ── */}
           <StepRow
-            wash="rgba(184,150,78,0.05)"
+            wash="rgba(210,180,90,0.07)"
             calBand={
-              <CalBand band="high" events={highCal} uid={uid} />
+              <CalBand band="high" events={highCal} uid={uid} wash="rgba(210,180,90,0.07)" />
             }
           >
             <StepHeader
@@ -878,7 +889,13 @@ export function DashboardShell2() {
             last
             wash="rgba(107,122,130,0.04)"
             calBand={
-              <CalBand band="fyi" events={fyiCal} uid={uid} />
+              <CalBand
+                band="fyi"
+                events={fyiCal}
+                uid={uid}
+                wash="rgba(107,122,130,0.04)"
+                note={fyiExpandedId ? undefined : 'Expand a category below to see its dates here.'}
+              />
             }
           >
             <StepHeader
@@ -898,6 +915,8 @@ export function DashboardShell2() {
                 resolvedItems={resolvedItems}
                 signals={signals}
                 uid={uid}
+                expandedId={fyiExpandedId}
+                onExpandChange={setFyiExpandedId}
               />
             )}
           </StepRow>
