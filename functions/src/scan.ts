@@ -662,7 +662,6 @@ export async function handleGmailScan(req: any, res: any) {
       return [d.data().threadId as string, ts?.toMillis ? ts.toMillis() : 0]
     }))
     const threadManualPrio   = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualPriority as boolean]))
-    const threadManualCategory = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualCategory as boolean]))
 
     // Step 1: Fetch messages
     let messages = await fetchGmailMessages(accessToken, daysBack)
