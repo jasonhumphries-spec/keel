@@ -179,6 +179,12 @@ function SidebarInner() {
           <NavBadge count={counts.dashboard} variant="dark" />
         </Link>
 
+        {/* Dashboard 2.0 — step-based layout */}
+        <Link href="/dashboard2" scroll={false} style={navStyle(isActive('/dashboard2'))}>
+          <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
+          Dashboard 2.0
+        </Link>
+
         {/* Awaiting Reply — indented filter */}
         <Link href="/awaiting-reply" scroll={false} style={{ ...navStyle(isActive('/awaiting-reply')), paddingLeft: 28, fontSize: 'var(--fs-base)' }}>
           <span style={{ color: 'rgba(255,255,255,0.25)' }}><Icon d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" size={13} /></span>

@@ -11,8 +11,8 @@ import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 // Priority bands — used by PriorityButtons
 const PRIORITY_BANDS = [0.10, 0.25, 0.50, 0.70, 0.85, 0.95]
 
-// Signal strength priority indicator
-function scoreToLevel(score: number): 1 | 2 | 3 | 4 {
+// Signal strength priority indicator — exported for use in Dashboard 2.0
+export function scoreToLevel(score: number): 1 | 2 | 3 | 4 {
   if (score >= 0.85) return 4
   if (score >= 0.70) return 3
   if (score >= 0.40) return 2
@@ -34,7 +34,7 @@ const LEVEL_BANDS = [
   { level: 4 as const, band: 0.90, label: 'Urgent', colour: PRIORITY_COLOURS.urgent },
 ]
 
-function getPriorityColour(item: KeelItem): string {
+export function getPriorityColour(item: KeelItem): string {
   if (item.snoozedUntil) return '#9CA3AF' // grey for snoozed
   const level = scoreToLevel(item.aiImportanceScore ?? 0.5)
   return LEVEL_BANDS[level - 1].colour
@@ -340,7 +340,7 @@ function CalendarBadge({
   )
 }
 
-function CategoryCard({
+export function CategoryCard({
   data,
   onItemClick,
   resolvedItems,
