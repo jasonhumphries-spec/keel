@@ -642,24 +642,33 @@ export function DashboardShell2() {
   const scrollRef   = useRef<HTMLDivElement>(null)
   const section1Ref = useRef<HTMLDivElement>(null)
   const section2Ref = useRef<HTMLDivElement>(null)
+  const [topSpacer, setTopSpacer] = useState(0)
 
-  // On mount: if section 1 exists, scroll to put it roughly centred with headroom
+  // On mount: measure container and section 1, set top spacer to center section 1
   useEffect(() => {
-    if (!section1Ref.current || !scrollRef.current) return
-    const el       = section1Ref.current
-    const container = scrollRef.current
-    const offset   = el.offsetTop - Math.max(60, (container.clientHeight - el.offsetHeight) / 3)
-    container.scrollTo({ top: Math.max(0, offset), behavior: 'instant' })
-  // Only run once on mount
+    if (!uncatItems.length) return
+    const timer = setTimeout(() => {
+      if (!section1Ref.current || !scrollRef.current) return
+      const containerH = scrollRef.current.clientHeight
+      const elH        = section1Ref.current.offsetHeight
+      const spacer     = Math.max(60, Math.floor((containerH - elH) / 3))
+      setTopSpacer(spacer)
+    }, 100)
+    return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // When triage is dismissed/done, scroll section 2 into view gently
+  // When triage is dismissed: clear spacer, scroll section 2 to top of container
   const handleTriageDone = useCallback(() => {
+    setTopSpacer(0)
     setTriageDismissed(true)
     setTimeout(() => {
-      section2Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 120)
+      if (!section2Ref.current || !scrollRef.current) return
+      scrollRef.current.scrollTo({
+        top: Math.max(0, section2Ref.current.offsetTop - 24),
+        behavior: 'smooth',
+      })
+    }, 320)
   }, [])
 
   const { categoryData, loading } = useDashboardData()
@@ -814,6 +823,7 @@ export function DashboardShell2() {
           {/* ── Step 1: Sort your inbox ── */}
           {uncatItems.length > 0 && !triageDismissed && (
             <div ref={section1Ref}>
+              {topSpacer > 0 && <div style={{ height: topSpacer }} />}
               <StepRow
                 wash="rgba(184,150,78,0.08)"
                 calBand={
