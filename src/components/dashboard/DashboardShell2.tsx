@@ -842,7 +842,6 @@ export function DashboardShell2() {
               <div style={{ height: 40, background: '#f7f6f4' }} />
             </div>
           )}
-          )}
 
           {/* ── Step 2: Urgent ── */}
           <div ref={section2Ref}>
