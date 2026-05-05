@@ -310,7 +310,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
                 — Moved to Ignored. Use ← Prev to go back and assign a category instead.
               </div>
             )}
-          <>
+          </>
         ) : null}
       </div>
     </div>
