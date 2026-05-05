@@ -49,16 +49,19 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
     setSaving(true)
+    const path = `users/${user.uid}/items/${item.itemId}`
+    console.log(`[assign] Writing ${categoryId} to ${path}`)
     try {
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         categoryId, categoryName, manualCategory: true, updatedAt: Timestamp.now(),
       })
+      console.log(`[assign] ✓ Write succeeded: ${item.itemId} → ${categoryId}`)
       setAssigned(prev => new Map(prev).set(item.itemId, { categoryId, categoryName }))
       // Auto-advance to next unassigned item
       const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && it.itemId !== item.itemId)
       if (next !== -1) setCurrentIndex(next)
       else if (canGoNext) setCurrentIndex(i => i + 1)
-    } catch (e) { console.error(e) }
+    } catch (e) { console.error(`[assign] ✗ Write FAILED for ${item.itemId}:`, e) }
     finally { setSaving(false) }
   }, [user, item, saving, currentIndex, items, assigned, canGoNext])
 
