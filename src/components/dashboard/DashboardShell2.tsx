@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type MouseEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { doc, updateDoc, Timestamp } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData } from '@/lib/hooks'
@@ -647,18 +647,26 @@ export function DashboardShell2() {
 
   const scrollRef   = useRef<HTMLDivElement>(null)
 
-  // On mount: trigger a scan so section 1 shows fresh data, not stale Firestore
-  // Respects a 5-min debounce so navigating back doesn't re-scan every time
+  // On mount: read lastScanCompletedAt from Firestore (survives page refresh unlike React state)
+  // Only scan if > 10 minutes since last scan
   useEffect(() => {
-    const lastScanAt = lastScanned ? lastScanned.getTime() : 0
-    const minsAgo = (Date.now() - lastScanAt) / 60000
-    if (minsAgo < 10) {
-      setInitialScanDone(true)
-      return
+    if (!user) return
+    const check = async () => {
+      try {
+        const accountSnap = await getDoc(doc(db, `users/${user.uid}/accounts/account_primary`))
+        const lastScanTs  = accountSnap.data()?.lastScanCompletedAt
+        const lastScanMs  = lastScanTs ? lastScanTs.toMillis() : 0
+        const minsAgo     = (Date.now() - lastScanMs) / 60000
+        if (minsAgo < 10) {
+          setInitialScanDone(true)
+          return
+        }
+      } catch { /* proceed with scan if read fails */ }
+      triggerScan('auto').finally(() => setInitialScanDone(true))
     }
-    triggerScan('auto').finally(() => setInitialScanDone(true))
+    check()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [user])
 
   // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
