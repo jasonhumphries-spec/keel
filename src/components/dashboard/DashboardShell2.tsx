@@ -640,37 +640,13 @@ export function DashboardShell2() {
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
-  const section1Ref = useRef<HTMLDivElement>(null)
-  const section2Ref = useRef<HTMLDivElement>(null)
-  const [topSpacer, setTopSpacer] = useState(0)
 
-  // After layout settles, measure container + section 1 and set the spacer
-  // so section 1 sits roughly one-third down the viewport
-  useEffect(() => {
-    if (!uncatItems.length) return
-    const timer = setTimeout(() => {
-      if (!section1Ref.current || !scrollRef.current) return
-      const containerH = scrollRef.current.clientHeight
-      const elH        = section1Ref.current.offsetHeight
-      const spacer     = Math.max(40, Math.floor((containerH - elH) / 3))
-      setTopSpacer(spacer)
-    }, 120)
-    return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Dismiss section 1: clear spacer, then smooth-scroll section 2 to top
+  // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
-    setTopSpacer(0)
     setTriageDismissed(true)
-    // Wait for section 1 to collapse (300ms) then scroll section 2 to top of container
     setTimeout(() => {
-      if (!section2Ref.current || !scrollRef.current) return
-      scrollRef.current.scrollTo({
-        top: Math.max(0, section2Ref.current.offsetTop - 24),
-        behavior: 'smooth',
-      })
-    }, 320)
+      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 50)
   }, [])
 
   const { categoryData, loading } = useDashboardData()
@@ -819,17 +795,16 @@ export function DashboardShell2() {
           onCategoriseOpen={() => setCategoriseOpen(true)}
         />
 
-        {/* Single scroll container — block layout so rows stack and can't shrink/overlap */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', background: '#f7f6f4' }}>
+        {/* Single scroll container — padding-top centres section 1 on load */}
+        <div ref={scrollRef} style={{
+          flex: 1, overflowY: 'auto', background: '#f7f6f4',
+          paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 0,
+          transition: 'padding-top 0.4s ease',
+        }}>
 
           {/* ── Step 1: Sort your inbox ── */}
-          {/* Spacer pushes section 1 down to roughly centre it on load */}
-          {uncatItems.length > 0 && !triageDismissed && topSpacer > 0 && (
-            <div style={{ height: topSpacer, transition: 'height 0.3s ease' }} />
-          )}
-
           {uncatItems.length > 0 && !triageDismissed && (
-            <div ref={section1Ref}>
+            <div>
               <StepRow
                 wash="rgba(184,150,78,0.08)"
                 calBand={
@@ -860,7 +835,7 @@ export function DashboardShell2() {
           )}
 
           {/* ── Step 2: Urgent ── */}
-          <div ref={section2Ref}>
+          <div>
           <StepRow
             wash="rgba(140,65,18,0.10)"
             calBand={
