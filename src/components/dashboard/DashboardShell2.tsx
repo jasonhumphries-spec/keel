@@ -331,17 +331,15 @@ function StepRow({
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'stretch', background: wash }}>
-        <div style={{ flex: 1, minWidth: 0, padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0, padding: '28px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
         {calBand}
       </div>
       {!last && (
         <div style={{
-          height: 10,
+          height: 40,
           background: 'var(--color-bg)',
-          borderTop: '1px solid var(--color-border)',
-          borderBottom: '1px solid var(--color-border)',
         }} />
       )}
     </>
@@ -817,7 +815,7 @@ export function DashboardShell2() {
                   onDismiss={() => setTriageDismissed(true)}
                 />
               </StepRow>
-              <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
+              <div style={{ height: 40, background: 'var(--color-bg)' }} />
             </>
           )}
 
@@ -854,7 +852,7 @@ export function DashboardShell2() {
             )}
           </StepRow>
 
-          <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
+          <div style={{ height: 40, background: 'var(--color-bg)' }} />
 
           {/* ── Step 3: High priority ── */}
           <StepRow
@@ -882,7 +880,7 @@ export function DashboardShell2() {
             )}
           </StepRow>
 
-          <div style={{ height: 10, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }} />
+          <div style={{ height: 40, background: 'var(--color-bg)' }} />
 
           {/* ── Step 4: Everything else ── */}
           <StepRow
