@@ -458,7 +458,7 @@ export async function POST(req: NextRequest) {
     const recentQuery = lastScanCompletedAt
       ? db.collection(`users/${uid}/items`)
           .where('updatedAt', '>=', lastScanCompletedAt)
-          .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'categoryId', 'aiTitle')
+          .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'categoryId', 'aiTitle', 'manualCategory')
       : null
 
     const [existingSnap, recentSnap] = await Promise.all([
@@ -513,7 +513,8 @@ export async function POST(req: NextRequest) {
       const ts = d.data().updatedAt
       return [d.data().threadId as string, ts?.toMillis ? ts.toMillis() : 0]
     }))
-    const threadManualPrio   = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualPriority as boolean]))
+    const threadManualPrio     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualPriority as boolean]))
+    const threadManualCategory = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualCategory as boolean]))
 
     // Step 1: Fetch messages active within the thread activity window
     // This finds threads with recent activity — not a hard lookback cutoff
@@ -685,8 +686,13 @@ export async function POST(req: NextRequest) {
 
       const receivedAt = dateStr ? new Date(dateStr) : new Date()
       const now        = Timestamp.now()
-      const isExisting = processedThreadIds.has(threadId)
-      const itemId     = threadToItemId.get(threadId) ?? `item_${threadId.slice(0, 16)}`
+      const isExisting    = processedThreadIds.has(threadId)
+      const itemId        = threadToItemId.get(threadId) ?? `item_${threadId.slice(0, 16)}`
+      const existingStatus = threadToStatus.get(threadId)
+
+      // Never resurrect items the user has explicitly resolved or archived
+      const TERMINAL_STATUSES = new Set(['done', 'archived', 'paid'])
+      const isTerminal = existingStatus && TERMINAL_STATUSES.has(existingStatus)
 
       if (isExisting) {
         await db.doc(`users/${uid}/items/${itemId}`).update({
@@ -698,7 +704,12 @@ export async function POST(req: NextRequest) {
           ...(!threadManualPrio.get(threadId)
             ? { aiImportanceScore: classification.aiImportanceScore }
             : {}),
-          status:            effectiveStatus,
+          // Never overwrite a terminal status (done / archived / paid) — user explicitly resolved this
+          ...(!isTerminal ? { status: effectiveStatus } : {}),
+          // Never overwrite a category the user manually assigned
+          ...(!threadManualCategory.get(threadId)
+            ? { categoryId: classification.categoryId, categoryName: classification.categoryName }
+            : {}),
           senderName, senderEmail, subject,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),

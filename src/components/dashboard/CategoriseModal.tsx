@@ -74,7 +74,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
     setSaving(true)
     try {
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
-        categoryId, categoryName, updatedAt: Timestamp.now(),
+        categoryId, categoryName, manualCategory: true, updatedAt: Timestamp.now(),
       })
       setAssigned(prev => new Map(prev).set(item.itemId, { categoryId, categoryName }))
       // Auto-advance to next unassigned item

@@ -612,7 +612,7 @@ export async function handleGmailScan(req: any, res: any) {
     const recentQuery = lastScanCompletedAt
       ? db.collection(`users/${uid}/items`)
           .where('updatedAt', '>=', lastScanCompletedAt)
-          .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'categoryId', 'aiTitle')
+          .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'categoryId', 'aiTitle', 'manualCategory')
       : null
     const [existingSnap, recentSnap] = await Promise.all([
       existenceQuery.get(),
@@ -662,6 +662,7 @@ export async function handleGmailScan(req: any, res: any) {
       return [d.data().threadId as string, ts?.toMillis ? ts.toMillis() : 0]
     }))
     const threadManualPrio   = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualPriority as boolean]))
+    const threadManualCategory = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualCategory as boolean]))
 
     // Step 1: Fetch messages
     let messages = await fetchGmailMessages(accessToken, daysBack)
@@ -786,13 +787,18 @@ export async function handleGmailScan(req: any, res: any) {
       const now             = Timestamp.now()
       const isExisting      = processedThreadIds.has(threadId)
       const itemId          = threadToItemId.get(threadId) ?? `item_${threadId.slice(0, 16)}`
+      const existingStatus2 = threadToStatus.get(threadId)
+      const TERMINAL_STATUSES2 = new Set(['done', 'archived', 'paid'])
+      const isTerminal2 = existingStatus2 && TERMINAL_STATUSES2.has(existingStatus2)
 
       if (isExisting) {
         await db.doc(`users/${uid}/items/${itemId}`).update({
           aiTitle: classification.aiTitle ?? subject, aiSummary: classification.aiSummary,
           aiDetailedSummary: classification.aiDetailedSummary ?? '', participants,
           ...(!threadManualPrio.get(threadId) ? { aiImportanceScore: classification.aiImportanceScore } : {}),
-          status: effectiveStatus, senderName, senderEmail, subject,
+          ...(!isTerminal2 ? { status: effectiveStatus } : {}),
+          ...(!threadManualCategory.get(threadId) ? { categoryId: classification.categoryId, categoryName: classification.categoryName } : {}),
+          senderName, senderEmail, subject,
           updatedAt: now, receivedAt: Timestamp.fromDate(receivedAt),
         })
         updated++; fbWrites++
