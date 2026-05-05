@@ -33,6 +33,8 @@ interface ReclassifyResult {
   changed:      boolean
 }
 
+const DEFAULT_CATEGORY_IDS = new Set(['cat_other', '', 'uncategorised', null, undefined])
+
 async function reclassifyItem(
   db: ReturnType<typeof getAdminDb>,
   uid: string,
@@ -40,6 +42,19 @@ async function reclassifyItem(
   itemId: string,
   categories: { id: string; name: string; description: string }[],
 ): Promise<ReclassifyResult & { inputTokens: number; outputTokens: number; costUsd: number }> {
+
+  // Never overwrite a category the user has already assigned
+  if (item.categoryId && !DEFAULT_CATEGORY_IDS.has(item.categoryId)) {
+    return {
+      itemId,
+      oldCategory:  item.categoryName ?? '',
+      newCategory:  item.categoryName ?? '',
+      changed:      false,
+      inputTokens:  0,
+      outputTokens: 0,
+      costUsd:      0,
+    }
+  }
 
   const catList = categories.map(c =>
     `- ${c.id}: "${c.name}"${c.description ? ` — ${c.description}` : ''}`

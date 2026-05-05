@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useCategories } from '@/lib/hooks'
@@ -12,9 +12,15 @@ interface CategoriseModalProps {
   onClose: () => void
 }
 
-export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
-  const { user }       = useAuth()
-  const { categories } = useCategories()
+const DEFAULT_CATS = new Set(['cat_other', '', 'uncategorised'])
+
+export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalProps) {
+  const { user, triggerScan } = useAuth()
+  const { categories }        = useCategories()
+
+  // Snapshot items on mount — ignore Firestore updates while modal is open
+  // so reclassify / other async changes don't mutate the list mid-session
+  const [items] = useState<KeelItem[]>(() => [...itemsProp])
 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [assigned,     setAssigned]     = useState<Map<string, { categoryId: string; categoryName: string }>>(new Map())
@@ -25,10 +31,10 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   const [newDesc,      setNewDesc]      = useState('')
   const [creatingError,setCreatingError]= useState('')
 
-  // Reclassify state
-  const [reclassifying, setReclassifying] = useState(false)
-  const [reclassifyDone, setReclassifyDone] = useState(false)
-  const [reclassifyCount, setReclassifyCount] = useState(0)
+  // Post-classification scan state
+  const [scanning,     setScanning]     = useState(false)
+  const [scanDone,     setScanDone]     = useState(false)
+  const scanFired = useRef(false)
 
   const item        = items[currentIndex] ?? null
   const isAssigned  = item ? assigned.has(item.itemId) : false
@@ -41,29 +47,27 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   const isIgnored   = item ? ignored.has(item.itemId) : false
   const allDone     = (doneCount + ignored.size) === items.length
 
-  // Auto-trigger reclassify the moment all items are classified
+  // When all items are done, trigger a scan (not reclassify) to extract signals
+  // on newly-categorised items. Guard with ref so it only fires once.
   useEffect(() => {
-    if (!allDone || !user || reclassifying || reclassifyDone) return
+    if (!allDone || scanFired.current) return
+    scanFired.current = true
     const run = async () => {
-      setReclassifying(true)
+      setScanning(true)
       try {
-        const daysBack = parseInt(localStorage.getItem('keel_scan_days_back') ?? '7', 10)
-        const res  = await fetch('/api/gmail/reclassify', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ uid: user.uid, daysBack }),
-        })
-        const data = await res.json()
-        setReclassifyCount(data.reclassified ?? 0)
+        await triggerScan('manual')
+        // Brief pause so dashboard Firestore listeners catch up
+        await new Promise(r => setTimeout(r, 3000))
       } catch (e) {
-        console.error('Reclassify after categorise failed:', e)
+        console.error('Post-categorise scan failed:', e)
       } finally {
-        setReclassifying(false)
-        setReclassifyDone(true)
+        setScanning(false)
+        setScanDone(true)
       }
     }
     run()
-  }, [allDone, user, reclassifying, reclassifyDone])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDone])
 
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
@@ -133,7 +137,7 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'var(--color-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-      onClick={reclassifying ? undefined : onClose}
+      onClick={scanning ? undefined : onClose}
     >
       <div
         style={{ width: '100%', maxWidth: 520, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
@@ -155,7 +159,7 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
                 Do the rest later
               </button>
             )}
-            <button onClick={creating ? () => setCreating(false) : reclassifying ? undefined : onClose} style={{ background: 'transparent', border: 'none', cursor: reclassifying ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4, opacity: reclassifying ? 0.3 : 1 }}>
+            <button onClick={creating ? () => setCreating(false) : scanning ? undefined : onClose} style={{ background: 'transparent', border: 'none', cursor: scanning ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4, opacity: scanning ? 0.3 : 1 }}>
               {creating ? '←' : '×'}
             </button>
           </div>
@@ -198,16 +202,15 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
 
         ) : allDone ? (
           <div style={{ padding: '40px 20px', textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 14 }}>
-            {reclassifying ? (
+            {scanning ? (
               <>
-                {/* Spinner */}
                 <div style={{ width: 36, height: 36, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>Reclassifying…</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 320, lineHeight: 1.5 }}>
-                  Keel is re-reading your newly categorised items to extract signals — payments, events, and priorities. This takes around 20 seconds.
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>Updating your dashboard…</div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
+                  Keel is scanning your newly-categorised items to extract payments, dates, and priorities.
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>
-                  Please wait — don't close this window
+                  Please wait — this takes around 20 seconds
                 </div>
               </>
             ) : (
@@ -217,9 +220,7 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
                 </svg>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>All done!</div>
                 <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
-                  {items.length} item{items.length !== 1 ? 's' : ''} categorised
-                  {reclassifyCount > 0 && ` · ${reclassifyCount} signal${reclassifyCount !== 1 ? 's' : ''} updated`}.
-                  Your dashboard is ready.
+                  {items.length} item{items.length !== 1 ? 's' : ''} categorised. Your dashboard is ready.
                 </div>
                 <button onClick={onClose} style={{ ...S.btn(true), marginTop: 4, padding: '8px 24px' }}>
                   View dashboard
