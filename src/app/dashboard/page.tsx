@@ -1,15 +1,13 @@
 'use client'
 
 import { useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { DashboardShell } from '@/components/dashboard/DashboardShell'
 
 function DashboardContent() {
   const { user, loading } = useAuth()
-  const router         = useRouter()
-  const searchParams   = useSearchParams()
-  const priorityFilter = searchParams.get('priority') ?? ''
+  const router = useRouter()
 
   useEffect(() => {
     if (!loading && !user) router.push('/')
@@ -24,7 +22,7 @@ function DashboardContent() {
     )
   }
 
-  return <DashboardShell priorityFilter={priorityFilter} />
+  return <DashboardShell />
 }
 
 export default function DashboardPage() {

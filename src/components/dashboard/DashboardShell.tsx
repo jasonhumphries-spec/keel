@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -43,9 +44,10 @@ function SettingsIcon() {
   )
 }
 
-export function DashboardShell({ priorityFilter = '' }: { priorityFilter?: string }) {
+export function DashboardShell() {
   const { user, lastScanned } = useAuth()
   const { isMobile, isTablet } = useBreakpoint()
+  const priorityFilter = useSearchParams().get('priority') ?? ''
   const scanDaysBack = typeof window !== 'undefined'
     ? parseInt(localStorage.getItem('keel_scan_days_back') ?? '7', 10)
     : 7
