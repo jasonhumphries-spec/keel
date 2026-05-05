@@ -326,7 +326,7 @@ function StepRow({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
         <div style={{ flex: 1, minWidth: 0, padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
@@ -715,8 +715,8 @@ export function DashboardShell2() {
           onCategoriseOpen={() => setCategoriseOpen(true)}
         />
 
-        {/* Single scroll container — each step-row shares height with its cal band */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Single scroll container — block layout so rows stack and can't shrink/overlap */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
 
           {/* ── Step 1: Sort your inbox ── */}
           {uncatItems.length > 0 && !triageDismissed && (
