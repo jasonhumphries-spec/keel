@@ -181,15 +181,21 @@ function Tag({ label, style }: { label: string; style: React.CSSProperties }) {
 }
 
 // Mini signal pills shown on the card
+// Uses CSS variable tokens from pill-tokens.css so they respond to the v1/v2 toggle
+const SIGNAL_PILL_VAR: Record<string, string> = {
+  event:    'event',
+  deadline: 'action',
+  payment:  'payment',
+  rsvp:     'rsvp',
+  awaiting: 'awaiting',
+}
+const SIGNAL_PILL_LABEL: Record<string, string> = {
+  event: 'Event', deadline: 'Deadline', payment: 'Payment',
+  rsvp: 'RSVP', awaiting: 'Awaiting',
+}
+
 function MiniPill({ signal }: { signal: KeelSignal }) {
-  const configs: Record<string, { colour: string; label: string }> = {
-    event:    { colour: '#2e6848', label: 'Event' },
-    deadline: { colour: '#8a3028', label: 'Deadline' },
-    payment:  { colour: '#8a6020', label: 'Payment' },
-    rsvp:     { colour: '#8a3028', label: 'RSVP' },
-    awaiting: { colour: '#9aa2a6', label: 'Awaiting' },
-  }
-  const cfg = configs[signal.type] ?? configs.awaiting
+  const varKey = SIGNAL_PILL_VAR[signal.type] ?? 'info'
 
   const formatDate = (d: Date | null) => d
     ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -207,12 +213,13 @@ function MiniPill({ signal }: { signal: KeelSignal }) {
       fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)',
       lineHeight: 1,
       padding: '3px 7px', borderRadius: 3,
-      background: 'var(--color-surface-recessed)',
-      border: `1px solid ${cfg.colour}`,
-      color: cfg.colour,
+      background: `var(--pill-${varKey}-bg)`,
+      color: `var(--pill-${varKey}-text)`,
       whiteSpace: 'nowrap',
     }}>
-      <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1 }}>{cfg.label}</span>
+      <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.75, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1 }}>
+        {SIGNAL_PILL_LABEL[signal.type] ?? 'Info'}
+      </span>
       {detail && <span style={{ lineHeight: 1 }}>{detail}</span>}
     </span>
   )
