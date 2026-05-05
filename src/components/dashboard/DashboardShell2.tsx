@@ -797,7 +797,7 @@ export function DashboardShell2() {
 
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
-          flex: 1, overflowY: 'auto', background: '#f7f6f4',
+          flex: 1, overflowY: 'auto', background: '#eeeeec',
           paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 0,
           transition: 'padding-top 0.4s ease',
         }}>
@@ -830,7 +830,7 @@ export function DashboardShell2() {
                   onDismiss={handleTriageDone}
                 />
               </StepRow>
-              <div style={{ height: 40, background: '#f7f6f4' }} />
+              <div style={{ height: 40, background: '#eeeeec' }} />
             </div>
           )}
 
@@ -869,7 +869,7 @@ export function DashboardShell2() {
           </StepRow>
           </div>
 
-          <div style={{ height: 40, background: '#f7f6f4' }} />
+          <div style={{ height: 40, background: '#eeeeec' }} />
 
           {/* ── Step 3: High priority ── */}
           <StepRow
@@ -897,7 +897,7 @@ export function DashboardShell2() {
             )}
           </StepRow>
 
-          <div style={{ height: 40, background: '#f7f6f4' }} />
+          <div style={{ height: 40, background: '#eeeeec' }} />
 
           {/* ── Step 4: Everything else ── */}
           <StepRow
