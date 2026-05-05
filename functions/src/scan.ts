@@ -661,7 +661,8 @@ export async function handleGmailScan(req: any, res: any) {
       categoryId: string; categoryName: string; senderEmail: string; senderName: string; subjectClue: string; aiTitle: string
     })
 
-    const processedThreadIds = new Set(existingSnap.docs.map((d) => d.data().threadId as string))
+    const processedThreadIds = new Set(existingSnap.docs.map((d) => d.data().threadId as string).filter(Boolean))
+    const existingItemIds    = new Set(existingSnap.docs.map((d) => d.id))
     const threadToItemId     = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.id]))
     const threadToStatus     = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().status as string]))
     const threadToUpdatedAt  = new Map(existingSnap.docs.map((d) => {
@@ -791,8 +792,9 @@ export async function handleGmailScan(req: any, res: any) {
       const effectiveStatus = classification.status === 'quietly_logged' ? 'quietly_logged' : classification.status
       const receivedAt      = dateStr ? new Date(dateStr) : new Date()
       const now             = Timestamp.now()
-      const isExisting      = processedThreadIds.has(threadId)
-      const itemId          = threadToItemId.get(threadId) ?? `item_${threadId.slice(0, 16)}`
+      const computedItemId  = `item_${threadId.slice(0, 16)}`
+      const isExisting      = processedThreadIds.has(threadId) || existingItemIds.has(computedItemId)
+      const itemId          = threadToItemId.get(threadId) ?? computedItemId
       const existingStatus2 = threadToStatus.get(threadId)
       const TERMINAL_STATUSES2 = new Set(['done', 'archived', 'paid'])
       const isTerminal2 = existingStatus2 && TERMINAL_STATUSES2.has(existingStatus2)

@@ -513,7 +513,8 @@ export async function POST(req: NextRequest) {
       senderEmail: string; senderName: string; subjectClue: string; aiTitle: string;
     })
 
-    const processedThreadIds = new Set(existingSnap.docs.map(d => d.data().threadId as string))
+    const processedThreadIds = new Set(existingSnap.docs.map(d => d.data().threadId as string).filter(Boolean))
+    const existingItemIds    = new Set(existingSnap.docs.map(d => d.id))  // fallback: match by computed itemId
     const threadToItemId     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.id]))
     const threadToStatus     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().status as string]))
     const threadToUpdatedAt  = new Map(existingSnap.docs.map(d => {
@@ -693,8 +694,9 @@ export async function POST(req: NextRequest) {
 
       const receivedAt = dateStr ? new Date(dateStr) : new Date()
       const now        = Timestamp.now()
-      const isExisting    = processedThreadIds.has(threadId)
-      const itemId        = threadToItemId.get(threadId) ?? `item_${threadId.slice(0, 16)}`
+      const isExisting    = processedThreadIds.has(threadId) || existingItemIds.has(`item_${threadId.slice(0, 16)}`)
+      const computedItemId = `item_${threadId.slice(0, 16)}`
+      const itemId         = threadToItemId.get(threadId) ?? computedItemId
       const existingStatus = threadToStatus.get(threadId)
 
       // Never resurrect items the user has explicitly resolved or archived
@@ -714,6 +716,8 @@ export async function POST(req: NextRequest) {
           // Never overwrite a terminal status (done / archived / paid) — user explicitly resolved this
           ...(!isTerminal ? { status: effectiveStatus } : {}),
           // categoryId is intentionally NOT updated here — never overwrite existing category assignment
+          // Repair threadId if missing (fixes future isExisting detection)
+          ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
           senderName, senderEmail, subject,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),
