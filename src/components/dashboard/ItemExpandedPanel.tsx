@@ -273,6 +273,35 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
   const [showMoreMenu,  setShowMoreMenu]  = useState(false)
   const [showMoveTo,    setShowMoveTo]    = useState(false)
   const [saving, setSaving]               = useState(false)
+  const [reanalysing,   setReanalysing]   = useState(false)
+  const [reanalyseMsg,  setReanalyseMsg]  = useState('')
+
+  const reanalyse = async () => {
+    if (!user || !item || reanalysing) return
+    setShowMoreMenu(false)
+    setReanalysing(true)
+    setReanalyseMsg('Re-analysing…')
+    try {
+      const res  = await fetch('/api/gmail/reanalyse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, itemId: item.itemId }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setReanalyseMsg('Done — refresh to see updated summary')
+        setTimeout(() => setReanalyseMsg(''), 4000)
+      } else {
+        setReanalyseMsg(`Failed: ${data.error ?? 'unknown error'}`)
+        setTimeout(() => setReanalyseMsg(''), 4000)
+      }
+    } catch (e) {
+      setReanalyseMsg('Network error — please try again')
+      setTimeout(() => setReanalyseMsg(''), 4000)
+    } finally {
+      setReanalysing(false)
+    }
+  }
   const [localScore,   setLocalScore]     = useState<number | null>(null)
   const [localManual,  setLocalManual]    = useState<boolean | null>(null)
 
@@ -604,7 +633,11 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             )}
 
             {/* More menu */}
-            
+            {reanalyseMsg && (
+              <div style={{ padding: '6px 14px', fontSize: 11, color: reanalyseMsg.startsWith('Failed') ? '#9C5E2B' : 'var(--color-text-muted)', background: 'var(--color-surface-recessed)', borderTop: '0.5px solid var(--color-border)' }}>
+                {reanalysing && <span style={{ marginRight: 6 }}>⟳</span>}{reanalyseMsg}
+              </div>
+            )}
 
             {showMoreMenu && (
               <div style={{ borderTop: '1px solid var(--color-border)', padding: 6, background: 'var(--color-surface)', flexShrink: 0 }}>
@@ -613,8 +646,9 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   { label: 'Snooze 1 week', action: () => snooze(7) },
                   { label: 'Archive',        action: archive },
                   { label: 'Ignore',         action: ignoreItem },
+                  { label: reanalysing ? 'Re-analysing…' : 'Re-analyse', action: reanalyse },
                 ].map(m => (
-                  <button key={m.label} onClick={m.action} style={{ display: 'flex', width: '100%', padding: '8px 10px', borderRadius: 6, fontSize: 'var(--fs-base)', color: 'var(--color-text-secondary)', cursor: 'pointer', background: 'transparent', border: 'none', fontFamily: 'var(--font-dm-sans)' }}>
+                  <button key={m.label} onClick={m.action} style={{ display: 'flex', width: '100%', padding: '8px 10px', borderRadius: 6, fontSize: 'var(--fs-base)', color: m.label.startsWith('Re-anal') ? 'var(--color-accent)' : 'var(--color-text-secondary)', cursor: reanalysing && m.label.startsWith('Re-anal') ? 'not-allowed' : 'pointer', background: 'transparent', border: 'none', fontFamily: 'var(--font-dm-sans)', opacity: reanalysing && m.label.startsWith('Re-anal') ? 0.5 : 1 }}>
                     {m.label}
                   </button>
                 ))}
