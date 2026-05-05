@@ -644,24 +644,26 @@ export function DashboardShell2() {
   const section2Ref = useRef<HTMLDivElement>(null)
   const [topSpacer, setTopSpacer] = useState(0)
 
-  // On mount: measure container and section 1, set top spacer to center section 1
+  // After layout settles, measure container + section 1 and set the spacer
+  // so section 1 sits roughly one-third down the viewport
   useEffect(() => {
     if (!uncatItems.length) return
     const timer = setTimeout(() => {
       if (!section1Ref.current || !scrollRef.current) return
       const containerH = scrollRef.current.clientHeight
       const elH        = section1Ref.current.offsetHeight
-      const spacer     = Math.max(60, Math.floor((containerH - elH) / 3))
+      const spacer     = Math.max(40, Math.floor((containerH - elH) / 3))
       setTopSpacer(spacer)
-    }, 100)
+    }, 120)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // When triage is dismissed: clear spacer, scroll section 2 to top of container
+  // Dismiss section 1: clear spacer, then smooth-scroll section 2 to top
   const handleTriageDone = useCallback(() => {
     setTopSpacer(0)
     setTriageDismissed(true)
+    // Wait for section 1 to collapse (300ms) then scroll section 2 to top of container
     setTimeout(() => {
       if (!section2Ref.current || !scrollRef.current) return
       scrollRef.current.scrollTo({
@@ -821,9 +823,13 @@ export function DashboardShell2() {
         <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', background: '#f7f6f4' }}>
 
           {/* ── Step 1: Sort your inbox ── */}
+          {/* Spacer pushes section 1 down to roughly centre it on load */}
+          {uncatItems.length > 0 && !triageDismissed && topSpacer > 0 && (
+            <div style={{ height: topSpacer, transition: 'height 0.3s ease' }} />
+          )}
+
           {uncatItems.length > 0 && !triageDismissed && (
             <div ref={section1Ref}>
-              {topSpacer > 0 && <div style={{ height: topSpacer }} />}
               <StepRow
                 wash="rgba(184,150,78,0.08)"
                 calBand={
