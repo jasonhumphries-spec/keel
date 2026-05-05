@@ -651,13 +651,13 @@ export function DashboardShell2() {
   }, [])
 
   const handleResolved = useCallback((item: KeelItem) => {
-    setResolvedItems(prev => new Map([...prev, [item.itemId, item]]))
+    setResolvedItems((prev: Map<string, KeelItem>) => new Map([...prev, [item.itemId, item]]))
     setSelectedItem(null)
   }, [])
 
   const handleUndo = useCallback(async (item: KeelItem) => {
     if (!user) return
-    setResolvedItems(prev => { const n = new Map(prev); n.delete(item.itemId); return n })
+    setResolvedItems((prev: Map<string, KeelItem>) => { const n = new Map(prev); n.delete(item.itemId); return n })
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'awaiting_action', resolvedAt: null, updatedAt: Timestamp.now(),
     })
@@ -785,6 +785,8 @@ export function DashboardShell2() {
               <StepRow
                 wash="rgba(184,150,78,0.06)"
                 calBand={
+                  <CalBand
+                    band="triage"
                     events={[]}
                     uid={uid}
                     note="Some unclassified items may have dates. Classify them first to see events here."

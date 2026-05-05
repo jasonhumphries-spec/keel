@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useCategories } from '@/lib/hooks'
@@ -25,6 +25,11 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   const [newDesc,      setNewDesc]      = useState('')
   const [creatingError,setCreatingError]= useState('')
 
+  // Reclassify state
+  const [reclassifying, setReclassifying] = useState(false)
+  const [reclassifyDone, setReclassifyDone] = useState(false)
+  const [reclassifyCount, setReclassifyCount] = useState(0)
+
   const item        = items[currentIndex] ?? null
   const isAssigned  = item ? assigned.has(item.itemId) : false
   const assignedCat = item ? assigned.get(item.itemId) : null
@@ -35,6 +40,30 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   const canGoNext   = currentIndex < items.length - 1
   const isIgnored   = item ? ignored.has(item.itemId) : false
   const allDone     = (doneCount + ignored.size) === items.length
+
+  // Auto-trigger reclassify the moment all items are classified
+  useEffect(() => {
+    if (!allDone || !user || reclassifying || reclassifyDone) return
+    const run = async () => {
+      setReclassifying(true)
+      try {
+        const daysBack = parseInt(localStorage.getItem('keel_scan_days_back') ?? '7', 10)
+        const res  = await fetch('/api/gmail/reclassify', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ uid: user.uid, daysBack }),
+        })
+        const data = await res.json()
+        setReclassifyCount(data.reclassified ?? 0)
+      } catch (e) {
+        console.error('Reclassify after categorise failed:', e)
+      } finally {
+        setReclassifying(false)
+        setReclassifyDone(true)
+      }
+    }
+    run()
+  }, [allDone, user, reclassifying, reclassifyDone])
 
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
@@ -104,7 +133,7 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'var(--color-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-      onClick={onClose}
+      onClick={reclassifying ? undefined : onClose}
     >
       <div
         style={{ width: '100%', maxWidth: 520, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
@@ -126,7 +155,7 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
                 Do the rest later
               </button>
             )}
-            <button onClick={creating ? () => setCreating(false) : onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4 }}>
+            <button onClick={creating ? () => setCreating(false) : reclassifying ? undefined : onClose} style={{ background: 'transparent', border: 'none', cursor: reclassifying ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', fontSize: 20, lineHeight: 1, padding: 4, opacity: reclassifying ? 0.3 : 1 }}>
               {creating ? '←' : '×'}
             </button>
           </div>
@@ -168,13 +197,36 @@ export function CategoriseModal({ items, onClose }: CategoriseModalProps) {
           </div>
 
         ) : allDone ? (
-          <div style={{ padding: '40px 20px', textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 12 }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-status-positive)', opacity: 0.7 }}>
-              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>All categorised!</div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{items.length} item{items.length !== 1 ? 's' : ''} assigned.</div>
-            <button onClick={onClose} style={{ ...S.btn(true), marginTop: 8, padding: '8px 20px' }}>Done</button>
+          <div style={{ padding: '40px 20px', textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 14 }}>
+            {reclassifying ? (
+              <>
+                {/* Spinner */}
+                <div style={{ width: 36, height: 36, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>Reclassifying…</div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 320, lineHeight: 1.5 }}>
+                  Keel is re-reading your newly categorised items to extract signals — payments, events, and priorities. This takes around 20 seconds.
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>
+                  Please wait — don't close this window
+                </div>
+              </>
+            ) : (
+              <>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-status-positive)', opacity: 0.8 }}>
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>All done!</div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 300, lineHeight: 1.5 }}>
+                  {items.length} item{items.length !== 1 ? 's' : ''} categorised
+                  {reclassifyCount > 0 && ` · ${reclassifyCount} signal${reclassifyCount !== 1 ? 's' : ''} updated`}.
+                  Your dashboard is ready.
+                </div>
+                <button onClick={onClose} style={{ ...S.btn(true), marginTop: 4, padding: '8px 24px' }}>
+                  View dashboard
+                </button>
+              </>
+            )}
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
 
         ) : item ? (
