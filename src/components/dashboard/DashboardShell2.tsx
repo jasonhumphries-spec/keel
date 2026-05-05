@@ -318,15 +318,17 @@ function CalBand({
 function StepRow({
   children,
   calBand,
+  wash,
   last = false,
 }: {
   children: ReactNode
   calBand:  ReactNode
+  wash?:    string
   last?:    boolean
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: wash }}>
         <div style={{ flex: 1, minWidth: 0, padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
@@ -781,9 +783,8 @@ export function DashboardShell2() {
           {uncatItems.length > 0 && !triageDismissed && (
             <>
               <StepRow
+                wash="rgba(184,150,78,0.06)"
                 calBand={
-                  <CalBand
-                    band="triage"
                     events={[]}
                     uid={uid}
                     note="Some unclassified items may have dates. Classify them first to see events here."
@@ -809,6 +810,7 @@ export function DashboardShell2() {
 
           {/* ── Step 2: Urgent ── */}
           <StepRow
+            wash="rgba(156,94,43,0.05)"
             calBand={
               <CalBand band="urgent" events={urgentCal} uid={uid} />
             }
@@ -843,6 +845,7 @@ export function DashboardShell2() {
 
           {/* ── Step 3: High priority ── */}
           <StepRow
+            wash="rgba(184,150,78,0.05)"
             calBand={
               <CalBand band="high" events={highCal} uid={uid} />
             }
@@ -871,6 +874,7 @@ export function DashboardShell2() {
           {/* ── Step 4: Everything else ── */}
           <StepRow
             last
+            wash="rgba(107,122,130,0.04)"
             calBand={
               <CalBand band="fyi" events={fyiCal} uid={uid} />
             }
