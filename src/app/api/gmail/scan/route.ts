@@ -295,6 +295,8 @@ RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do N
 - Consider full thread — a reply may have resolved original action
 - CLIPPED MESSAGES: Gmail clips long messages. If an outbound reply exists but body is empty or very short, assume the user sent a normal reply (likely confirming/accepting). Do NOT classify as awaiting_reply just because the body is empty or clipped.
 - If no category match, use closest one`
+
+  try {
     const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
 
     const json = text.match(/\{[\s\S]*\}/)?.[0]
