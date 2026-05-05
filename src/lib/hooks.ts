@@ -307,13 +307,18 @@ export function useUncategorised() {
 
   useEffect(() => {
     if (!user) return
+    // Single where clause avoids composite index requirement.
+    // Status is filtered client-side.
     const q = query(
       collection(db, `users/${user.uid}/items`),
       where('categoryId', 'in', ['cat_other', '', 'uncategorised']),
-      where('status', 'in', ['new', 'awaiting_action']),
     )
     const unsub = onSnapshot(q, snap => {
-      setItems(snap.docs.map(d => docToItem(d.id, d.data())))
+      const all = snap.docs.map(d => docToItem(d.id, d.data()))
+      setItems(all.filter(i => i.status === 'new' || i.status === 'awaiting_action'))
+      setLoading(false)
+    }, err => {
+      console.error('[useUncategorised] query error:', err)
       setLoading(false)
     })
     return unsub
