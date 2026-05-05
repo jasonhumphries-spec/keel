@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, type CSSProperties, type ReactNode, type MouseEvent } from 'react'
+import { useState, useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type MouseEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -330,7 +330,7 @@ function StepRow({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'stretch', background: wash }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: wash ?? '#ffffff' }}>
         <div style={{ flex: 1, minWidth: 0, padding: '28px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
@@ -368,26 +368,27 @@ function StepHeader({
 }) {
   const c = STEP_COLOURS[step]
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, paddingBottom: 4 }}>
       <div style={{
-        width: 22, height: 22, borderRadius: '50%',
+        width: 26, height: 26, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 'var(--fs-sm)', fontWeight: 700, flexShrink: 0,
+        fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 3,
         background: c.num, color: c.text, border: `1.5px solid ${c.border}`,
       }}>
         {step}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.2, color: 'var(--color-text-primary)' }}>
           {title}
         </div>
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>
+        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 3, lineHeight: 1.4 }}>
           {subtitle}
         </div>
       </div>
       <div style={{
-        fontSize: 'var(--fs-sm)', fontWeight: 500,
-        padding: '2px 9px', borderRadius: 10, flexShrink: 0,
+        fontFamily: 'var(--font-dm-mono)',
+        fontSize: 11, fontWeight: 500,
+        padding: '2px 9px', borderRadius: 10, flexShrink: 0, marginTop: 4,
         background: c.badge, color: c.badgeText,
       }}>
         {badge}
@@ -638,6 +639,29 @@ export function DashboardShell2() {
   const [triageDismissed, setTriageDismissed] = useState(false)
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
 
+  const scrollRef   = useRef<HTMLDivElement>(null)
+  const section1Ref = useRef<HTMLDivElement>(null)
+  const section2Ref = useRef<HTMLDivElement>(null)
+
+  // On mount: if section 1 exists, scroll to put it roughly centred with headroom
+  useEffect(() => {
+    if (!section1Ref.current || !scrollRef.current) return
+    const el       = section1Ref.current
+    const container = scrollRef.current
+    const offset   = el.offsetTop - Math.max(60, (container.clientHeight - el.offsetHeight) / 3)
+    container.scrollTo({ top: Math.max(0, offset), behavior: 'instant' })
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // When triage is dismissed/done, scroll section 2 into view gently
+  const handleTriageDone = useCallback(() => {
+    setTriageDismissed(true)
+    setTimeout(() => {
+      section2Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+  }, [])
+
   const { categoryData, loading } = useDashboardData()
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
@@ -706,7 +730,7 @@ export function DashboardShell2() {
         onClose={() => setSelectedItem(null)}
         onResolved={handleResolved} onUndo={handleUndo}
       />
-      {categoriseOpen && <CategoriseModal items={uncatItems} onClose={() => setCategoriseOpen(false)} />}
+      {categoriseOpen && <CategoriseModal items={uncatItems} onClose={() => { setCategoriseOpen(false); handleTriageDone() }} />}
       <DevTools />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
@@ -785,51 +809,53 @@ export function DashboardShell2() {
         />
 
         {/* Single scroll container — block layout so rows stack and can't shrink/overlap */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', background: '#f7f6f4' }}>
 
           {/* ── Step 1: Sort your inbox ── */}
           {uncatItems.length > 0 && !triageDismissed && (
-            <>
+            <div ref={section1Ref}>
               <StepRow
-                wash="rgba(184,150,78,0.06)"
+                wash="rgba(184,150,78,0.08)"
                 calBand={
                   <CalBand
                     band="triage"
                     events={[]}
                     uid={uid}
-                    wash="rgba(184,150,78,0.06)"
+                    wash="rgba(184,150,78,0.08)"
                     note="Some unclassified items may have dates. Classify them first to see events here."
                   />
                 }
               >
                 <StepHeader
                   step={1}
-                  title="Sort your inbox"
-                  subtitle={`${uncatItems.length} items need a home — classify to surface what matters`}
+                  title="Start here — a few items need sorting"
+                  subtitle="Keel remembers your choices. Classifying now means nothing urgent gets missed."
                   badge={`${uncatItems.length} to sort`}
                 />
                 <TriagePanel
                   count={uncatItems.length}
                   items={uncatItems}
                   onSort={() => setCategoriseOpen(true)}
-                  onDismiss={() => setTriageDismissed(true)}
+                  onDismiss={handleTriageDone}
                 />
               </StepRow>
-              <div style={{ height: 40, background: 'var(--color-bg)' }} />
-            </>
+              <div style={{ height: 40, background: '#f7f6f4' }} />
+            </div>
+          )}
           )}
 
           {/* ── Step 2: Urgent ── */}
+          <div ref={section2Ref}>
           <StepRow
-            wash="rgba(140,65,18,0.09)"
+            wash="rgba(140,65,18,0.10)"
             calBand={
-              <CalBand band="urgent" events={urgentCal} uid={uid} wash="rgba(140,65,18,0.09)" />
+              <CalBand band="urgent" events={urgentCal} uid={uid} wash="rgba(140,65,18,0.10)" />
             }
           >
             <StepHeader
               step={2}
-              title="Urgent"
-              subtitle="Needs your attention now — time-sensitive"
+              title="These look urgent — worth a look first"
+              subtitle="Time-sensitive items that may need action today or very soon."
               badge={`${urgentCount} item${urgentCount !== 1 ? 's' : ''}`}
             />
             {urgentData.length === 0 ? (
@@ -851,20 +877,21 @@ export function DashboardShell2() {
               </>
             )}
           </StepRow>
+          </div>
 
-          <div style={{ height: 40, background: 'var(--color-bg)' }} />
+          <div style={{ height: 40, background: '#f7f6f4' }} />
 
           {/* ── Step 3: High priority ── */}
           <StepRow
-            wash="rgba(210,180,90,0.07)"
+            wash="rgba(210,180,90,0.09)"
             calBand={
-              <CalBand band="high" events={highCal} uid={uid} wash="rgba(210,180,90,0.07)" />
+              <CalBand band="high" events={highCal} uid={uid} wash="rgba(210,180,90,0.09)" />
             }
           >
             <StepHeader
               step={3}
-              title="High priority"
-              subtitle="Worth acting on soon — not immediately time-critical"
+              title="On your radar — when you're ready"
+              subtitle="These can wait a little, but are worth getting to today or tomorrow."
               badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
             />
             {highData.length === 0 ? (
@@ -880,26 +907,26 @@ export function DashboardShell2() {
             )}
           </StepRow>
 
-          <div style={{ height: 40, background: 'var(--color-bg)' }} />
+          <div style={{ height: 40, background: '#f7f6f4' }} />
 
           {/* ── Step 4: Everything else ── */}
           <StepRow
             last
-            wash="rgba(107,122,130,0.04)"
+            wash="rgba(107,122,130,0.05)"
             calBand={
               <CalBand
                 band="fyi"
                 events={fyiCal}
                 uid={uid}
-                wash="rgba(107,122,130,0.04)"
+                wash="rgba(107,122,130,0.05)"
                 note={fyiExpandedId ? undefined : 'Expand a category below to see its dates here.'}
               />
             }
           >
             <StepHeader
               step={4}
-              title="Everything else"
-              subtitle="FYI, receipts, auto-pay bills, low-priority"
+              title="The rest — just so you know"
+              subtitle="Receipts, confirmations, auto-pay bills. No action needed."
               badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}
             />
             {fyiData.length === 0 ? (
