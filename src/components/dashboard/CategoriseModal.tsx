@@ -259,16 +259,16 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
             </div>
 
             {/* Category picker */}
-            <div style={{ padding: '12px 20px 16px' }}>
-              <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 10 }}>
+            <div style={{ padding: '10px 16px 0' }}>
+              <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 8 }}>
                 {isAssigned ? 'Reassign to a different category' : 'Assign to category'}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, maxHeight: 220, overflowY: 'auto' as const }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, maxHeight: 260, overflowY: 'auto' as const }}>
                 {categories.map(cat => {
                   const isActive = assignedCat?.categoryId === cat.categoryId
                   return (
                     <button key={cat.categoryId} onClick={() => assign(cat.categoryId, cat.name)} disabled={saving}
-                      style={{ padding: '9px 12px', borderRadius: 'var(--radius-md)', border: `1px solid ${isActive ? 'var(--color-accent)' : 'var(--color-border)'}`, background: isActive ? 'var(--color-accent-sub)' : 'var(--color-surface)', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--color-accent)' : 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', textAlign: 'left' as const, opacity: saving ? 0.6 : 1 }}
+                      style={{ padding: '7px 9px', borderRadius: 'var(--radius-md)', border: `1px solid ${isActive ? 'var(--color-accent)' : 'var(--color-border)'}`, background: isActive ? 'var(--color-accent-sub)' : 'var(--color-surface)', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 11.5, fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--color-accent)' : 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', textAlign: 'left' as const, opacity: saving ? 0.6 : 1, lineHeight: 1.35, wordBreak: 'break-word' as const, minHeight: 44 }}
                       onMouseOver={e => { if (!isActive) { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-accent)' }}}
                       onMouseOut={e => { if (!isActive) { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-primary)' }}}>
                       {cat.name}
@@ -276,15 +276,18 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
                   )
                 })}
                 <button onClick={() => setCreating(true)} disabled={saving}
-                  style={{ padding: '9px 12px', borderRadius: 'var(--radius-md)', border: '1.5px dashed var(--color-accent)', background: 'var(--color-accent-sub)', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--color-accent)', fontFamily: 'var(--font-dm-sans)', textAlign: 'left' as const }}>
-                  + New category
+                  style={{ padding: '7px 9px', borderRadius: 'var(--radius-md)', border: '1.5px dashed var(--color-accent)', background: 'var(--color-accent-sub)', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: 'var(--color-accent)', fontFamily: 'var(--font-dm-sans)', textAlign: 'left' as const, minHeight: 44 }}>
+                  + New
                 </button>
               </div>
+            </div>
 
-              {!isAssigned && !isIgnored && (
-                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Bottom bar */}
+            {!isAssigned && !isIgnored && (
+              <div style={{ marginTop: 10, padding: '10px 16px 14px', background: 'var(--color-surface-recessed)', borderTop: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button onClick={skipForNow} style={{ padding: '7px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' as const }}>
+                    <button onClick={skipForNow} style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' as const }}>
                       Leave for now
                     </button>
                     <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
@@ -292,22 +295,22 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button onClick={ignoreItem} disabled={saving} style={{ padding: '7px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'transparent', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' as const, opacity: saving ? 0.5 : 1 }}>
+                    <button onClick={ignoreItem} disabled={saving} style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' as const, opacity: saving ? 0.5 : 1 }}>
                       Ignore
                     </button>
                     <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
-                      Moves to Ignored — won't appear in the dashboard.
+                      Moves to Ignored — won't appear on your dashboard.
                     </div>
                   </div>
                 </div>
-              )}
-              {isIgnored && (
-                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--color-text-muted)', padding: '7px 0' }}>
-                  — Moved to Ignored. Use ← Prev to go back and assign a category instead.
-                </div>
-              )}
-            </div>
-          </>
+              </div>
+            )}
+            {isIgnored && (
+              <div style={{ padding: '8px 16px 12px', background: 'var(--color-surface-recessed)', borderTop: '1px solid var(--color-border)', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                — Moved to Ignored. Use ← Prev to go back and assign a category instead.
+              </div>
+            )}
+          <>
         ) : null}
       </div>
     </div>
