@@ -277,19 +277,24 @@ TRANSIENT SAME-DAY ITEMS: Calendar reminders, delivery dispatch/out-for-delivery
 
 RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do NOT set status="awaiting_reply". RSVP is terminal. Only awaiting_reply if user sent an open question needing a response.
 
-- aiTitle: 4-7 words, more useful than raw subject
-- aiSummary: one sentence, current state, max 120 chars
+- aiTitle: 4-7 words, more useful than raw subject. Use real names from the thread (e.g. "Paxton orthodontist appointment June 26th"), never "user" or "the user".
+- aiSummary: one sentence, current state, max 120 chars. Use real names, not "the user" or "you".
 - aiDetailedSummary: 2-5 bullet points "• " prefix, structured as follows — only include bullets with genuine substance, no padding or repetition of aiSummary:
-  • PURPOSE: What is this thread actually about and why does it matter? Include key context (e.g. the underlying goal, relationship, or project).
+  • PURPOSE: What is this thread actually about and why does it matter? Include key context (e.g. the underlying goal, relationship, or project). Use real names.
   • EVOLUTION (only if meaningful): How did the thread develop — what was asked/proposed and what changed or was agreed along the way? Skip if single-message thread.
   • CURRENT STATE: The final agreed outcome with all concrete details — dates, times, locations, amounts, names, reference numbers. Be specific.
-  • NEXT STEP: What does the user need to do next, and by when? If nothing is needed, omit this bullet.
+  • NEXT STEP: Who specifically needs to do what next, and by when? Identify the person by name — is it the account owner (${from.split('<')[0].trim() || 'Jason'}) or the other party? Judge by the direction of the most recent message. If the most recent outbound message asks a question, the next step is waiting for the other party's reply. If nothing is needed, omit this bullet entirely.
+- NAMES: Never use "the user", "you", or "the account owner" in summaries or next steps. Use real first names from the thread.
+- SIGNALS — strict quality rules:
+  • event: ONLY for confirmed, agreed, upcoming appointments or events. NOT for dates mentioned as obstacles, rejected options, past dates, or tentative proposals that weren't agreed. Do not create an event signal for a date that was declined or used only as context.
+  • awaiting: ONLY when there is a genuinely open question in the most recent outbound message that has not yet been answered. If the appointment/matter is already confirmed, do NOT create an awaiting signal for it.
+  • deadline: Only for hard deadlines with real consequences if missed.
+  • payment: Only for actual money due or paid.
+  • rsvp: Only for genuine RSVP requests that haven't yet been responded to.
 - Payment amounts: exact pence. £45.99 = 4599. Never null if amount visible.
 - Consider full thread — a reply may have resolved original action
 - CLIPPED MESSAGES: Gmail clips long messages. If an outbound reply exists but body is empty or very short, assume the user sent a normal reply (likely confirming/accepting). Do NOT classify as awaiting_reply just because the body is empty or clipped.
 - If no category match, use closest one`
-
-  try {
     const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
 
     const json = text.match(/\{[\s\S]*\}/)?.[0]
