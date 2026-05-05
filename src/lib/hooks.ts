@@ -300,6 +300,17 @@ export function useOutboundAll() {
 }
 
 
+// Module-level set of item IDs the user has classified this session.
+// Updated immediately on successful write — provides instant count feedback
+// independent of Firestore onSnapshot timing.
+const _classifiedThisSession = new Set<string>()
+export function markItemClassified(itemId: string) {
+  _classifiedThisSession.add(itemId)
+  // Notify any active useUncategorised listeners
+  _classifiedListeners.forEach(fn => fn())
+}
+const _classifiedListeners = new Set<() => void>()
+
 export function useUncategorised() {
   const { user } = useAuth()
   const [items, setItems]     = useState<KeelItem[]>([])
@@ -314,15 +325,29 @@ export function useUncategorised() {
       collection(db, `users/${user.uid}/items`),
       where('status', 'in', ['new', 'awaiting_action']),
     )
+    let latestAll: KeelItem[] = []
+
+    const applyFilter = () => {
+      setItems(latestAll.filter(i =>
+        DEFAULT_CATS.has(i.categoryId) && !_classifiedThisSession.has(i.itemId)
+      ))
+    }
+
+    _classifiedListeners.add(applyFilter)
+
     const unsub = onSnapshot(q, snap => {
-      const all = snap.docs.map(d => docToItem(d.id, d.data()))
-      setItems(all.filter(i => DEFAULT_CATS.has(i.categoryId)))
+      latestAll = snap.docs.map(d => docToItem(d.id, d.data()))
+      applyFilter()
       setLoading(false)
     }, err => {
       console.error('[useUncategorised] query error:', err)
       setLoading(false)
     })
-    return unsub
+
+    return () => {
+      unsub()
+      _classifiedListeners.delete(applyFilter)
+    }
   }, [user])
 
   return { items, loading }

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useCategories } from '@/lib/hooks'
+import { markItemClassified } from '@/lib/hooks'
 import { useAuth } from '@/contexts/AuthContext'
 import type { KeelItem } from '@/lib/types'
 
@@ -49,19 +50,17 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
     setSaving(true)
-    const path = `users/${user.uid}/items/${item.itemId}`
-    console.log(`[assign] Writing ${categoryId} to ${path}`)
     try {
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         categoryId, categoryName, manualCategory: true, updatedAt: Timestamp.now(),
       })
-      console.log(`[assign] ✓ Write succeeded: ${item.itemId} → ${categoryId}`)
       setAssigned(prev => new Map(prev).set(item.itemId, { categoryId, categoryName }))
+      markItemClassified(item.itemId)  // immediately drops from topbar count
       // Auto-advance to next unassigned item
       const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && it.itemId !== item.itemId)
       if (next !== -1) setCurrentIndex(next)
       else if (canGoNext) setCurrentIndex(i => i + 1)
-    } catch (e) { console.error(`[assign] ✗ Write FAILED for ${item.itemId}:`, e) }
+    } catch (e) { console.error('[assign] Write failed:', e) }
     finally { setSaving(false) }
   }, [user, item, saving, currentIndex, items, assigned, canGoNext])
 
@@ -73,6 +72,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
         status: 'quietly_logged', updatedAt: Timestamp.now(),
       })
       setIgnored(prev => new Set([...prev, item.itemId]))
+      markItemClassified(item.itemId)
       const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && !ignored.has(it.itemId) && it.itemId !== item.itemId)
       if (next !== -1) setCurrentIndex(next)
       else if (canGoNext) setCurrentIndex(i => i + 1)
@@ -228,7 +228,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
                 {isAssigned ? 'Reassign to a different category' : 'Assign to category'}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, maxHeight: 260, overflowY: 'auto' as const }}>
-                {categories.map(cat => {
+                {categories.filter(cat => cat.categoryId !== 'cat_other').map(cat => {
                   const isActive = assignedCat?.categoryId === cat.categoryId
                   return (
                     <button key={cat.categoryId} onClick={() => assign(cat.categoryId, cat.name)} disabled={saving}
