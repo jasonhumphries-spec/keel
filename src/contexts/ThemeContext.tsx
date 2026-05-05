@@ -56,6 +56,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (storedTheme)    setThemeState(storedTheme)
     if (storedDarkMode) setDarkModeState(storedDarkMode)
     if (storedFontSize) setFontSizeState(storedFontSize)
+    import('@/lib/pillStyle').then(({ applyPillStyle }) => applyPillStyle())
   }, [])
 
   // Apply font size to <html>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme, Theme, DarkMode } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { getPillStyle, setPillStyle, type PillStyle } from '@/lib/pillStyle'
 
 interface SettingsPanelProps {
   open:    boolean
@@ -69,6 +70,7 @@ function ToggleRow({ label, desc, on, onToggle }: { label: string; desc: string;
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { theme, darkMode, fontSize, setTheme, setDarkMode, setFontSize } = useTheme()
   const { user } = useAuth()
+  const [pillStyle, setPillStyleState]  = useState<PillStyle>(getPillStyle)
   const [scanDays, setScanDays]         = useState(14)
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
 
@@ -92,6 +94,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const handleScanDaysChange = (val: number) => {
     setScanDays(val)
     localStorage.setItem(SCAN_DAYS_KEY, String(val))
+  }
+
+  const handlePillStyle = (style: PillStyle) => {
+    setPillStyleState(style)
+    setPillStyle(style)
   }
 
   return (
@@ -124,6 +131,53 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   </div>
                   <div style={{ fontSize: '11px', fontWeight: 600, color: theme === t.id ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{t.name}</div>
                   <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: '8px', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tag style */}
+          <div>
+            <SectionTitle>Appearance — Tag style</SectionTitle>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([
+                { id: 'v1' as PillStyle, label: 'Filled',  desc: 'Solid colour, white text' },
+                { id: 'v2' as PillStyle, label: 'Tinted',  desc: 'Light bg, dark text' },
+              ]).map(({ id, label, desc }) => (
+                <button
+                  key={id}
+                  onClick={() => handlePillStyle(id)}
+                  style={{
+                    flex: 1,
+                    border: `1.5px solid ${pillStyle === id ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    borderRadius: 'var(--radius-md)',
+                    padding: '9px 8px',
+                    cursor: 'pointer',
+                    background: pillStyle === id ? 'var(--color-accent-sub)' : 'var(--color-surface-raised)',
+                    transition: 'border-color 0.15s, background 0.15s',
+                    textAlign: 'left',
+                    fontFamily: 'var(--font-dm-sans)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  {/* Mini pill preview */}
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {id === 'v1' ? (
+                      <>
+                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 100, background: '#9C5E2B', color: '#fff' }}>Payment</span>
+                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 100, background: '#3D7A6B', color: '#fff' }}>Event</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 100, background: '#F7E5D8', color: '#7A3A10' }}>Payment</span>
+                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 100, background: '#DDF0EC', color: '#1E5C50' }}>Event</span>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: pillStyle === id ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{label}</div>
+                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: '8px', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{desc}</div>
                 </button>
               ))}
             </div>
