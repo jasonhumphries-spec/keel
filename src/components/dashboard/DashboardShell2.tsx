@@ -646,11 +646,17 @@ export function DashboardShell2() {
   const [triageDismissed, setTriageDismissed] = useState(false)
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
   const [initialScanDone, setInitialScanDone] = useState(false)
+  const [showOverlay,     setShowOverlay]     = useState(true)  // always show until both scan done AND min time elapsed
 
   const scrollRef   = useRef<HTMLDivElement>(null)
 
-  // On mount: read lastScanCompletedAt from Firestore (survives page refresh unlike React state)
-  // Only scan if > 10 minutes since last scan
+  // Show overlay for at least 1.5s so user always sees the check happening
+  const markDone = useCallback(() => {
+    setInitialScanDone(true)
+    setTimeout(() => setShowOverlay(false), 1500)
+  }, [])
+
+  // On mount: read lastScanCompletedAt from Firestore for reliable debounce
   useEffect(() => {
     if (!user) return
     const check = async () => {
@@ -660,11 +666,11 @@ export function DashboardShell2() {
         const lastScanMs  = lastScanTs ? lastScanTs.toMillis() : 0
         const minsAgo     = (Date.now() - lastScanMs) / 60000
         if (minsAgo < 10) {
-          setInitialScanDone(true)
+          markDone()
           return
         }
       } catch { /* proceed with scan if read fails */ }
-      triggerScan('auto').finally(() => setInitialScanDone(true))
+      triggerScan('auto').finally(markDone)
     }
     check()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -780,7 +786,30 @@ export function DashboardShell2() {
     )
   }
 
-  // ── Mobile: revert to step list, no cal band ─────────────────────────────────
+  // ── Loading / scanning overlay — always rendered, above mobile + desktop ────
+  const scanOverlay = showOverlay && (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 500,
+      backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+      background: 'rgba(255,255,255,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 16, padding: '32px 40px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        maxWidth: 360, textAlign: 'center' as const,
+      }}>
+        <div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 }}>Scanning your inbox so nothing gets missed. Your dashboard will be ready in a moment.</div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Mobile ─────────────────────────────────────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
@@ -812,6 +841,7 @@ export function DashboardShell2() {
         </div>
         <BottomNav onSettingsOpen={() => setSettingsOpen(true)} />
         {commonPanels}
+        {scanOverlay}
       </div>
     )
   }
@@ -1015,30 +1045,8 @@ export function DashboardShell2() {
         </div>
       </div>
 
-      {/* Scan-in-progress overlay — fixed, covers everything */}
-      {!initialScanDone && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 500,
-          backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
-          background: 'rgba(255,255,255,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 16, padding: '32px 40px',
-            boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
-            maxWidth: 360, textAlign: 'center',
-          }}>
-            <div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
-              <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 }}>Scanning your inbox so nothing gets missed. Your dashboard will be ready in a moment.</div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {commonPanels}
+      {scanOverlay}
     </div>
   )
 }
