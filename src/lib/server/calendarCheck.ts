@@ -33,33 +33,55 @@ export async function runCalendarCheck(
   accessToken: string
 ): Promise<{ matched: number; notMatched: number; total: number }> {
 
+  // Check user preference for all-calendars mode
+  const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
+  const checkAllCalendars = accountSnap.data()?.checkAllCalendars ?? false
+
   // One GCal API call — past 7 days to future 35 days covers all relevant signals
   const now    = new Date()
   const past   = new Date(now.getTime() -  7 * 86400000)
   const future = new Date(now.getTime() + 35 * 86400000)
 
-  const calUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
-  calUrl.searchParams.set('timeMin',       past.toISOString())
-  calUrl.searchParams.set('timeMax',       future.toISOString())
-  calUrl.searchParams.set('singleEvents',  'true')
-  calUrl.searchParams.set('maxResults',    '500')
-  calUrl.searchParams.set('orderBy',       'startTime')
+  // Build list of calendar IDs to query
+  let calendarIds: Array<{ id: string; name: string }> = [{ id: 'primary', name: 'Primary' }]
 
-  const calRes = await fetch(calUrl.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-
-  if (!calRes.ok) {
-    console.warn(`[CalCheck] GCal API failed: ${calRes.status}`)
-    return { matched: 0, notMatched: 0, total: 0 }
+  if (checkAllCalendars) {
+    try {
+      const listRes = await fetch(
+        'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50',
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        calendarIds = (listData.items ?? [])
+          .filter((c: any) => c.accessRole === 'owner' || c.accessRole === 'writer')
+          .map((c: any) => ({ id: c.id, name: c.summary ?? c.id }))
+        console.log(`[CalCheck] Checking ${calendarIds.length} calendars: ${calendarIds.map(c => c.name).join(', ')}`)
+      }
+    } catch (e) {
+      console.warn('[CalCheck] Failed to fetch calendar list, falling back to primary:', e)
+    }
   }
 
-  const calEvents = ((await calRes.json()).items ?? []) as Array<{
-    summary?: string
-    start?:   { date?: string; dateTime?: string }
-  }>
+  // Fetch events from all calendars
+  type CalEvent = { summary?: string; start?: { date?: string; dateTime?: string }; calendarName: string }
+  const allEvents: CalEvent[] = []
 
-  console.log(`[CalCheck] Fetched ${calEvents.length} calendar events`)
+  await Promise.all(calendarIds.map(async ({ id, name }) => {
+    const calUrl = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events`)
+    calUrl.searchParams.set('timeMin',      past.toISOString())
+    calUrl.searchParams.set('timeMax',      future.toISOString())
+    calUrl.searchParams.set('singleEvents', 'true')
+    calUrl.searchParams.set('maxResults',   '500')
+    calUrl.searchParams.set('orderBy',      'startTime')
+
+    const res = await fetch(calUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!res.ok) { console.warn(`[CalCheck] Calendar ${name} failed: ${res.status}`); return }
+    const items = ((await res.json()).items ?? []) as any[]
+    items.forEach(e => allEvents.push({ ...e, calendarName: name }))
+  }))
+
+  console.log(`[CalCheck] Fetched ${allEvents.length} total calendar events`)
 
   // Get active event/rsvp/deadline signals in window
   const signalsSnap = await db.collection(`users/${uid}/signals`)
@@ -107,24 +129,31 @@ export async function runCalendarCheck(
     dayStart.setHours(0, 0, 0, 0)
     const dayEnd = new Date(dayStart.getTime() + 2 * 86400000)
 
-    const sameDay = calEvents.filter(e => {
+    const sameDay = allEvents.filter(e => {
       const raw = e.start?.dateTime ?? e.start?.date ?? ''
       const d   = new Date(raw)
       return raw && d >= dayStart && d < dayEnd
     })
 
     // Match against signal description OR item aiTitle
-    const isOnCal = sameDay.some(e => {
+    const matchedEvent = sameDay.find(e => {
       const calTitle = e.summary ?? ''
-      return (sigDesc   && titlesMatch(sigDesc,    calTitle))
-          || (itemTitle && titlesMatch(itemTitle,  calTitle))
+      return (sigDesc   && titlesMatch(sigDesc,   calTitle))
+          || (itemTitle && titlesMatch(itemTitle, calTitle))
     })
+    const isOnCal = !!matchedEvent
 
     const newStatus = isOnCal ? 'on_cal' : 'not_on_cal'
+    const update: Record<string, any> = { calendarStatus: newStatus, updatedAt: Timestamp.now() }
+    if (isOnCal && matchedEvent?.calendarName && matchedEvent.calendarName !== 'Primary') {
+      update.matchedCalendarName = matchedEvent.calendarName
+    } else if (!isOnCal) {
+      update.matchedCalendarName = null
+    }
 
     // Only write if status changed — avoids unnecessary Firestore writes
-    if (sig.calendarStatus !== newStatus) {
-      batch.update(sigDoc.ref, { calendarStatus: newStatus, updatedAt: Timestamp.now() })
+    if (sig.calendarStatus !== newStatus || (isOnCal && update.matchedCalendarName !== (sig.matchedCalendarName ?? null))) {
+      batch.update(sigDoc.ref, update)
     }
 
     if (isOnCal) matched++

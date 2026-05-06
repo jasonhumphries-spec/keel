@@ -73,7 +73,8 @@ export interface KeelSignal {
   detectedAmount:  number | null   // in pence
   currency:        string | null
   description:     string
-  calendarStatus:  SignalCalendarStatus
+  calendarStatus:      SignalCalendarStatus
+  matchedCalendarName: string | null
   calendarEventId: string | null
   targetCalendarId: string | null
   status:          'active' | 'actioned' | 'ignored' | 'expired'

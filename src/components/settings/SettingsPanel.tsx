@@ -73,10 +73,10 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [pillStyle, setPillStyleState]  = useState<PillStyle>(getPillStyle)
   const [scanDays, setScanDays]         = useState(14)
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
+  const [checkAllCals, setCheckAllCals] = useState(false)
 
   useEffect(() => {
     setScanDays(getScanDaysBack())
-    // Load watching since date from Firestore
     if (user) {
       import('firebase/firestore').then(({ doc, getDoc }) => {
         import('@/lib/firebase').then(({ db }) => {
@@ -86,10 +86,23 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               setWatchingSince(d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }))
             }
           })
+          getDoc(doc(db, `users/${user.uid}/accounts/account_primary`)).then(snap => {
+            setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
+          })
         })
       })
     }
   }, [user])
+
+  const handleCheckAllCals = async (val: boolean) => {
+    setCheckAllCals(val)
+    if (!user) return
+    const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+    const { db } = await import('@/lib/firebase')
+    await updateDoc(doc(db, `users/${user.uid}/accounts/account_primary`), {
+      checkAllCalendars: val, updatedAt: serverTimestamp(),
+    })
+  }
 
   const handleScanDaysChange = (val: number) => {
     setScanDays(val)
@@ -313,6 +326,12 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             <SectionTitle>Calendar</SectionTitle>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <ToggleRow label="Link to email account's calendar" desc="School emails → School calendar, personal → Personal" on={true} onToggle={() => {}} />
+              <ToggleRow
+                label="Check all connected calendars"
+                desc="When checking if an event is already in your calendar, look across all calendars, not just Primary"
+                on={checkAllCals}
+                onToggle={() => handleCheckAllCals(!checkAllCals)}
+              />
               <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
                 <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>Window</div>
                 <select style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '5px 8px', fontSize: '11px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-dm-sans)', cursor: 'pointer' }}>

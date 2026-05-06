@@ -79,7 +79,7 @@ function SignalPill({ signal, itemId }: { signal: KeelSignal; itemId: string }) 
       )}
       {isOnCal && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 9px', borderLeft: `1px solid ${cfg.border}`, color: cfg.colour, fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-          ✓ On calendar
+          ✓ {signal.matchedCalendarName ? `In ${signal.matchedCalendarName}` : 'On calendar'}
         </div>
       )}
     </div>
