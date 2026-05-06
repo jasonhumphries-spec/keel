@@ -173,7 +173,7 @@ Rules:
           type:                sig.type,
           description:         sig.description ?? '',
           detectedDate:        sig.detectedDate ? Timestamp.fromDate(new Date(sig.detectedDate)) : null,
-          detectedAmount:      sig.detectedAmountPence ?? null,
+          detectedAmountPence: sig.detectedAmountPence ?? null,
           currency:            sig.currency ?? 'GBP',
           importanceFlag:      (parsed.aiImportanceScore ?? 0) >= 0.7,
           calendarStatus:      null,

@@ -64,7 +64,7 @@ function docToSignal(id: string, d: DocumentData): KeelSignal {
   return {
     signalId: id, itemId: d.itemId ?? '', accountId: d.accountId ?? '',
     type: d.type ?? 'event', detectedDate: d.detectedDate ? toDate(d.detectedDate) : null,
-    detectedAmount: d.detectedAmountPence ?? null, currency: d.currency ?? null,
+    detectedAmount: d.detectedAmountPence ?? d.detectedAmount ?? null, currency: d.currency ?? null,
     description: d.description ?? '', calendarStatus: d.calendarStatus ?? null,
     calendarEventId: d.calendarEventId ?? null, targetCalendarId: d.targetCalendarId ?? null,
     status: d.status ?? 'active', createdAt: toDate(d.createdAt), updatedAt: toDate(d.updatedAt),
