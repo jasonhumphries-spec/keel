@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
+import { runCalendarCheck } from '@/lib/server/calendarCheck'
 
 function getAdminDb() {
   if (!getApps().length) {
@@ -184,6 +185,12 @@ Rules:
       }
       await batch.commit()
     }
+
+    // Run calendar check so newly-written signals get their on_cal status immediately
+    // Fire-and-forget with error suppression — don't block the response
+    runCalendarCheck(db, uid, accessToken).catch(e =>
+      console.warn('[reanalyse] Cal check non-fatal:', e)
+    )
 
     return NextResponse.json({
       success:      true,

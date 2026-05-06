@@ -90,6 +90,38 @@ export function DevTools() {
     }
   }
 
+  const reanalyseAll = async () => {
+    setLoading(true)
+    setStatus('Loading items…')
+    try {
+      const snap = await getDocs(collection(db, `users/${user.uid}/items`))
+      const activeIds = snap.docs
+        .filter(d => ['new','awaiting_action','awaiting_reply'].includes(d.data().status))
+        .map(d => d.id)
+      setStatus(`Re-analysing 0 / ${activeIds.length}…`)
+      let done = 0
+      let failed = 0
+      // Process in batches of 3 to avoid hammering the API
+      for (let i = 0; i < activeIds.length; i += 3) {
+        const batch = activeIds.slice(i, i + 3)
+        await Promise.all(batch.map(async itemId => {
+          const res = await fetch('/api/gmail/reanalyse', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: user.uid, itemId }),
+          })
+          if (res.ok) done++; else failed++
+        }))
+        setStatus(`Re-analysing ${done} / ${activeIds.length}…${failed > 0 ? ` (${failed} failed)` : ''}`)
+      }
+      setStatus(`✓ Re-analysed ${done} items${failed > 0 ? `, ${failed} failed` : ''}`)
+      setTimeout(() => { setStatus(''); setOpen(false) }, 3000)
+    } catch (e) {
+      setStatus('Re-analyse all failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const actions = [
     { label: 'Items + signals',       cols: ['items', 'signals'],                                        colour: '#c49040' },
     { label: 'All data',              cols: ['items', 'signals', 'outbound', 'payments'],                colour: '#c45048' },
@@ -129,6 +161,7 @@ export function DevTools() {
             AI passes
           </div>
           {btn('Find & merge duplicates', runMerge, '#5555cc')}
+          {btn('Re-analyse all active items', reanalyseAll, '#3D7A6B')}
 
           {status && (
             <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: '#4ade80', marginTop: 2 }}>{status}</div>
