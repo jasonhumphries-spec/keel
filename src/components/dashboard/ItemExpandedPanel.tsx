@@ -474,7 +474,11 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryName}</div>
                 <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 2 }}>{item.aiTitle || item.senderName}</div>
-                <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.senderName} · {item.subject}</div>
+                <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {item.participants && item.participants.length > 1
+                    ? item.participants.join(' · ')
+                    : item.senderName} · {item.subject}
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                 <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{formatDate(item.receivedAt)}</div>
@@ -621,7 +625,9 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               <div style={{ padding: '12px 18px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
                   {[
-                    { label: 'From',     value: `${item.senderName} <${item.senderEmail}>` },
+                    { label: 'From',     value: item.participants && item.participants.length > 1
+                        ? item.participants.join(', ')
+                        : `${item.senderName} <${item.senderEmail}>` },
                     { label: 'Received', value: formatDate(item.receivedAt) },
                     { label: 'Category', value: item.categoryName },
                     { label: 'Account',  value: 'Personal Gmail' },
