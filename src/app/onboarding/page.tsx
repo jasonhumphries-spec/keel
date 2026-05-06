@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { doc, setDoc, getDoc, Timestamp, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
-const STEPS = ['welcome', 'how-it-works', 'email-type', 'categories', 'scan'] as const
+const STEPS = ['welcome', 'how-it-works', 'email-type', 'categories', 'calendar', 'scan'] as const
 type Step = typeof STEPS[number]
 
 type EmailType = 'personal' | 'work' | 'both'
@@ -446,6 +446,70 @@ function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATE
   )
 }
 
+function CalendarStep({ onNext, onBack }: { onNext: (checkAll: boolean) => void; onBack: () => void }) {
+  const [choice, setChoice] = useState<boolean | null>(null)
+
+  const opt = (val: boolean, title: string, desc: string, icon: string) => {
+    const selected = choice === val
+    return (
+      <div
+        onClick={() => setChoice(val)}
+        style={{
+          border: `2px solid ${selected ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          borderRadius: 'var(--radius-lg)', padding: '16px 18px', cursor: 'pointer',
+          background: selected ? 'var(--color-accent-sub)' : 'var(--color-surface)',
+          display: 'flex', gap: 14, alignItems: 'flex-start',
+          transition: 'border-color 0.15s, background 0.15s',
+        }}
+      >
+        <div style={{ fontSize: 24, lineHeight: 1 }}>{icon}</div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)', marginBottom: 3 }}>{title}</div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{desc}</div>
+        </div>
+        <div style={{
+          marginLeft: 'auto', flexShrink: 0,
+          width: 20, height: 20, borderRadius: '50%',
+          border: `2px solid ${selected ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          background: selected ? 'var(--color-accent)' : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {selected && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <h2 style={stepTitle}>Calendar checking</h2>
+      <p style={stepSubtitle}>
+        When Keel spots a date in an email, it checks whether it's already in your calendar so you don't add duplicates.
+      </p>
+      <p style={{ ...stepSubtitle, marginBottom: 20, fontSize: 13 }}>
+        Which calendars should Keel check?
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+        {opt(false, 'Primary calendar only', 'Fastest. Checks your main Google Calendar — usually the right choice for personal inboxes.', '📅')}
+        {opt(true,  'All connected calendars', 'Checks every calendar you have write access to — useful if you share calendars with family or have work + personal combined.', '🗓️')}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={onBack} style={{ flex: 1, padding: '11px 0', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+          ← Back
+        </button>
+        <button
+          onClick={() => choice !== null && onNext(choice)}
+          disabled={choice === null}
+          style={{ flex: 2, padding: '11px 0', borderRadius: 'var(--radius-md)', border: 'none', background: choice !== null ? 'var(--color-accent)' : 'var(--color-border)', color: choice !== null ? '#fff' : 'var(--color-text-muted)', fontSize: 14, fontWeight: 600, cursor: choice !== null ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-dm-sans)', transition: 'background 0.15s' }}>
+          Continue →
+        </button>
+      </div>
+    </>
+  )
+}
+
 function ScanStep({ categories }: { categories: typeof DEFAULT_CATEGORIES }) {
   const { user, scanProgress, triggerScan } = useAuth()
   const router = useRouter()
@@ -644,9 +708,10 @@ const stepSubtitle: React.CSSProperties = {
 export default function OnboardingPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [stepIndex,   setStepIndex]   = useState(0)
-  const [emailType,   setEmailType]   = useState<EmailType>('personal')
-  const [categories, setCategories]   = useState(DEFAULT_CATEGORIES)
+  const [stepIndex,        setStepIndex]        = useState(0)
+  const [emailType,        setEmailType]        = useState<EmailType>('personal')
+  const [categories,       setCategories]       = useState(DEFAULT_CATEGORIES)
+  const [checkAllCalendars, setCheckAllCalendars] = useState(false)
 
   useEffect(() => {
     if (loading) return
@@ -688,6 +753,22 @@ export default function OnboardingPage() {
             />
           )}
           {currentStep === 'categories'   && <CategoriesStep onNext={cats => { setCategories(cats); next() }} onBack={back} />}
+          {currentStep === 'calendar'     && (
+            <CalendarStep
+              onNext={async (checkAll) => {
+                setCheckAllCalendars(checkAll)
+                // Save to account doc immediately so it's live before first scan
+                try {
+                  const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore')
+                  await fUpdate(fDoc(db, `users/${user.uid}/accounts/account_primary`), {
+                    checkAllCalendars: checkAll,
+                  })
+                } catch { /* non-fatal — settings can be changed later */ }
+                next()
+              }}
+              onBack={back}
+            />
+          )}
           {currentStep === 'scan'         && <ScanStep categories={categories} />}
         </div>
 
