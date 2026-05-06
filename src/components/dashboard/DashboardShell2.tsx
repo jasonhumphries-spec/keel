@@ -241,7 +241,6 @@ function CalBand({
   events: { signal: KeelSignal; item: KeelItem }[]
   uid:    string
   note?:  string
-  wash?:  string
 }) {
   const colour = BAND_COLOURS[band]
   const label  = BAND_LABELS[band]
@@ -251,7 +250,8 @@ function CalBand({
       width: 188,
       flexShrink: 0,
       borderLeft: '0.5px solid var(--color-border)',
-      background: wash ?? 'var(--color-surface-raised)',
+      background: '#ffffff',
+      borderLeft: `1px solid rgba(0,0,0,0.06)`,
       display: 'flex',
       flexDirection: 'column',
     }}>
@@ -320,12 +320,12 @@ function CalBand({
 function StepRow({
   children,
   calBand,
-  wash,
+  accent,
   last = false,
 }: {
   children: ReactNode
   calBand:  ReactNode
-  wash?:    string
+  accent?:  string
   last?:    boolean
 }) {
   return (
@@ -333,13 +333,14 @@ function StepRow({
       <div style={{
         display: 'flex',
         alignItems: 'stretch',
-        background: wash ?? '#ffffff',
+        background: '#ffffff',
         borderRadius: 16,
         overflow: 'hidden',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 6px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(0,0,0,0.05)',
         margin: '0 16px',
+        borderTop: accent ? `3px solid ${accent}` : '3px solid transparent',
       }}>
-        <div style={{ flex: 1, minWidth: 0, padding: '28px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
         </div>
         {calBand}
@@ -354,10 +355,10 @@ function StepRow({
 // ─── Step header ──────────────────────────────────────────────────────────────
 
 const STEP_COLOURS = {
-  1: { num: '#FFF3D6', text: '#7A5C1A', border: '#B8964E', badge: '#FFF3D6', badgeText: '#7A5C1A' },
-  2: { num: '#FDEADF', text: '#7A3A10', border: '#9C5E2B', badge: '#FDEADF', badgeText: '#7A3A10' },
-  3: { num: '#FFF3D6', text: '#7A5C1A', border: '#B8964E', badge: '#f0f0ee', badgeText: '#888' },
-  4: { num: '#f0f0ee', text: '#888',    border: '#ccc',    badge: '#f0f0ee', badgeText: '#888' },
+  1: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#FFF8EC', badgeText: '#7A5C1A' },
+  2: { num: '#FEF0E8', text: '#7A3A10', border: '#9C5E2B', badge: '#FEF0E8', badgeText: '#7A3A10' },
+  3: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#f2f2f0', badgeText: '#666'    },
+  4: { num: '#f2f2f0', text: '#888',    border: '#ccc',    badge: '#f2f2f0', badgeText: '#888'    },
 }
 
 function StepHeader({
@@ -824,7 +825,7 @@ export function DashboardShell2() {
 
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
-          flex: 1, overflowY: 'auto', background: '#eeeeec',
+          flex: 1, overflowY: 'auto', background: '#eeeef0',
           paddingTop: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 20,
           paddingBottom: 40,
           transition: 'padding-top 0.4s ease',
@@ -848,13 +849,12 @@ export function DashboardShell2() {
           ) : uncatItems.length > 0 && !triageDismissed && (
             <div>
               <StepRow
-                wash="rgba(184,150,78,0.08)"
+                accent="#B8964E"
                 calBand={
                   <CalBand
                     band="triage"
                     events={[]}
                     uid={uid}
-                    wash="rgba(184,150,78,0.08)"
                     note="Some unclassified items may have dates. Classify them first to see events here."
                   />
                 }
@@ -879,9 +879,9 @@ export function DashboardShell2() {
           {/* ── Step 2: Urgent ── */}
           <div>
           <StepRow
-            wash="rgba(140,65,18,0.10)"
+            accent="#9C5E2B"
             calBand={
-              <CalBand band="urgent" events={urgentCal} uid={uid} wash="rgba(140,65,18,0.10)" />
+              <CalBand band="urgent" events={urgentCal} uid={uid}wash="rgba(140,65,18,0.10)"/>
             }
           >
             <StepHeader
@@ -915,9 +915,9 @@ export function DashboardShell2() {
 
           {/* ── Step 3: High priority ── */}
           <StepRow
-            wash="rgba(210,180,90,0.09)"
+            accent="#B8964E"
             calBand={
-              <CalBand band="high" events={highCal} uid={uid} wash="rgba(210,180,90,0.09)" />
+              <CalBand band="high" events={highCal} uid={uid}wash="rgba(210,180,90,0.09)"/>
             }
           >
             <StepHeader
@@ -944,13 +944,12 @@ export function DashboardShell2() {
           {/* ── Step 4: Everything else ── */}
           <StepRow
             last
-            wash="rgba(107,122,130,0.05)"
+            accent="#6B7A82"
             calBand={
               <CalBand
                 band="fyi"
                 events={fyiCal}
                 uid={uid}
-                wash="rgba(107,122,130,0.05)"
                 note={fyiExpandedId ? undefined : 'Expand a category below to see its dates here.'}
               />
             }
