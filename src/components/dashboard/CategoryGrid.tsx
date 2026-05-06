@@ -258,6 +258,11 @@ function CalendarBadge({
   const [acting,   setActing]   = useState(false)
   const [checking, setChecking] = useState(false)
 
+  // Re-sync when parent onSnapshot delivers updated calendarStatus
+  useEffect(() => {
+    setStatus(signal.calendarStatus)
+  }, [signal.calendarStatus])
+
   const isPending = status === 'pending'
 
   // When user returns to tab after opening Google Calendar, re-run cal check

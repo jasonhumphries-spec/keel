@@ -11,6 +11,11 @@ function SignalPill({ signal, itemId, uid }: { signal: KeelSignal; itemId: strin
   const [calStatus, setCalStatus] = useState(signal.calendarStatus)
   const [checking,  setChecking]  = useState(false)
 
+  // Re-sync when parent's onSnapshot delivers an update
+  useEffect(() => {
+    setCalStatus(signal.calendarStatus)
+  }, [signal.calendarStatus])
+
   const showAdd   = (signal.type === 'event' || signal.type === 'rsvp') && calStatus !== 'on_cal' && calStatus !== 'pending'
   const isPending = calStatus === 'pending'
   const isOnCal   = calStatus === 'on_cal'
