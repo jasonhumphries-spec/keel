@@ -1,0 +1,34 @@
+'use client'
+
+import { useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
+import { DashboardShell } from '@/components/dashboard/DashboardShell'
+
+function Dashboard1Content() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && !user) router.push('/')
+  }, [user, loading, router])
+
+  if (loading || !user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
+        <div style={{ width: 24, height: 24, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  return <DashboardShell />
+}
+
+export default function Dashboard1Page() {
+  return (
+    <Suspense>
+      <Dashboard1Content />
+    </Suspense>
+  )
+}

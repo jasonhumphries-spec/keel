@@ -851,29 +851,6 @@ export function DashboardShell2() {
         }}>
 
           {/* ── Step 1: Sort your inbox (only shown once initial scan is complete) ── */}
-          {!initialScanDone && (
-            <div style={{
-              position: 'fixed', inset: 0, zIndex: 400,
-              backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-              background: 'rgba(255,255,255,0.55)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexDirection: 'column', gap: 16,
-            }}>
-              <div style={{
-                background: '#fff', borderRadius: 16, padding: '32px 40px',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
-                maxWidth: 360, textAlign: 'center',
-              }}>
-                <div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
-                  <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 }}>Scanning your inbox so nothing gets missed. Your dashboard will update in a moment.</div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {uncatItems.length > 0 && !triageDismissed && (
             <div>
               <StepRow
@@ -1037,6 +1014,29 @@ export function DashboardShell2() {
 
         </div>
       </div>
+
+      {/* Scan-in-progress overlay — fixed, covers everything */}
+      {!initialScanDone && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 500,
+          backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+          background: 'rgba(255,255,255,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: '32px 40px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+            maxWidth: 360, textAlign: 'center',
+          }}>
+            <div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 }}>Scanning your inbox so nothing gets missed. Your dashboard will be ready in a moment.</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {commonPanels}
     </div>

@@ -172,17 +172,17 @@ function SidebarInner() {
       <div style={{ padding: '14px 8px 4px' }}>
         <div style={sectionLabel}>Views</div>
 
-        {/* Dashboard — main view */}
-        <Link href="/dashboard" scroll={false} style={navStyle(isActive('/dashboard') && !currentFilter)}>
+        {/* Dashboard 2.0 — step-based layout (default) */}
+        <Link href="/dashboard2" scroll={false} style={navStyle(isActive('/dashboard2') || isActive('/dashboard'))}>
           <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
           Dashboard
           <NavBadge count={counts.dashboard} variant="dark" />
         </Link>
 
-        {/* Dashboard 2.0 — step-based layout */}
-        <Link href="/dashboard2" scroll={false} style={navStyle(isActive('/dashboard2'))}>
+        {/* Dashboard 1.0 — original category grid */}
+        <Link href="/dashboard1" scroll={false} style={navStyle(isActive('/dashboard1'))}>
           <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
-          Dashboard 2.0
+          Dashboard 1.0
         </Link>
 
         {/* Awaiting Reply — indented filter */}
