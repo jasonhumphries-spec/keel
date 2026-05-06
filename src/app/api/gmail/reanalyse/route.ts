@@ -22,8 +22,42 @@ async function fetchThread(accessToken: string, threadId: string) {
     `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   )
-  if (!res.ok) return null
-  return res.json()
+  if (!res.ok) return { data: null, status: res.status }
+  return { data: await res.json(), status: res.status }
+}
+
+async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: string): Promise<string | null> {
+  const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
+  const data        = accountSnap.data()
+  if (!data?.accessToken) return null
+
+  // Check if token is expired or expiring within 2 minutes
+  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
+  if (expiresAt > Date.now() + 120_000) return data.accessToken as string
+
+  // Refresh it
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    new URLSearchParams({
+        client_id:     process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        refresh_token: data.refreshToken as string,
+        grant_type:    'refresh_token',
+      }),
+    })
+    if (!tokenRes.ok) { console.warn('[reanalyse] Token refresh failed'); return data.accessToken as string }
+    const td = await tokenRes.json()
+    await db.doc(`users/${uid}/accounts/account_primary`).update({
+      accessToken:    td.access_token,
+      tokenExpiresAt: Timestamp.fromMillis(Date.now() + td.expires_in * 1000),
+      tokenUpdatedAt: Timestamp.now(),
+    })
+    return td.access_token as string
+  } catch {
+    return data.accessToken as string
+  }
 }
 
 function extractHeader(headers: { name: string; value: string }[], name: string): string {
@@ -60,9 +94,8 @@ export async function POST(req: NextRequest) {
 
     const db = getAdminDb()
 
-    // Read OAuth token
-    const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
-    const accessToken = accountSnap.data()?.accessToken as string
+    // Get a valid (auto-refreshed) access token
+    const accessToken = await getValidAccessToken(db, uid)
     if (!accessToken) return NextResponse.json({ error: 'No access token' }, { status: 401 })
 
     // Read existing item
@@ -70,9 +103,12 @@ export async function POST(req: NextRequest) {
     if (!itemSnap.exists) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     const item = itemSnap.data()!
 
-    // Fetch thread from Gmail
-    const thread = await fetchThread(accessToken, item.threadId)
-    if (!thread) return NextResponse.json({ error: 'Thread not found in Gmail' }, { status: 404 })
+    // Fetch thread from Gmail — skip gracefully if thread deleted/not accessible
+    const { data: thread, status: threadStatus } = await fetchThread(accessToken, item.threadId)
+    if (!thread) {
+      if (threadStatus === 404) return NextResponse.json({ skipped: true, reason: 'Thread not found in Gmail' })
+      return NextResponse.json({ error: `Gmail returned ${threadStatus}` }, { status: 502 })
+    }
 
     const msgs     = thread.messages ?? []
     const latest   = msgs[msgs.length - 1]
