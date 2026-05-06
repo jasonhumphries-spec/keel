@@ -47,6 +47,7 @@ export interface KeelItem {
   aiImportanceScore: number
   manualPriority:    boolean
   manuallyIgnored:   boolean
+  userNote:          string | null
   snoozedUntil:     Date | null
   linkedOutboundId: string | null
   linkedItemId:     string | null

@@ -48,6 +48,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     importanceFlag: d.importanceFlag ?? false, aiImportanceScore: d.aiImportanceScore ?? 0.5,
     manualPriority: d.manualPriority ?? false,
     manuallyIgnored: d.manuallyIgnored ?? false,
+    userNote:        d.userNote ?? null,
     snoozedUntil: d.snoozedUntil ? toDate(d.snoozedUntil) : null,
     linkedOutboundId: d.linkedOutboundId ?? null, linkedItemId: d.linkedItemId ?? null,
     isRecurring: d.isRecurring ?? false, fromTrackedReply: d.fromTrackedReply ?? false,

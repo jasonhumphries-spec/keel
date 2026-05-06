@@ -650,7 +650,7 @@ export async function POST(req: NextRequest) {
     try { await feedRef.delete() } catch {}
 
     // Step 7: Write results to Firestore (batch where possible)
-    for (const { threadId, messageId, participants, subject, dateStr, senderName, senderEmail, classification } of classifications) {
+    for (const { threadId, messageId, detail, participants, subject, dateStr, senderName, senderEmail, classification } of classifications) {
       if (!classification) { skipped++; continue }
 
       if (classification._usage) {
@@ -723,7 +723,7 @@ export async function POST(req: NextRequest) {
           // Repair threadId if missing (fixes future isExisting detection)
           ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
           senderName, senderEmail, subject,
-          lastMessageInternalDate: internalDate,
+          lastMessageInternalDate: parseInt(detail?.internalDate ?? '0', 10) || null,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),
         })
@@ -745,7 +745,7 @@ export async function POST(req: NextRequest) {
           isRecurring:       classification.isRecurring,
           fromTrackedReply:  false, trackedReplyId: null,
           createdAt:         now, updatedAt: now, resolvedAt: null,
-          lastMessageInternalDate: internalDate,
+          lastMessageInternalDate: parseInt(detail?.internalDate ?? '0', 10) || null,
           participants,
           aiTitle:           classification.aiTitle ?? subject,
           aiSummary:         classification.aiSummary,

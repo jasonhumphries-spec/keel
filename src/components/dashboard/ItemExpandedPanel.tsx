@@ -86,10 +86,16 @@ function SignalPill({ signal, itemId }: { signal: KeelSignal; itemId: string }) 
   )
 }
 
-function MarkAsPaidPanel({ item, onClose, onPaid }: { item: KeelItem; onClose: () => void; onPaid: () => void }) {
+function MarkAsPaidPanel({ item, signals, onClose, onPaid }: { item: KeelItem; signals: KeelSignal[]; onClose: () => void; onPaid: () => void }) {
   const { user } = useAuth()
   const [method, setMethod] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Find the payment signal to get amount and due date
+  const paymentSignal = signals.find(s => s.itemId === item.itemId && s.type === 'payment')
+  const amountPence   = paymentSignal?.detectedAmount ?? null
+  const currency      = paymentSignal?.currency ?? 'GBP'
+  const dueDate       = paymentSignal?.detectedDate ?? null
 
   const handleConfirm = async () => {
     if (!user) return
@@ -99,8 +105,8 @@ function MarkAsPaidPanel({ item, onClose, onPaid }: { item: KeelItem; onClose: (
         status: 'paid', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
       })
       await addDoc(collection(db, `users/${user.uid}/payments`), {
-        itemId: item.itemId, payeeName: item.senderName,
-        amount: null, currency: 'GBP', dueDate: null,
+        itemId: item.itemId, payeeName: item.senderName || item.aiTitle || 'Unknown',
+        amount: amountPence, currency, dueDate,
         paidAt: Timestamp.now(), method: method || null,
         notes: null, createdAt: Timestamp.now(),
       })
@@ -108,6 +114,8 @@ function MarkAsPaidPanel({ item, onClose, onPaid }: { item: KeelItem; onClose: (
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }
+
+  const formatAmt = (p: number | null) => p ? `${currency === 'GBP' ? '£' : '$'}${(p / 100).toFixed(2)}` : null
 
   return (
     <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-raised)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -117,6 +125,12 @@ function MarkAsPaidPanel({ item, onClose, onPaid }: { item: KeelItem; onClose: (
           <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 4 }}>Payee</div>
           <div style={{ background: '#f0f6f2', border: '1px solid #2e6848', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--fs-sm)', color: '#2e6848' }}>{item.senderName}</div>
         </div>
+        {amountPence && (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 4 }}>Amount</div>
+            <div style={{ background: '#f0f6f2', border: '1px solid #2e6848', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--fs-sm)', color: '#2e6848', fontWeight: 600 }}>{formatAmt(amountPence)}</div>
+          </div>
+        )}
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 4 }}>Date paid</div>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-strong)', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--fs-sm)', color: 'var(--color-text-primary)' }}>Today</div>
@@ -275,6 +289,14 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
   const [saving, setSaving]               = useState(false)
   const [reanalysing,   setReanalysing]   = useState(false)
   const [reanalyseMsg,  setReanalyseMsg]  = useState('')
+  const [noteText,      setNoteText]      = useState(item?.userNote ?? '')
+  const [noteSaving,    setNoteSaving]    = useState(false)
+  const [noteSaved,     setNoteSaved]     = useState(false)
+
+  // Sync note text when item changes
+  useEffect(() => {
+    setNoteText(item?.userNote ?? '')
+  }, [item?.itemId])
 
   const reanalyse = async () => {
     if (!user || !item || reanalysing) return
@@ -302,6 +324,20 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       setReanalysing(false)
     }
   }
+
+  const saveNote = async () => {
+    if (!user || !item) return
+    setNoteSaving(true)
+    try {
+      await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
+        userNote: noteText.trim() || null, updatedAt: Timestamp.now(),
+      })
+      setNoteSaved(true)
+      setTimeout(() => setNoteSaved(false), 2000)
+    } catch (e) { console.error('saveNote failed:', e) }
+    finally { setNoteSaving(false) }
+  }
+
   const [localScore,   setLocalScore]     = useState<number | null>(null)
   const [localManual,  setLocalManual]    = useState<boolean | null>(null)
 
@@ -514,6 +550,38 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 </div>
               )}
 
+              {/* Note to self */}
+              <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-border)' }}>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Note to self</span>
+                  {noteSaved && <span style={{ fontSize: 10, color: '#3D7A6B', fontFamily: 'var(--font-dm-sans)' }}>Saved ✓</span>}
+                </div>
+                <textarea
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  onBlur={saveNote}
+                  placeholder="Add a private note — reminders, context, next steps…"
+                  rows={3}
+                  style={{
+                    width: '100%', boxSizing: 'border-box' as const,
+                    resize: 'vertical' as const,
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '7px 10px',
+                    fontSize: 'var(--fs-sm)',
+                    fontFamily: 'var(--font-dm-sans)',
+                    color: 'var(--color-text-primary)',
+                    background: 'var(--color-surface-recessed)',
+                    lineHeight: 1.5,
+                    outline: 'none',
+                    opacity: noteSaving ? 0.6 : 1,
+                    transition: 'border-color 0.15s',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--color-accent)' }}
+                  onBlurCapture={e => { e.target.style.borderColor = 'var(--color-border)' }}
+                />
+              </div>
+
               {/* Metadata */}
               <div style={{ padding: '12px 18px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
@@ -618,6 +686,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             {showPaidPanel && (
               <MarkAsPaidPanel
                 item={item}
+                signals={signals}
                 onClose={() => setShowPaidPanel(false)}
                 onPaid={() => { setShowPaidPanel(false); onResolved(item) }}
               />
