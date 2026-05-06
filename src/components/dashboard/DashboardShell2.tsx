@@ -248,7 +248,6 @@ function CalBand({
     <div style={{
       width: 188,
       flexShrink: 0,
-      borderLeft: '0.5px solid var(--color-border)',
       background: '#ffffff',
       borderLeft: `1px solid rgba(0,0,0,0.06)`,
       display: 'flex',
