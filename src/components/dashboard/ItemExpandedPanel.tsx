@@ -7,12 +7,42 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCategories } from '@/lib/hooks'
 import type { KeelItem, KeelSignal } from '@/lib/types'
 
-function SignalPill({ signal, itemId }: { signal: KeelSignal; itemId: string }) {
+function SignalPill({ signal, itemId, uid }: { signal: KeelSignal; itemId: string; uid: string }) {
   const [calStatus, setCalStatus] = useState(signal.calendarStatus)
+  const [checking,  setChecking]  = useState(false)
 
-  const showAdd     = (signal.type === 'event' || signal.type === 'rsvp') && calStatus !== 'on_cal' && calStatus !== 'pending'
-  const isPending   = calStatus === 'pending'
-  const isOnCal     = calStatus === 'on_cal'
+  const showAdd   = (signal.type === 'event' || signal.type === 'rsvp') && calStatus !== 'on_cal' && calStatus !== 'pending'
+  const isPending = calStatus === 'pending'
+  const isOnCal   = calStatus === 'on_cal'
+
+  // When user returns to the tab after opening Google Calendar, re-check
+  useEffect(() => {
+    if (!isPending) return
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return
+      setChecking(true)
+      try {
+        const res = await fetch('/api/calendar/check', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ uid }),
+        })
+        if (res.ok) {
+          // Re-read this signal's status from Firestore via a lightweight check
+          // The check route updates Firestore; onSnapshot in the parent will pick it up
+          // but we also update local state optimistically after a short delay
+          await new Promise(r => setTimeout(r, 1500))
+          setCalStatus('on_cal')
+        }
+      } catch (e) {
+        console.warn('[CalPill] Re-check failed:', e)
+      } finally {
+        setChecking(false)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [isPending, uid])
 
   const configs: Record<string, { bg: string; border: string; colour: string; label: string }> = {
     event:    { bg: '#f0f6f2', border: '#2e6848', colour: '#2e6848', label: 'Event' },
@@ -74,7 +104,7 @@ function SignalPill({ signal, itemId }: { signal: KeelSignal; itemId: string }) 
       )}
       {isPending && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 9px', borderLeft: `1px solid ${cfg.border}`, color: cfg.colour, fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-          ↗ Opened in calendar
+          {checking ? '⟳ Checking…' : '↗ Opened in calendar'}
         </div>
       )}
       {isOnCal && (
@@ -546,7 +576,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               {/* Signal pills */}
               {itemSignals.length > 0 && (
                 <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {itemSignals.map(sig => <SignalPill key={sig.signalId} signal={sig} itemId={item.itemId} />)}
+                  {itemSignals.map(sig => <SignalPill key={sig.signalId} signal={sig} itemId={item.itemId} uid={user?.uid ?? ''} />)}
                 </div>
               )}
 

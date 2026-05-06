@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -254,10 +254,36 @@ function CalendarBadge({
   priorityColour: string
   itemTitle?:     string
 }) {
-  const [status, setStatus] = useState(signal.calendarStatus)
-  const [acting, setActing] = useState(false)
+  const [status,   setStatus]   = useState(signal.calendarStatus)
+  const [acting,   setActing]   = useState(false)
+  const [checking, setChecking] = useState(false)
 
-  const colour = status === 'on_cal' || status === 'pending' ? CAL_TEAL
+  const isPending = status === 'pending'
+
+  // When user returns to tab after opening Google Calendar, re-run cal check
+  useEffect(() => {
+    if (!isPending) return
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return
+      setChecking(true)
+      try {
+        const res = await fetch('/api/calendar/check', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ uid }),
+        })
+        if (res.ok) {
+          await new Promise(r => setTimeout(r, 1500))
+          setStatus('on_cal')
+        }
+      } catch { /* non-fatal */ }
+      finally { setChecking(false) }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [isPending, uid])
+
+  const colour = status === 'on_cal' || isPending ? CAL_TEAL
                : status === 'ignored' ? CAL_GREY
                : priorityColour
 
