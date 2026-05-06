@@ -47,7 +47,10 @@ async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: strin
         grant_type:    'refresh_token',
       }),
     })
-    if (!tokenRes.ok) { console.warn('[reanalyse] Token refresh failed'); return data.accessToken as string }
+    if (!tokenRes.ok) {
+      console.warn('[reanalyse] Token refresh failed — user must re-sign-in')
+      return null  // Don't fall back to stale token — caller should surface auth error
+    }
     const td = await tokenRes.json()
     await db.doc(`users/${uid}/accounts/account_primary`).update({
       accessToken:    td.access_token,
@@ -55,8 +58,9 @@ async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: strin
       tokenUpdatedAt: Timestamp.now(),
     })
     return td.access_token as string
-  } catch {
-    return data.accessToken as string
+  } catch (e) {
+    console.warn('[reanalyse] Token refresh threw:', e)
+    return null
   }
 }
 
@@ -96,7 +100,7 @@ export async function POST(req: NextRequest) {
 
     // Get a valid (auto-refreshed) access token
     const accessToken = await getValidAccessToken(db, uid)
-    if (!accessToken) return NextResponse.json({ error: 'No access token' }, { status: 401 })
+    if (!accessToken) return NextResponse.json({ error: 'Auth expired — user must sign in again', authError: true }, { status: 401 })
 
     // Read existing item
     const itemSnap = await db.doc(`users/${uid}/items/${itemId}`).get()
