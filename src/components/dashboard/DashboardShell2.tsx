@@ -845,27 +845,36 @@ export function DashboardShell2() {
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
           flex: 1, overflowY: 'auto', background: '#eeeef0',
-          paddingTop: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 20,
-          paddingBottom: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 40,
+          paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 20,
+          paddingBottom: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 40,
           transition: 'padding-top 0.4s ease',
         }}>
 
           {/* ── Step 1: Sort your inbox (only shown once initial scan is complete) ── */}
-          {!initialScanDone ? (
-            <div style={{ margin: '0 16px 20px' }}>
+          {!initialScanDone && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 400,
+              backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+              background: 'rgba(255,255,255,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'column', gap: 16,
+            }}>
               <div style={{
-                background: '#fff', borderRadius: 16, padding: '28px 20px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.06)',
-                display: 'flex', alignItems: 'center', gap: 14,
+                background: '#fff', borderRadius: 16, padding: '32px 40px',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+                maxWidth: 360, textAlign: 'center',
               }}>
-                <div style={{ width: 20, height: 20, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                <div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>Scanning your inbox so nothing gets missed</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>Checking for new emails…</div>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 }}>Scanning your inbox so nothing gets missed. Your dashboard will update in a moment.</div>
                 </div>
               </div>
             </div>
-          ) : uncatItems.length > 0 && !triageDismissed && (
+          )}
+
+          {uncatItems.length > 0 && !triageDismissed && (
             <div>
               <StepRow
                 accent="#B8964E"
@@ -880,7 +889,7 @@ export function DashboardShell2() {
               >
                 <StepHeader
                   step={1}
-                  title="Start here — a few items need sorting"
+                  title="A few items need sorting first"
                   subtitle="Keel remembers your choices. Classifying now means nothing urgent gets missed."
                   badge={`${uncatItems.length} to sort`}
                 />
@@ -904,7 +913,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={2}
+              step={1}
               title="These look urgent — worth a look first"
               subtitle="Time-sensitive items that may need action today or very soon."
               badge={`${urgentCount} item${urgentCount !== 1 ? 's' : ''}`}
@@ -941,7 +950,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={3}
+              step={2}
               title="Waiting for a reply — worth a nudge?"
               subtitle="You sent the last message. These may benefit from a follow-up."
               badge={`${awaitingCount} item${awaitingCount !== 1 ? 's' : ''}`}
@@ -970,7 +979,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={4}
+              step={3}
               title="On your radar — when you're ready"
               subtitle="These can wait a little, but are worth getting to today or tomorrow."
               badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
@@ -1004,7 +1013,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={5}
+              step={4}
               title="The rest — just so you know"
               subtitle="Receipts, confirmations, auto-pay bills. No action needed."
               badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}
