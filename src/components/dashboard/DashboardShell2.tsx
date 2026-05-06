@@ -235,7 +235,6 @@ function CalBand({
   events,
   uid,
   note,
-  wash,
 }: {
   band:   'urgent' | 'high' | 'fyi' | 'triage'
   events: { signal: KeelSignal; item: KeelItem }[]
