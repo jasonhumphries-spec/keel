@@ -217,17 +217,19 @@ function CalBandEvent({
 // ─── Calendar band ────────────────────────────────────────────────────────────
 
 const BAND_LABELS: Record<string, string> = {
-  urgent: 'Urgent',
-  high:   'High priority',
-  fyi:    'Everything else',
-  triage: 'Unclassified',
+  urgent:   'Urgent',
+  awaiting: 'Awaiting reply',
+  high:     'High priority',
+  fyi:      'Everything else',
+  triage:   'Unclassified',
 }
 
 const BAND_COLOURS: Record<string, string> = {
-  urgent: '#9C5E2B',
-  high:   '#B8964E',
-  fyi:    '#6B7A82',
-  triage: '#B8964E',
+  urgent:   '#9C5E2B',
+  awaiting: '#4A7FA5',
+  high:     '#B8964E',
+  fyi:      '#6B7A82',
+  triage:   '#B8964E',
 }
 
 function CalBand({
@@ -236,7 +238,7 @@ function CalBand({
   uid,
   note,
 }: {
-  band:   'urgent' | 'high' | 'fyi' | 'triage'
+  band:   'urgent' | 'awaiting' | 'high' | 'fyi' | 'triage'
   events: { signal: KeelSignal; item: KeelItem }[]
   uid:    string
   note?:  string
@@ -355,8 +357,9 @@ function StepRow({
 const STEP_COLOURS = {
   1: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#FFF8EC', badgeText: '#7A5C1A' },
   2: { num: '#FEF0E8', text: '#7A3A10', border: '#9C5E2B', badge: '#FEF0E8', badgeText: '#7A3A10' },
-  3: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#f2f2f0', badgeText: '#666'    },
-  4: { num: '#f2f2f0', text: '#888',    border: '#ccc',    badge: '#f2f2f0', badgeText: '#888'    },
+  3: { num: '#E8F0F6', text: '#2A5070', border: '#4A7FA5', badge: '#E8F0F6', badgeText: '#2A5070' },
+  4: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#f2f2f0', badgeText: '#666'    },
+  5: { num: '#f2f2f0', text: '#888',    border: '#ccc',    badge: '#f2f2f0', badgeText: '#888'    },
 }
 
 function StepHeader({
@@ -365,7 +368,7 @@ function StepHeader({
   subtitle,
   badge,
 }: {
-  step:     1 | 2 | 3 | 4
+  step:     1 | 2 | 3 | 4 | 5
   title:    string
   subtitle: string
   badge:    string
@@ -710,14 +713,32 @@ export function DashboardShell2() {
   const highData    = filterByBand(categoryData, 3, 3, resolvedItems)
   const fyiData     = filterByBand(categoryData, 1, 2, resolvedItems)
 
-  const urgentCount = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
-  const highCount   = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId)).length
-  const fyiCount    = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
-  const urgentOnly  = urgentCount
-  const highPlus    = urgentCount + highCount
+  // Awaiting replies — items where user sent last message with open question
+  const awaitingData: CategoryWithItems[] = categoryData
+    .map(d => ({
+      ...d,
+      items: d.items.filter(i =>
+        i.status === 'awaiting_reply' && !resolvedItems.has(i.itemId)
+      ),
+    }))
+    .filter(d => d.items.length > 0)
+
+  const urgentCount  = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
+  const awaitingCount = awaitingData.flatMap(d => d.items).length
+  const highCount    = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply').length
+  const fyiCount     = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
 
   // ── Calendar signals per band ───────────────────────────────────────────────
-  const urgentCal = calSignalsForBand(categoryData, signals, 4, 4)
+  const urgentCal   = calSignalsForBand(categoryData, signals, 4, 4)
+  const allItems    = categoryData.flatMap(d => d.items)
+  const awaitingCal = signals
+    .filter(s => {
+      const item = allItems.find(i => i.itemId === s.itemId)
+      return item?.status === 'awaiting_reply' && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+    })
+    .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
+    .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
+    .filter(x => x.item)
   const highCal   = calSignalsForBand(categoryData, signals, 3, 3)
   // FYI cal: only show events from the currently expanded category
   const fyiCalAll = calSignalsForBand(categoryData, signals, 1, 2)
@@ -825,7 +846,7 @@ export function DashboardShell2() {
         <div ref={scrollRef} style={{
           flex: 1, overflowY: 'auto', background: '#eeeef0',
           paddingTop: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 20,
-          paddingBottom: 40,
+          paddingBottom: (!initialScanDone || (uncatItems.length > 0 && !triageDismissed)) ? 'calc(25vh)' : 40,
           transition: 'padding-top 0.4s ease',
         }}>
 
@@ -911,7 +932,37 @@ export function DashboardShell2() {
 
           <div style={{ height: 20, background: 'transparent' }} />
 
-          {/* ── Step 3: High priority ── */}
+          {/* ── Step 3: Awaiting responses ── */}
+          <div>
+          <StepRow
+            accent="#4A7FA5"
+            calBand={
+              <CalBand band="awaiting" events={awaitingCal} uid={uid} />
+            }
+          >
+            <StepHeader
+              step={3}
+              title="Waiting for a reply — worth a nudge?"
+              subtitle="You sent the last message. These may benefit from a follow-up."
+              badge={`${awaitingCount} item${awaitingCount !== 1 ? 's' : ''}`}
+            />
+            {awaitingData.length === 0 ? (
+              <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                Nothing waiting on a reply right now.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
+                {awaitingData.map(d => (
+                  <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
+                ))}
+              </div>
+            )}
+          </StepRow>
+          </div>
+
+          <div style={{ height: 20, background: 'transparent' }} />
+
+          {/* ── Step 4: High priority ── */}
           <StepRow
             accent="#B8964E"
             calBand={
@@ -919,7 +970,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={3}
+              step={4}
               title="On your radar — when you're ready"
               subtitle="These can wait a little, but are worth getting to today or tomorrow."
               badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
@@ -953,7 +1004,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={4}
+              step={5}
               title="The rest — just so you know"
               subtitle="Receipts, confirmations, auto-pay bills. No action needed."
               badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}

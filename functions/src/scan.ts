@@ -666,8 +666,10 @@ export async function handleGmailScan(req: any, res: any) {
     const threadToItemId     = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.id]))
     const threadToStatus     = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().status as string]))
     const threadToUpdatedAt  = new Map(existingSnap.docs.map((d) => {
-      const ts = d.data().updatedAt
-      return [d.data().threadId as string, ts?.toMillis ? ts.toMillis() : 0]
+      const gmailTs = d.data().lastMessageInternalDate
+      const keelTs  = d.data().updatedAt
+      const ms      = gmailTs ?? (keelTs?.toMillis ? keelTs.toMillis() : 0)
+      return [d.data().threadId as string, ms]
     }))
     const threadManualPrio   = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualPriority as boolean]))
 

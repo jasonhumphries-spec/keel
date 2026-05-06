@@ -518,8 +518,12 @@ export async function POST(req: NextRequest) {
     const threadToItemId     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.id]))
     const threadToStatus     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().status as string]))
     const threadToUpdatedAt  = new Map(existingSnap.docs.map(d => {
-      const ts = d.data().updatedAt
-      return [d.data().threadId as string, ts?.toMillis ? ts.toMillis() : 0]
+      // Prefer lastMessageInternalDate (Gmail ms) over updatedAt (Keel write time)
+      // to avoid falsely skipping threads where a reply arrived just after our last write
+      const gmailTs = d.data().lastMessageInternalDate
+      const keelTs  = d.data().updatedAt
+      const ms      = gmailTs ?? (keelTs?.toMillis ? keelTs.toMillis() : 0)
+      return [d.data().threadId as string, ms]
     }))
     const threadManualPrio     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualPriority as boolean]))
     const threadManualCategory = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualCategory as boolean]))
@@ -719,6 +723,7 @@ export async function POST(req: NextRequest) {
           // Repair threadId if missing (fixes future isExisting detection)
           ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
           senderName, senderEmail, subject,
+          lastMessageInternalDate: internalDate,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),
         })
@@ -740,6 +745,7 @@ export async function POST(req: NextRequest) {
           isRecurring:       classification.isRecurring,
           fromTrackedReply:  false, trackedReplyId: null,
           createdAt:         now, updatedAt: now, resolvedAt: null,
+          lastMessageInternalDate: internalDate,
           participants,
           aiTitle:           classification.aiTitle ?? subject,
           aiSummary:         classification.aiSummary,
