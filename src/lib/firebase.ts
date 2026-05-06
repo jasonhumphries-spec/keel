@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -21,15 +21,23 @@ export const auth = getAuth(app)
 export const db   = getFirestore(app)
 export const googleProvider = new GoogleAuthProvider()
 
+// Explicitly set LOCAL persistence so session survives browser restarts
+// (this is the default but being explicit prevents some browser-specific clearing)
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch(() => {})
+}
+
 // Request Gmail and Calendar scopes during sign-in
 googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly')
 googleProvider.addScope('https://www.googleapis.com/auth/gmail.send')
 googleProvider.addScope('https://www.googleapis.com/auth/calendar')
 
-// Request offline access to get refresh token
+// Request offline access to get refresh token.
+// 'consent' (not 'select_account') ensures Google always returns a refresh token —
+// 'select_account' skips the consent screen on repeat sign-ins and may omit the refresh token.
 googleProvider.setCustomParameters({
   access_type: 'offline',
-  prompt: 'select_account', // force consent screen so Gmail/Calendar scopes are always granted
+  prompt: 'consent',
 })
 
 export default app
