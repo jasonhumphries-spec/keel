@@ -879,7 +879,7 @@ export function DashboardShell2() {
           <StepRow
             accent="#9C5E2B"
             calBand={
-              <CalBand band="urgent" events={urgentCal} uid={uid}wash="rgba(140,65,18,0.10)"/>
+              <CalBand band="urgent" events={urgentCal} uid={uid}/>
             }
           >
             <StepHeader
@@ -915,7 +915,7 @@ export function DashboardShell2() {
           <StepRow
             accent="#B8964E"
             calBand={
-              <CalBand band="high" events={highCal} uid={uid}wash="rgba(210,180,90,0.09)"/>
+              <CalBand band="high" events={highCal} uid={uid}/>
             }
           >
             <StepHeader
