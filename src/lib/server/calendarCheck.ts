@@ -19,10 +19,22 @@ export function titlesMatch(a: string, b: string): boolean {
   const wa = new Set(sigWords(a))
   const wb = sigWords(b)
   if (!wa.size || !wb.length) return false
-  const hits    = wb.filter(w => wa.has(w)).length
+
+  const hits   = wb.filter(w => wa.has(w))
   const shorter = Math.min(wa.size, wb.length)
-  // 2+ significant word overlap, or 100% overlap when both titles are very short
-  return hits >= 2 || (shorter <= 2 && hits >= 1)
+
+  // Standard rule: 2+ significant word overlap
+  if (hits.length >= 2) return true
+
+  // Short title rule: both titles are very short and share a word
+  if (shorter <= 2 && hits.length >= 1) return true
+
+  // High-entropy single word rule: one matching word of 8+ chars is sufficient.
+  // "STONERYHENGE", "orthodontist", "portmandental" — these are so distinctive
+  // that a single match is unambiguous. Common words (≤7 chars) still require 2.
+  if (hits.some(w => w.length >= 8)) return true
+
+  return false
 }
 
 /**
