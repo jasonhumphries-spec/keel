@@ -75,14 +75,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
 
-  // Background scanning
-  const [autoScanEnabled,     setAutoScanEnabled]     = useState(false)
-  const [watchStatus,         setWatchStatus]         = useState<'active' | 'inactive' | 'pending' | 'error'>('inactive')
-  const [watchExpiry,         setWatchExpiry]         = useState<string | null>(null)
-  const [lastBackgroundScan,  setLastBackgroundScan]  = useState<string | null>(null)
-  const [watchToggleLoading,  setWatchToggleLoading]  = useState(false)
-  const [watchToggleError,    setWatchToggleError]    = useState<string | null>(null)
-
   useEffect(() => {
     setScanDays(getScanDaysBack())
     if (user) {
@@ -97,25 +89,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           getDoc(doc(db, `users/${user.uid}/accounts/account_primary`)).then(snap => {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
           })
-          // Read background scan settings from root user doc
-          getDoc(doc(db, `users/${user.uid}`)).then(snap => {
-            if (!snap.exists()) return
-            const d = snap.data()!
-            setAutoScanEnabled(d.autoScanEnabled ?? false)
-            setWatchStatus(d.watchStatus ?? 'inactive')
-            if (d.watchExpiry) {
-              const exp = d.watchExpiry.toDate()
-              setWatchExpiry(exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))
-            }
-            if (d.lastBackgroundScanAt) {
-              const t = d.lastBackgroundScanAt.toDate()
-              const diffMin = Math.floor((Date.now() - t.getTime()) / 60_000)
-              if (diffMin < 1)        setLastBackgroundScan('just now')
-              else if (diffMin < 60)  setLastBackgroundScan(`${diffMin}m ago`)
-              else if (diffMin < 1440) setLastBackgroundScan(`${Math.floor(diffMin / 60)}h ago`)
-              else                    setLastBackgroundScan(`${Math.floor(diffMin / 1440)}d ago`)
-            }
-          })
         })
       })
     }
@@ -129,41 +102,13 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     await updateDoc(doc(db, `users/${user.uid}/accounts/account_primary`), {
       checkAllCalendars: val, updatedAt: serverTimestamp(),
     })
-  }
-
-  const handleBackgroundScanToggle = async () => {
-    if (!user || watchToggleLoading) return
-    setWatchToggleLoading(true)
-    setWatchToggleError(null)
-    const next = !autoScanEnabled
-    setAutoScanEnabled(next)
-    setWatchStatus(next ? 'pending' : 'inactive')
-    try {
-      const res = await fetch('/api/inbox-watch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: user.uid, action: next ? 'enable' : 'disable' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
-      if (next) {
-        setWatchStatus('active')
-        if (data.expiry) {
-          const exp = new Date(data.expiry)
-          setWatchExpiry(exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))
-        }
-      } else {
-        setWatchStatus('inactive')
-        setWatchExpiry(null)
-        setLastBackgroundScan(null)
-      }
-    } catch (err: any) {
-      setWatchToggleError(err.message ?? 'Something went wrong')
-      setAutoScanEnabled(!next)   // revert
-      setWatchStatus(!next ? 'active' : 'inactive')
-    } finally {
-      setWatchToggleLoading(false)
-    }
+    // Re-evaluate calendar status for all open items using the new setting.
+    // Runs in the background — items update via onSnapshot without a page reload.
+    fetch('/api/calendar/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: user.uid }),
+    }).catch(e => console.warn('[CalCheck] Background re-check failed:', e))
   }
 
   const handleScanDaysChange = (val: number) => {
@@ -357,54 +302,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginTop: 3, lineHeight: 1.4 }}>
                 This is the earliest date fully examined during your initial scan.
               </div>
-            </div>
-
-            {/* Background scanning */}
-            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Background scanning
-                    <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: '9px', background: 'var(--color-accent-sub)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)', borderRadius: 3, padding: '1px 5px', letterSpacing: '0.06em' }}>
-                      PRO
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginTop: 2, lineHeight: 1.4 }}>
-                    {autoScanEnabled
-                      ? 'New emails are classified as they arrive — no scan button needed.'
-                      : 'Classify new emails automatically as they arrive in your inbox.'}
-                  </div>
-                </div>
-                <Toggle on={autoScanEnabled} onToggle={handleBackgroundScanToggle} />
-              </div>
-
-              {/* Status line — only shown when enabled or pending */}
-              {(autoScanEnabled || watchStatus === 'pending') && (
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    display: 'inline-block', width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                    background: watchStatus === 'active' ? '#3D7A6B' : watchStatus === 'error' ? 'var(--color-destructive, #9C5E2B)' : 'var(--color-accent)',
-                  }} />
-                  <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                    {watchToggleLoading || watchStatus === 'pending' ? 'Setting up…'
-                      : watchStatus === 'active' ? `Active${watchExpiry ? ` · renews ${watchExpiry}` : ''}`
-                      : watchStatus === 'error'  ? 'Error — try disabling and re-enabling'
-                      : 'Inactive'}
-                  </span>
-                  {watchStatus === 'active' && lastBackgroundScan && (
-                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginLeft: 4 }}>
-                      · last scan {lastBackgroundScan}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Error message */}
-              {watchToggleError && (
-                <div style={{ marginTop: 6, fontSize: '10px', color: 'var(--color-destructive, #9C5E2B)' }}>
-                  {watchToggleError}
-                </div>
-              )}
             </div>
 
             {/* Historical scan — premium placeholder */}
