@@ -87,7 +87,7 @@ export async function runCalendarCheck(
       if (listRes.ok) {
         const listData = await listRes.json()
         calendarIds = (listData.items ?? [])
-          .filter((c: any) => c.accessRole === 'owner' || c.accessRole === 'writer')
+          .filter((c: any) => ['owner', 'writer', 'reader'].includes(c.accessRole))
           .map((c: any) => ({ id: c.id, name: c.summary ?? c.id }))
         console.log(`[CalCheck] Checking ${calendarIds.length} calendars: ${calendarIds.map(c => c.name).join(', ')}`)
       }
