@@ -25,6 +25,39 @@ export function titlesMatch(a: string, b: string): boolean {
   return hits >= 2 || (shorter <= 2 && hits >= 1)
 }
 
+/**
+ * Fallback: check if the sender's domain name appears in the calendar event title.
+ * Handles cases where the calendar entry title differs completely from the email
+ * subject — e.g. email from "reception.donovansdentalcare@portmandental.co.uk"
+ * matched against a calendar entry titled "Pax - Orthodontist Petworth Donovans Dentist".
+ * Extracts meaningful parts of the domain (skips generic words like "reception",
+ * "info", "noreply", "mail", "hello") and checks if any appear in the cal title.
+ */
+const GENERIC_EMAIL_PREFIXES = new Set([
+  'reception','info','noreply','no-reply','hello','mail','contact',
+  'admin','support','booking','appointments','enquiries','team',
+])
+
+export function senderMatchesCalTitle(senderEmail: string, calTitle: string): boolean {
+  if (!senderEmail || !calTitle) return false
+  // Extract domain parts — e.g. "donovansdentalcare" from "reception.donovansdentalcare@portmandental.co.uk"
+  const emailLower = senderEmail.toLowerCase()
+  const calLower   = calTitle.toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+
+  // Try each dot-separated local part and each domain segment
+  const localPart = emailLower.split('@')[0] ?? ''
+  const domain    = emailLower.split('@')[1] ?? ''
+  const domainBase = domain.split('.').filter(p => p.length > 3 && p !== 'co' && p !== 'com' && p !== 'org' && p !== 'net' && p !== 'uk')
+
+  const candidates = [
+    ...localPart.split('.').filter(p => p.length > 4 && !GENERIC_EMAIL_PREFIXES.has(p)),
+    ...domainBase,
+  ]
+
+  // A candidate matches if it appears as a substring in the calendar title
+  return candidates.some(c => c.length > 4 && calLower.includes(c))
+}
+
 // ── Main check function ───────────────────────────────────────────────────────
 
 export async function runCalendarCheck(
@@ -96,9 +129,10 @@ export async function runCalendarCheck(
     return { matched: 0, notMatched: 0, total: 0 }
   }
 
-  // Batch-get items for aiTitle (better match candidate than raw signal description)
-  const itemIds   = [...new Set(signalsSnap.docs.map(d => d.data().itemId as string).filter(Boolean))]
-  const itemTitles = new Map<string, string>() // itemId → aiTitle
+  const itemIds    = [...new Set(signalsSnap.docs.map(d => d.data().itemId as string).filter(Boolean))]
+  // Batch-get items for aiTitle + senderEmail (better match candidates than raw signal description)
+  const itemTitles  = new Map<string, string>()  // itemId → aiTitle
+  const itemSenders = new Map<string, string>()  // itemId → senderEmail
 
   if (itemIds.length > 0) {
     const chunks: string[][] = []
@@ -106,7 +140,10 @@ export async function runCalendarCheck(
     await Promise.all(chunks.map(async chunk => {
       const docs = await Promise.all(chunk.map(id => db.doc(`users/${uid}/items/${id}`).get()))
       for (const d of docs) {
-        if (d.exists) itemTitles.set(d.id, d.data()?.aiTitle ?? '')
+        if (d.exists) {
+          itemTitles.set(d.id,  d.data()?.aiTitle     ?? '')
+          itemSenders.set(d.id, d.data()?.senderEmail ?? '')
+        }
       }
     }))
   }
@@ -121,8 +158,9 @@ export async function runCalendarCheck(
     if (sig.calendarStatus === 'ignored') continue
 
     const sigDate   = (sig.detectedDate.toDate()) as Date
-    const sigDesc   = (sig.description  ?? '') as string
-    const itemTitle = itemTitles.get(sig.itemId as string) ?? ''
+    const sigDesc    = (sig.description  ?? '') as string
+    const itemTitle  = itemTitles.get(sig.itemId as string)  ?? ''
+    const senderEmail = itemSenders.get(sig.itemId as string) ?? ''
 
     // Same-day window: allow ±1 day for all-day events and timezone variance
     const dayStart = new Date(sigDate)
@@ -135,11 +173,15 @@ export async function runCalendarCheck(
       return raw && d >= dayStart && d < dayEnd
     })
 
-    // Match against signal description OR item aiTitle
+    // Match against signal description, item aiTitle, or sender domain (in that order).
+    // Sender domain handles cases where the calendar entry title was written by the user
+    // and shares no words with the email subject — e.g. "Pax - Orthodontist Petworth
+    // Donovans Dentist" matched via "donovansdentalcare" in the sender email address.
     const matchedEvent = sameDay.find(e => {
       const calTitle = e.summary ?? ''
-      return (sigDesc   && titlesMatch(sigDesc,   calTitle))
-          || (itemTitle && titlesMatch(itemTitle, calTitle))
+      return (sigDesc    && titlesMatch(sigDesc,    calTitle))
+          || (itemTitle  && titlesMatch(itemTitle,  calTitle))
+          || (senderEmail && senderMatchesCalTitle(senderEmail, calTitle))
     })
     const isOnCal = !!matchedEvent
 
