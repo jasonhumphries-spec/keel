@@ -1,38 +1,17 @@
-import { setGlobalOptions } from 'firebase-functions/v2'
-import { onRequest } from 'firebase-functions/v2/https'
-import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { defineSecret } from 'firebase-functions/params'
-import { handleGmailScan } from './scan.js'
-import { handleNightlyArchive } from './archive.js'
+/**
+ * Firebase Cloud Functions — Keel
+ *
+ * Exports:
+ *   gmailScan              — HTTP triggered, handles onboarding + long scans
+ *                            (existing, unchanged)
+ *   handleGmailNotification — Pub/Sub triggered, background scanning
+ *                            (new — Session 6)
+ *   renewGmailWatches      — Scheduled every 6 days, renews Gmail watch() subscriptions
+ *                            (new — Session 6)
+ */
 
-const anthropicKey    = defineSecret('ANTHROPIC_API_KEY')
-const googleAiKey     = defineSecret('GOOGLE_AI_API_KEY')
-const googleClientId  = defineSecret('GOOGLE_CLIENT_ID')
-const googleClientSec = defineSecret('GOOGLE_CLIENT_SECRET')
+// Existing scan function — keep as-is
+export { gmailScan } from './scan'
 
-setGlobalOptions({
-  region:       'europe-west1',
-  maxInstances: 10,
-})
-
-export const gmailScan = onRequest(
-  {
-    secrets:        [anthropicKey, googleAiKey, googleClientId, googleClientSec],
-    timeoutSeconds: 3600,
-    memory:         '512MiB',
-    cors:           false,
-  },
-  handleGmailScan
-)
-
-export const nightlyArchive = onSchedule(
-  {
-    schedule:       '0 2 * * *',
-    timeZone:       'Europe/London',
-    memory:         '256MiB',
-    timeoutSeconds: 540,
-  },
-  async () => {
-    await handleNightlyArchive()
-  }
-)
+// Background scanning (Phase 2)
+export { handleGmailNotification, renewGmailWatches } from './backgroundScan'
