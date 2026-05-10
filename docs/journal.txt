@@ -153,3 +153,47 @@ CURRENT STATE:
 - Background scanning live and working at www.jaison.app
 - Watch expiry: May 17, 2026 (auto-renews via renewGmailWatches scheduler)
 - Active provider: gemini-2.5-flash, ~$0.0002/background scan (single email)
+
+=== 2026-05-10 SESSION 6 ADDITIONS (calendar matching fixes) ===
+
+CALENDAR MATCHING — 6 bugs fixed in sequence:
+
+1. TOKEN EXPIRY — calendar/check/route.ts had no token refresh logic. 
+   Was reading accessToken from Firestore and using it directly → 401 from Google Calendar.
+   Fixed: added getValidAccessToken() with refresh logic (same pattern as background-scan).
+
+2. SERVER WINDOW TOO NARROW — calendarCheck.ts was only looking 35 days ahead.
+   June 26 appointment (47 days out) fell outside the window → never evaluated.
+   Fixed: extended to 365 days. GCal maxResults also bumped from 500 → 2500.
+
+3. CLIENT WINDOW TOO NARROW — useCalendarSignals() hook defaulted to 30 days.
+   Calendar column simply never fetched signals beyond 30 days from today.
+   Fixed: default increased to 365 days.
+
+4. READER CALENDARS EXCLUDED — accessRole filter only included 'owner' and 'writer'.
+   Shared/family calendars (e.g. TJP Family, where user is a member not owner)
+   were silently dropped from the calendar check.
+   Fixed: include 'reader' access role.
+
+5. TITLE MATCHING FAILURE — "Pax - Orthodontist Petworth Donovans Dentist Rocio"
+   shares zero significant words with "Dental appointment with Rocio De Martinez".
+   Fixed: added senderMatchesCalTitle() as third matching strategy — extracts meaningful
+   parts from the sender email domain and checks if any appear as substrings in the
+   calendar event title. "donovansdentalcare" matches "Donovans Dentist".
+
+6. WRONG CALENDAR — "Family" (My calendars) ≠ "TJP Family" (Other calendars).
+   Two distinct calendar IDs. Fixed by item 4 above (including reader access).
+
+ALSO THIS SESSION:
+- checkAllCalendars toggle now triggers calendar re-check immediately (both directions)
+- Re-check fires on enable AND disable — preference change affects existing results
+- Debug NO MATCH logging added then removed after diagnosis complete
+- Background scanning confirmed working end-to-end (tested with live email)
+- scanUtils.ts extracted — all scan types now use identical S1 prompt
+- background-scan/route.ts uses classifyThread() from scanUtils.ts
+- scan/route.ts imports classifyThread() + runInBatches() from scanUtils.ts
+
+CONFIRMED WORKING:
+- Dental appointment (TJP Family calendar, 47 days out) now shows on_cal teal tick
+- Calendar column shows events beyond 30 days
+- Toggle re-check updates items in real time via onSnapshot

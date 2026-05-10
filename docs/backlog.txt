@@ -43,6 +43,10 @@ INFRASTRUCTURE
     Should read /config/aiProvider (same as aiComplete does) so cost is accurate
     when provider is switched via admin panel.
 
+[ ] Calendar matching — consider pagination for very busy calendars
+    GCal API maxResults is 2500 (hard limit). Users with multiple busy calendars
+    over 12 months could theoretically hit this. Add pagination if needed at scale.
+
 ═══════════════════════════════════════════════
 PERFORMANCE / COST
 ═══════════════════════════════════════════════
@@ -129,6 +133,9 @@ DONE
     handleGmailNotification CF + renewGmailWatches scheduler + /api/inbox-watch
     + /api/gmail/background-scan + BackgroundScanToggle in settings
 [x] scanUtils.ts — shared classifyThread(), all scan types at parity ← Session 6
+[x] Calendar matching — 6 bugs fixed ← Session 6
+    Token refresh, 365-day window (server + client), reader calendars included,
+    sender domain fallback matching, checkAllCalendars toggle re-check
 [x] Dashboard 2.0 — step-based layout, default at /dashboard ← Session 5
 [x] Scan blur overlay — full-screen lock during initial check ← Session 5
 [x] Categorise modal — 3-col grid, Other hidden, instant count update ← Session 5

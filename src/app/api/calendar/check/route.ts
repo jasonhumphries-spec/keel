@@ -31,13 +31,7 @@ async function getValidAccessToken(db: ReturnType<typeof getFirestore>, uid: str
   const expiresAt    = (data.tokenExpiresAt as Timestamp | undefined)?.toMillis() ?? 0
 
   // Return current token if still valid (with 60s buffer)
-  if (accessToken && Date.now() < expiresAt - 60_000) {
-    console.log(`[CalCheck] Using cached token, expires in ${Math.round((expiresAt - Date.now()) / 1000)}s`)
-    return accessToken
-  }
-
-  console.log(`[CalCheck] Token expired or missing (expiresAt=${expiresAt}, now=${Date.now()}), refreshing...`)
-  console.log(`[CalCheck] Has refreshToken: ${!!refreshToken}, has accessToken: ${!!accessToken}`)
+  if (accessToken && Date.now() < expiresAt - 60_000) return accessToken
 
   if (!refreshToken) {
     console.warn('[CalCheck] No refresh token — using potentially stale access token')
@@ -64,8 +58,6 @@ async function getValidAccessToken(db: ReturnType<typeof getFirestore>, uid: str
   const tokenData = await tokenRes.json()
   const newToken  = tokenData.access_token as string
   const expiresIn = (tokenData.expires_in  as number) ?? 3600
-
-  console.log(`[CalCheck] Token refreshed successfully, expires in ${expiresIn}s`)
 
   await accountRef.update({
     accessToken:    newToken,

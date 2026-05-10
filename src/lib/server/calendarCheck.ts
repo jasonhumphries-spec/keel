@@ -185,11 +185,6 @@ export async function runCalendarCheck(
     })
     const isOnCal = !!matchedEvent
 
-    // Debug: log unmatched signals so we can see what we're comparing
-    if (!isOnCal && sameDay.length > 0) {
-      console.log(`[CalCheck] NO MATCH — signal: "${sigDesc}" | aiTitle: "${itemTitle}" | sender: "${senderEmail}" | same-day cal events: ${sameDay.map(e => `"${e.summary}"`).join(', ')}`)
-    }
-
     const newStatus = isOnCal ? 'on_cal' : 'not_on_cal'
     const update: Record<string, any> = { calendarStatus: newStatus, updatedAt: Timestamp.now() }
     if (isOnCal && matchedEvent?.calendarName && matchedEvent.calendarName !== 'Primary') {
