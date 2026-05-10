@@ -230,7 +230,156 @@ RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do N
   }
 }
 
-// ── runInBatches ───────────────────────────────────────────────────────────
+// ── Email body decoding ────────────────────────────────────────────────────
+
+/**
+ * Extract structured data (dates, times, locations) from HTML before stripping tags.
+ *
+ * Rich invitation emails (Paperless Post, Eventbrite, etc.) embed date/time/location
+ * in HTML tables and structured blocks. Plain tag-stripping loses this data entirely.
+ * This function extracts it first and returns a concise structured summary to prepend
+ * to the decoded body so the AI always sees it.
+ */
+export function extractStructuredFromHtml(html: string): string {
+  const found: string[] = []
+
+  // 1. <time> elements with datetime attribute
+  for (const m of html.matchAll(/<time[^>]*datetime="([^"]*)"[^>]*>([^<]*)<\/time>/gi)) {
+    const attr = m[1]?.trim()
+    const text = m[2]?.trim()
+    if (text) found.push(`Date/Time: ${text}${attr ? ` (${attr})` : ''}`)
+    else if (attr) found.push(`Date/Time: ${attr}`)
+  }
+
+  // Strip tags for pattern matching on the remaining text
+  const plain = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+
+  // 2. Date patterns — "Sat. Jun. 20", "Saturday, June 20", "20 June 2026"
+  const datePatterns = [
+    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\.?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2}(?:,?\s+\d{4})?/gi,
+    /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?/gi,
+    /\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}/gi,
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/gi,
+  ]
+  const seenDates = new Set<string>()
+  for (const pattern of datePatterns) {
+    for (const m of plain.matchAll(pattern)) {
+      const d = m[0].trim()
+      if (!seenDates.has(d.toLowerCase())) {
+        seenDates.add(d.toLowerCase())
+        found.push(`Date: ${d}`)
+      }
+    }
+  }
+
+  // 3. Time patterns — "3:00pm - 11:00pm BST", "15:00–23:00"
+  const timePattern = /\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?\s*(?:[–\-]\s*\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)?\s*(?:BST|GMT|UTC|EST|PST|CET|IST)?/g
+  const times = [...plain.matchAll(timePattern)]
+    .map(m => m[0].trim())
+    .filter(t => t.length > 4)
+    .slice(0, 3)
+  for (const t of times) found.push(`Time: ${t}`)
+
+  // 4. UK postcode — reliably identifies a location block
+  for (const m of plain.matchAll(/[A-Z]{1,2}\d{1,2}[A-Z]?\s+\d[A-Z]{2}/g)) {
+    found.push(`Postcode: ${m[0]}`)
+    break // one is enough
+  }
+
+  // 5. Location hints — "at [Venue Name]", "Venue: ...", "Location: ..."
+  for (const m of plain.matchAll(/(?:at|venue|location|address)\s*:?\s*([A-Z][^,.!?\n]{5,60})/gi)) {
+    const loc = m[1].trim()
+    if (loc.split(' ').length >= 2) { found.push(`Location: ${loc}`); break }
+  }
+
+  if (found.length === 0) return ''
+  return `[STRUCTURED DATA EXTRACTED FROM EMAIL]\n${found.join('\n')}\n\n`
+}
+
+/**
+ * Decode a Gmail message payload to plain text.
+ * Tries text/plain first, falls back to HTML with structured data extraction.
+ * Handles nested multipart messages.
+ */
+export function decodeBody(message: any, maxLen = 2000): string {
+  const parts = message.payload?.parts ?? [message.payload]
+
+  // Recursive helper to find a part by mimeType
+  function findPart(parts: any[], mimeType: string): any {
+    for (const part of parts) {
+      if (!part) continue
+      if (part.mimeType === mimeType && part.body?.data) return part
+      if (part.parts) {
+        const found = findPart(part.parts, mimeType)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  // 1. Prefer plain text — most reliable for AI parsing
+  const plainPart = findPart(parts, 'text/plain')
+  if (plainPart) {
+    const text = Buffer.from(plainPart.body.data, 'base64').toString('utf-8')
+    if (text.trim().length > 20) return text.slice(0, maxLen)
+  }
+
+  // 2. HTML fallback — extract structured data first, then strip tags
+  const htmlPart = findPart(parts, 'text/html')
+  if (htmlPart) {
+    const html = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8')
+
+    // Extract dates/times/locations before tag stripping
+    const structured = extractStructuredFromHtml(html)
+
+    const stripped = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    // Structured data gets priority — prepend it, then fill remaining chars with body
+    const structuredLen = structured.length
+    const bodyLen = Math.max(200, maxLen - structuredLen)
+    const combined = structured + stripped.slice(0, bodyLen)
+    if (combined.trim().length > 20) return combined
+  }
+
+  return ''
+}
+
+/**
+ * Build a full thread context string for the AI prompt.
+ * Most recent 3 messages get full content, older messages get brief excerpts.
+ */
+export function buildThreadContext(thread: any, maxLen = 800): string {
+  const messages = thread?.messages ?? []
+  if (messages.length === 0) return ''
+
+  const result: string[] = []
+  messages.forEach((msg: any, i: number) => {
+    const headers  = msg.payload?.headers ?? []
+    const from     = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
+    const date     = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value ?? ''
+    const isRecent = i >= messages.length - 3
+    const body     = decodeBody(msg, isRecent ? maxLen : 200)
+    const label    = isRecent ? `[${date}] From: ${from}` : `[${date}] From: ${from} (earlier message)`
+    result.push(`${label}\n${body}`)
+  })
+
+  return result.join('\n\n---\n\n')
+}
 
 /**
  * Run an async function over an array in parallel batches.

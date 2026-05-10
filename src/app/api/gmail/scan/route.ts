@@ -3,7 +3,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
-import { classifyThread, runInBatches, type ClassificationResult } from '@/lib/scanUtils'
+import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
 
 // ---- Firebase Admin init ----
 function getAdminDb() {
@@ -60,69 +60,6 @@ async function fetchThread(accessToken: string, threadId: string) {
 
 function extractHeader(headers: { name: string; value: string }[], name: string): string {
   return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
-}
-
-function decodeBody(message: any): string {
-  const parts = message.payload?.parts ?? [message.payload]
-
-  // Try plain text first
-  for (const part of parts) {
-    if (part?.mimeType === 'text/plain' && part?.body?.data) {
-      const text = Buffer.from(part.body.data, 'base64').toString('utf-8').slice(0, 2000)
-      if (text.trim().length > 20) return text
-    }
-  }
-
-  // Fall back to HTML stripped of tags
-  for (const part of parts) {
-    if (part?.mimeType === 'text/html' && part?.body?.data) {
-      const html = Buffer.from(part.body.data, 'base64').toString('utf-8')
-      const text = html
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 2000)
-      if (text.length > 20) return text
-    }
-  }
-
-  // Try nested multipart parts
-  for (const part of parts) {
-    if (part?.parts) {
-      for (const subpart of part.parts) {
-        if (subpart?.body?.data) {
-          const text = Buffer.from(subpart.body.data, 'base64').toString('utf-8').slice(0, 2000)
-          if (text.trim().length > 20) return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-        }
-      }
-    }
-  }
-
-  return ''
-}
-
-function buildThreadContext(thread: any): string {
-  const messages = thread?.messages ?? []
-  if (messages.length === 0) return ''
-
-  // Always include all messages — full thread history for context
-  // Older messages get shorter excerpts to keep prompt size manageable
-  const result: string[] = []
-
-  messages.forEach((msg: any, i: number) => {
-    const headers  = msg.payload?.headers ?? []
-    const from     = extractHeader(headers, 'from')
-    const date     = extractHeader(headers, 'date')
-    const isRecent = i >= messages.length - 3 // last 3 messages get full content
-    const maxLen   = isRecent ? 800 : 200      // older messages get brief excerpt
-    const body     = decodeBody(msg).slice(0, maxLen)
-    const label    = isRecent ? `[${date}] From: ${from}` : `[${date}] From: ${from} (earlier message)`
-    result.push(`${label}\n${body}`)
-  })
-
-  return result.join('\n\n---\n\n')
 }
 
 function getThreadParticipants(thread: any): string[] {

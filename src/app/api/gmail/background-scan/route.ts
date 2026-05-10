@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore'
-import { classifyThread } from '@/lib/scanUtils'
+import { classifyThread, decodeBody, buildThreadContext } from '@/lib/scanUtils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -130,35 +130,7 @@ function extractHeader(headers: { name: string; value: string }[], name: string)
   return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
 }
 
-function decodeBody(message: any): string {
-  const parts = message.payload?.parts ?? [message.payload]
-  for (const part of parts) {
-    if (part?.mimeType === 'text/plain' && part?.body?.data) {
-      const text = Buffer.from(part.body.data, 'base64').toString('utf-8').slice(0, 2000)
-      if (text.trim().length > 20) return text
-    }
-  }
-  for (const part of parts) {
-    if (part?.mimeType === 'text/html' && part?.body?.data) {
-      const html = Buffer.from(part.body.data, 'base64').toString('utf-8')
-      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)
-    }
-  }
-  return ''
-}
-
-/** Mirrors buildThreadContext in scan/route.ts */
-function buildThreadContext(thread: any): string {
-  const messages = thread?.messages ?? []
-  return messages.map((msg: any, i: number) => {
-    const headers  = msg.payload?.headers ?? []
-    const from     = extractHeader(headers, 'from')
-    const date     = extractHeader(headers, 'date')
-    const isRecent = i >= messages.length - 3
-    const body     = decodeBody(msg).slice(0, isRecent ? 800 : 200)
-    return `[${date}] From: ${from}\n${body}`
-  }).filter(Boolean).join('\n---\n')
-}
+// decodeBody and buildThreadContext imported from @/lib/scanUtils
 
 // ── Route handler ──────────────────────────────────────────────────────────
 
