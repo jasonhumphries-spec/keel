@@ -97,3 +97,59 @@ CURRENT STATE (end of session 5):
 - All major classification persistence bugs fixed
 - Calendar auto-recheck working
 - Admin dev ops fully functional (pending KEEL_APP_URL env var in keel-admin Vercel)
+
+=== 2026-05-10 SESSION 6 (background scanning — Phase 2) ===
+
+BACKGROUND SCANNING (GMAIL PUB/SUB):
+- handleGmailNotification Cloud Function — receives Gmail Pub/Sub push notifications
+- renewGmailWatches Cloud Function — scheduled every 6 days (Gmail watches expire at 7)
+- POST /api/inbox-watch — enables/disables watch per user, calls Gmail watch()/stop() APIs
+- POST /api/gmail/background-scan — processes changed threads, called by CF
+- BackgroundScanToggle component — in Settings > Scanning section, PRO badge
+- 90s debounce in CF prevents AI call storms on inbox bursts
+- Max 10 threads per notification — cost comparable to single manual scan press
+- Token auto-refresh in background-scan route (access token may expire between manual sessions)
+- Root users/{uid} doc created on enable (set+merge) — required for CF email lookup
+- Watch fields on root doc: autoScanEnabled, watchStatus, watchProvider, watchExpiry,
+  watchHistoryId, lastBackgroundScanAt
+- job: 'background' in scanRuns + backgroundScan* fields in meta/usage
+
+INFRASTRUCTURE (already in place from Session 5):
+- Pub/Sub topic: gmail-inbox-notifications in keel-6921a
+- gmail-api-push@system.gserviceaccount.com granted Publisher role
+- ADMIN_SECRET set as Firebase secret
+
+BUGS FIXED DURING DEPLOYMENT:
+- functions/src/index.ts: export gmailScan → handleGmailScan (correct export name)
+- background-scan/route.ts: removed googleapis import (not in keel deps), used fetch
+- background-scan/route.ts: fixed aiComplete signature (db first arg, not object)
+- background-scan/route.ts: tokens in accounts/account_primary subcollection not root doc
+- inbox-watch/route.ts: set+merge instead of update (root doc may not exist)
+- emailProviders/gmail.ts: removed googleapis, rewrote with fetch
+
+CLASSIFICATION PARITY:
+- Extracted classifyThread() + runInBatches() + BUILTIN_DESCRIPTIONS + ClassificationResult
+  into src/lib/scanUtils.ts
+- scan/route.ts now imports from scanUtils.ts (duplicate code removed)
+- background-scan/route.ts now uses classifyThread() from scanUtils.ts
+- All scan types now use identical prompt, importance scoring, signal rules
+- Improving scanUtils.ts improves manual, auto, and background scans simultaneously
+
+CONFIRMED WORKING (tested):
+- Toggle in settings enables watch, creates root user doc, writes watchHistoryId
+- Gmail push notification received within ~30s of email arriving
+- CF debounce working (90s)
+- Background scan processed 1 thread, created new item in Firestore
+- scanRun doc: job=background, aiCostUsd=$0.00018, inputTokens=479, outputTokens=188,
+  durationMs=3324, model=gemini-2.5-flash
+
+BACKLOG NOTES:
+- googleapis vs fetch: emailProviders/gmail.ts uses fetch not googleapis for consistency.
+  If Keel expands to use many Google APIs in one place, revisit. Backlog item added.
+- Cost tracking: provider hardcoded as 'gemini-flash' in background-scan route.
+  Should read active provider from aiComplete for accuracy when provider switches. TODO.
+
+CURRENT STATE:
+- Background scanning live and working at www.jaison.app
+- Watch expiry: May 17, 2026 (auto-renews via renewGmailWatches scheduler)
+- Active provider: gemini-2.5-flash, ~$0.0002/background scan (single email)
