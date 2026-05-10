@@ -74,6 +74,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [scanDays, setScanDays]         = useState(14)
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
+  const [calCheckRunning, setCalCheckRunning] = useState(false)
 
   useEffect(() => {
     setScanDays(getScanDaysBack())
@@ -102,13 +103,17 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     await updateDoc(doc(db, `users/${user.uid}/accounts/account_primary`), {
       checkAllCalendars: val, updatedAt: serverTimestamp(),
     })
-    // Re-evaluate calendar status for all open items using the new setting.
-    // Runs in the background — items update via onSnapshot without a page reload.
+    // Re-evaluate calendar status for all open items using the updated scope.
+    // ON  → checks all connected calendars (wider net).
+    // OFF → re-checks primary only, correcting any items wrongly marked on_cal.
+    setCalCheckRunning(true)
     fetch('/api/calendar/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid: user.uid }),
-    }).catch(e => console.warn('[CalCheck] Background re-check failed:', e))
+    })
+      .catch(e => console.warn('[CalCheck] Re-check failed:', e))
+      .finally(() => setCalCheckRunning(false))
   }
 
   const handleScanDaysChange = (val: number) => {
@@ -335,7 +340,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               <ToggleRow label="Link to email account's calendar" desc="School emails → School calendar, personal → Personal" on={true} onToggle={() => {}} />
               <ToggleRow
                 label="Check all connected calendars"
-                desc="When checking if an event is already in your calendar, look across all calendars, not just Primary"
+                desc={calCheckRunning ? 'Rechecking calendar status…' : 'When checking if an event is already in your calendar, look across all calendars, not just Primary'}
                 on={checkAllCals}
                 onToggle={() => handleCheckAllCals(!checkAllCals)}
               />
