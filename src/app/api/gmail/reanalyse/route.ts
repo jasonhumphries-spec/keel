@@ -3,6 +3,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
+import { decodeBody, buildThreadContext } from '@/lib/scanUtils'
 
 function getAdminDb() {
   if (!getApps().length) {
@@ -68,28 +69,7 @@ function extractHeader(headers: { name: string; value: string }[], name: string)
   return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
 }
 
-function decodeBody(message: any): string {
-  const parts = message.payload?.parts ?? [message.payload]
-  const decode = (p: any): string => {
-    if (!p) return ''
-    if (p.parts) return p.parts.map(decode).join('\n')
-    const data = p.body?.data ?? ''
-    try { return atob(data.replace(/-/g, '+').replace(/_/g, '/')) } catch { return '' }
-  }
-  return parts.map(decode).join('\n').replace(/\r\n/g, '\n').trim()
-}
-
-function buildThreadContext(thread: any): string {
-  const msgs = thread.messages ?? []
-  return msgs.map((msg: any, i: number) => {
-    const headers  = msg.payload?.headers ?? []
-    const from     = extractHeader(headers, 'from')
-    const date     = extractHeader(headers, 'date')
-    const maxLen   = i < msgs.length - 3 ? 200 : 600
-    const body     = decodeBody(msg).slice(0, maxLen)
-    return `[${date}] FROM: ${from}\n${body}`
-  }).join('\n\n---\n\n')
-}
+// decodeBody and buildThreadContext imported from @/lib/scanUtils
 
 export async function POST(req: NextRequest) {
   try {
