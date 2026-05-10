@@ -208,7 +208,7 @@ async function runS1(
     hints: { categoryId: string; categoryName: string; senderEmail: string; aiTitle: string }[]
     locale: string
   }
-) {
+): Promise<Record<string, any>> {
   const { subject, senderName, senderEmail, body, categories, hints, locale } = params
   const isGB = locale.startsWith('en-GB') || locale.startsWith('en-AU')
 
