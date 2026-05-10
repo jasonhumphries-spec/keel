@@ -70,10 +70,10 @@ export async function runCalendarCheck(
   const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
   const checkAllCalendars = accountSnap.data()?.checkAllCalendars ?? false
 
-  // One GCal API call — past 7 days to future 90 days covers all relevant signals
+  // One GCal API call — past 7 days to future 365 days covers all relevant signals
   const now    = new Date()
-  const past   = new Date(now.getTime() -  7 * 86400000)
-  const future = new Date(now.getTime() + 90 * 86400000)
+  const past   = new Date(now.getTime() -   7 * 86400000)
+  const future = new Date(now.getTime() + 365 * 86400000)
 
   // Build list of calendar IDs to query
   let calendarIds: Array<{ id: string; name: string }> = [{ id: 'primary', name: 'Primary' }]
@@ -105,7 +105,7 @@ export async function runCalendarCheck(
     calUrl.searchParams.set('timeMin',      past.toISOString())
     calUrl.searchParams.set('timeMax',      future.toISOString())
     calUrl.searchParams.set('singleEvents', 'true')
-    calUrl.searchParams.set('maxResults',   '500')
+    calUrl.searchParams.set('maxResults',   '2500')
     calUrl.searchParams.set('orderBy',      'startTime')
 
     const res = await fetch(calUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
