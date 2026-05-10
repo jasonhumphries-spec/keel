@@ -325,21 +325,31 @@ export function decodeBody(message: any, maxLen = 2000): string {
     return null
   }
 
-  // 1. Prefer plain text — most reliable for AI parsing
-  const plainPart = findPart(parts, 'text/plain')
-  if (plainPart) {
-    const text = Buffer.from(plainPart.body.data, 'base64').toString('utf-8')
-    if (text.trim().length > 20) return text.slice(0, maxLen)
-  }
-
-  // 2. HTML fallback — extract structured data first, then strip tags
+  // Always try to extract structured data from HTML first —
+  // rich invitation emails (Paperless Post, Eventbrite etc.) encode dates/times/
+  // locations in HTML blocks that get lost in plain text or tag-stripping.
+  // We prepend this to whatever body we find so the AI always sees it.
+  let structured = ''
   const htmlPart = findPart(parts, 'text/html')
   if (htmlPart) {
     const html = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8')
+    structured = extractStructuredFromHtml(html)
+  }
 
-    // Extract dates/times/locations before tag stripping
-    const structured = extractStructuredFromHtml(html)
+  // Prefer plain text for the body — most reliable for AI parsing
+  const plainPart = findPart(parts, 'text/plain')
+  if (plainPart) {
+    const text = Buffer.from(plainPart.body.data, 'base64').toString('utf-8')
+    if (text.trim().length > 20) {
+      const structuredLen = structured.length
+      const bodyLen = Math.max(200, maxLen - structuredLen)
+      return structured + text.slice(0, bodyLen)
+    }
+  }
 
+  // Fall back to HTML — strip tags but keep structured data prepended
+  if (htmlPart) {
+    const html = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8')
     const stripped = html
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -348,8 +358,6 @@ export function decodeBody(message: any, maxLen = 2000): string {
       .replace(/&amp;/g, '&')
       .replace(/\s+/g, ' ')
       .trim()
-
-    // Structured data gets priority — prepend it, then fill remaining chars with body
     const structuredLen = structured.length
     const bodyLen = Math.max(200, maxLen - structuredLen)
     const combined = structured + stripped.slice(0, bodyLen)
