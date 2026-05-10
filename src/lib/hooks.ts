@@ -228,7 +228,7 @@ export function useAllSignals() {
 }
 
 // Calendar strip — date-filtered signals
-export function useCalendarSignals(daysAhead = 30) {
+export function useCalendarSignals(daysAhead = 365) {
   const { user } = useAuth()
   const [signals, setSignals] = useState<KeelSignal[]>([])
   const [loading, setLoading] = useState(true)
