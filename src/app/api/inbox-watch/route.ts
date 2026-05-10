@@ -106,8 +106,20 @@ export async function POST(req: NextRequest) {
 
     // ── Enable ───────────────────────────────────────────────────────────
     if (action === 'enable') {
-      // Mark as pending while we set up the watch
-      await rootRef.update({ watchStatus: 'pending', autoScanEnabled: true })
+      // Read account_primary to get the user's email (needed for CF lookup)
+      // and to validate tokens exist before attempting watch setup
+      const accountDoc = await db.doc(`users/${uid}/accounts/account_primary`).get()
+      if (!accountDoc.exists) {
+        return NextResponse.json({ error: 'account_primary not found' }, { status: 404 })
+      }
+      const email = accountDoc.data()?.email as string | undefined
+
+      // Mark as pending — use set+merge so root doc is created if it doesn't exist yet
+      await rootRef.set({
+        watchStatus:     'pending',
+        autoScanEnabled: true,
+        ...(email ? { email } : {}),
+      }, { merge: true })
 
       let accessToken: string
       try {
@@ -150,14 +162,15 @@ export async function POST(req: NextRequest) {
 
       const expiryDate = new Date(parseInt(expiration, 10))
 
-      await rootRef.update({
+      await rootRef.set({
         autoScanEnabled:      true,
         watchStatus:          'active',
         watchProvider:        'gmail',
         watchExpiry:          Timestamp.fromDate(expiryDate),
         watchHistoryId:       historyId,
         lastBackgroundScanAt: FieldValue.delete(),
-      })
+        ...(email ? { email } : {}),
+      }, { merge: true })
 
       console.log(`[inbox-watch] Watch enabled for uid=${uid}, expires ${expiryDate.toISOString()}`)
 
@@ -187,13 +200,13 @@ export async function POST(req: NextRequest) {
         console.warn(`[inbox-watch] Could not stop Gmail watch for uid=${uid}:`, err)
       }
 
-      await rootRef.update({
+      await rootRef.set({
         autoScanEnabled:      false,
         watchStatus:          'inactive',
         watchExpiry:          FieldValue.delete(),
         watchHistoryId:       FieldValue.delete(),
         lastBackgroundScanAt: FieldValue.delete(),
-      })
+      }, { merge: true })
 
       console.log(`[inbox-watch] Watch disabled for uid=${uid}`)
       return NextResponse.json({ success: true })
