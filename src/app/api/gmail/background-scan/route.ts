@@ -2,79 +2,192 @@
  * POST /api/gmail/background-scan
  *
  * Processes email threads that changed since the user's stored historyId.
- * Called exclusively by the Cloud Function — not user-initiated.
- *
- * Design philosophy:
- *   The CF stays thin (Firestore + HTTP only). All Gmail API interaction and
- *   AI classification happens here, in Vercel, where the rest of the scan
- *   logic already lives. This avoids duplicating AI code in the functions dir.
+ * Called exclusively by the Cloud Function (handleGmailNotification) — not user-initiated.
  *
  * Body: { uid: string, newHistoryId: string }
  * Auth: x-keel-admin-secret header
  *
- * Resource budget:
- *   Max 10 threads per call. Typical cost: $0.0001–0.0005 per notification.
- *   Comparable to a single manual scan button press on a quiet inbox.
- *
- * TODO: extract shared S1 logic into src/lib/scanUtils.ts once the codebase
- * is stable, so /api/gmail/scan and this route share one implementation.
+ * Resource budget: max 10 threads per call, ~$0.0001–0.0005 per notification.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import * as admin from 'firebase-admin'
-import { google } from 'googleapis'
-import { adminDb } from '@/lib/firebaseAdmin'
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
+import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const MAX_THREADS = 10
-const FB_READ_COST = 0.00000036
-const FB_WRITE_COST = 0.00000108
+// ── Firebase Admin ─────────────────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
+function getAdminDb() {
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert({
+        projectId:   process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    })
+  }
+  return getFirestore()
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const MAX_THREADS    = 10
+const FB_READ_COST   = 0.06  / 100_000
+const FB_WRITE_COST  = 0.18  / 100_000
+
+// ── Auth ───────────────────────────────────────────────────────────────────
 
 function isAuthorised(req: NextRequest): boolean {
-  const secret = req.headers.get('x-keel-admin-secret')
-  return Boolean(process.env.ADMIN_SECRET && secret === process.env.ADMIN_SECRET)
+  return req.headers.get('x-keel-admin-secret') === process.env.ADMIN_SECRET
 }
 
-// ---------------------------------------------------------------------------
-// Gmail helpers
-// ---------------------------------------------------------------------------
+// ── Token helpers ──────────────────────────────────────────────────────────
 
-function buildGmailClient(accessToken: string, refreshToken: string) {
-  const auth = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  )
-  auth.setCredentials({ access_token: accessToken, refresh_token: refreshToken })
-  return google.gmail({ version: 'v1', auth })
-}
+/**
+ * Gets a valid access token for the user — refreshes if needed.
+ * Tokens are stored at users/{uid}/accounts/account_primary.
+ */
+async function getValidAccessToken(
+  db: ReturnType<typeof getFirestore>,
+  uid: string
+): Promise<string> {
+  const accountRef = db.doc(`users/${uid}/accounts/account_primary`)
+  const accountDoc = await accountRef.get()
 
-function extractText(payload: any, limit = 800): string {
-  if (!payload) return ''
-  if (payload.mimeType === 'text/plain' && payload.body?.data) {
-    return Buffer.from(payload.body.data, 'base64url').toString('utf-8').slice(0, limit)
+  if (!accountDoc.exists) throw new Error(`account_primary not found for uid: ${uid}`)
+
+  const data = accountDoc.data()!
+  const accessToken   = data.accessToken  as string | undefined
+  const refreshToken  = data.refreshToken as string | undefined
+  const tokenExpiresAt = data.tokenExpiresAt as Timestamp | undefined
+
+  if (!accessToken) throw new Error('No accessToken on account_primary')
+
+  // Check if token is still valid (with 60s buffer)
+  const expiresMs = tokenExpiresAt?.toMillis() ?? 0
+  if (Date.now() < expiresMs - 60_000) return accessToken
+
+  // Token expired or expiry unknown — attempt refresh
+  if (!refreshToken) {
+    // No refresh token — return current token and hope for the best;
+    // the Gmail call will 401 and be caught by the caller
+    console.warn(`[background-scan] No refreshToken for uid=${uid}, using potentially stale accessToken`)
+    return accessToken
   }
-  for (const part of payload.parts ?? []) {
-    const t = extractText(part, limit)
-    if (t) return t
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!tokenRes.ok) {
+    const err = await tokenRes.text()
+    throw new Error(`Token refresh failed: ${err}`)
+  }
+
+  const tokenData    = await tokenRes.json()
+  const newToken     = tokenData.access_token as string
+  const expiresIn    = (tokenData.expires_in as number) ?? 3600
+
+  // Persist the refreshed token
+  await accountRef.update({
+    accessToken:    newToken,
+    tokenUpdatedAt: Timestamp.now(),
+    tokenExpiresAt: Timestamp.fromMillis(Date.now() + expiresIn * 1000),
+  })
+
+  console.log(`[background-scan] Refreshed access token for uid=${uid}`)
+  return newToken
+}
+
+// ── Gmail helpers (using fetch — no googleapis package in keel) ────────────
+
+async function getChangedThreadIds(
+  accessToken: string,
+  lastHistoryId: string
+): Promise<string[]> {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/history')
+  url.searchParams.set('startHistoryId', lastHistoryId)
+  url.searchParams.set('historyTypes',   'messageAdded')
+  url.searchParams.set('labelId',        'INBOX')
+  url.searchParams.set('maxResults',     '100')
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (res.status === 404) {
+    // historyId too old — Gmail keeps ~7 days of history
+    console.warn('[background-scan] historyId expired — no threads returned')
+    return []
+  }
+  if (!res.ok) {
+    throw new Error(`Gmail history.list failed: ${res.status} ${await res.text()}`)
+  }
+
+  const data = await res.json()
+  const seen = new Set<string>()
+
+  for (const item of data.history ?? []) {
+    for (const added of item.messagesAdded ?? []) {
+      const threadId = added.message?.threadId
+      if (threadId) seen.add(threadId)
+    }
+  }
+
+  return Array.from(seen)
+}
+
+async function fetchThread(accessToken: string, threadId: string): Promise<any | null> {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  )
+  if (!res.ok) return null
+  return res.json()
+}
+
+function extractHeader(headers: { name: string; value: string }[], name: string): string {
+  return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
+}
+
+function decodeBody(message: any): string {
+  const parts = message.payload?.parts ?? [message.payload]
+  for (const part of parts) {
+    if (part?.mimeType === 'text/plain' && part?.body?.data) {
+      const text = Buffer.from(part.body.data, 'base64').toString('utf-8').slice(0, 2000)
+      if (text.trim().length > 20) return text
+    }
+  }
+  for (const part of parts) {
+    if (part?.mimeType === 'text/html' && part?.body?.data) {
+      const html = Buffer.from(part.body.data, 'base64').toString('utf-8')
+      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)
+    }
   }
   return ''
 }
 
-function buildThreadBody(messages: any[]): string {
-  return messages
-    .map((msg, i) => {
-      const limit = i >= messages.length - 2 ? 600 : 200
-      return extractText(msg.payload, limit)
-    })
-    .filter(Boolean)
-    .join('\n---\n')
+function buildThreadContext(thread: any): string {
+  const messages = thread?.messages ?? []
+  return messages.map((msg: any, i: number) => {
+    const headers = msg.payload?.headers ?? []
+    const from    = extractHeader(headers, 'from')
+    const date    = extractHeader(headers, 'date')
+    const isRecent = i >= messages.length - 3
+    const body    = decodeBody(msg).slice(0, isRecent ? 800 : 200)
+    return `[${date}] From: ${from}\n${body}`
+  }).filter(Boolean).join('\n---\n')
 }
 
 function parseFrom(from = '') {
@@ -82,118 +195,81 @@ function parseFrom(from = '') {
   return { senderName: m?.[1]?.trim() || from, senderEmail: m?.[2]?.trim() || from }
 }
 
-function getHeader(msg: any, name: string): string {
-  return (
-    (msg.payload?.headers ?? []).find((h: any) => h.name.toLowerCase() === name.toLowerCase())
-      ?.value ?? ''
-  )
-}
+// ── S1 Classification ──────────────────────────────────────────────────────
 
-/**
- * Query Gmail History API for threads with new messages since lastHistoryId.
- * Returns empty array if the historyId is too old (404) — handled gracefully.
- */
-async function getChangedThreadIds(
-  gmail: ReturnType<typeof google.gmail>,
-  lastHistoryId: string
-): Promise<string[]> {
-  try {
-    const res = await gmail.users.history.list({
-      userId: 'me',
-      startHistoryId: lastHistoryId,
-      historyTypes: ['messageAdded'],
-      labelId: 'INBOX',
-      maxResults: 100,
-    })
-
-    const items = res.data.history ?? []
-    const seen = new Set<string>()
-
-    for (const item of items) {
-      for (const added of item.messagesAdded ?? []) {
-        const threadId = added.message?.threadId
-        if (threadId) seen.add(threadId)
-      }
-    }
-
-    return Array.from(seen)
-  } catch (err: any) {
-    if (err?.code === 404 || err?.status === 404) {
-      // historyId too old — Gmail only keeps ~7 days of history
-      console.warn(`[background-scan] historyId expired — returning empty. Next manual scan will catch up.`)
-      return []
-    }
-    throw err
+async function runS1(
+  db: ReturnType<typeof getFirestore>,
+  params: {
+    subject: string
+    senderName: string
+    senderEmail: string
+    body: string
+    categories: { id: string; name: string; description: string }[]
+    hints: { categoryId: string; categoryName: string; senderEmail: string; aiTitle: string }[]
+    locale: string
   }
-}
+) {
+  const { subject, senderName, senderEmail, body, categories, hints, locale } = params
+  const isGB = locale.startsWith('en-GB') || locale.startsWith('en-AU')
 
-// ---------------------------------------------------------------------------
-// S1 Classification
-// ---------------------------------------------------------------------------
+  const categoryList = categories
+    .map(c => `- ${c.id} (${c.name})${c.description ? ': ' + c.description : ''}`)
+    .join('\n')
 
-/**
- * Run Stage 1 AI classification on one thread.
- * Uses aiComplete() which reads the active provider from Firestore (/config/aiProvider).
- * Background scans therefore use the same model as manual scans automatically.
- *
- * NOTE: Align this prompt with the one in /api/gmail/scan/route.ts when you
- * extract shared logic to scanUtils.ts.
- */
-async function runS1(params: {
-  subject: string
-  senderName: string
-  senderEmail: string
-  body: string
-  categoryContext: string
-  locale: string
-  categoryHints: string
-}) {
-  const { subject, senderName, senderEmail, body, categoryContext, locale, categoryHints } = params
-  const isGB = locale === 'en-GB'
+  const hintLines = hints.length > 0
+    ? hints.slice(0, 20).map(h =>
+        `  Sender "${h.senderEmail}" → category "${h.categoryName}" (example: "${h.aiTitle}")`
+      ).join('\n')
+    : ''
 
-  const prompt = `You are Keel, an AI email organiser. Classify this email thread and extract all signals.
+  const prompt = `You are Keel, an AI email organiser. Classify this Gmail thread.
 
-THREAD
-From: ${senderName} <${senderEmail}>
-Subject: ${subject}
+FROM: ${senderName} <${senderEmail}>
+SUBJECT: ${subject}
 
+THREAD CONTENT:
 ${body}
 
-AVAILABLE CATEGORIES
-${categoryContext}
+CATEGORIES:
+${categoryList}
 
-${categoryHints ? `USER CORRECTIONS (follow these)\n${categoryHints}\n` : ''}
+${hintLines ? `USER CORRECTIONS — follow these:\n${hintLines}\n` : ''}
 
-Respond ONLY in JSON (no markdown fences):
+Reply ONLY with valid JSON (no markdown fences):
 {
-  "categoryId": "<id from list, or \\"other\\">",
+  "categoryId": "<exact id from list above, or \\"cat_other\\">",
   "status": "new|awaiting_action|awaiting_reply|quietly_logged",
-  "aiTitle": "<concise title max 8 words${isGB ? ', British English' : ''}>",
-  "aiSummary": "<one sentence>",
-  "aiDetailedSummary": "<2–4 bullet points starting with •>",
-  "aiImportanceScore": <0.0–1.0>,
+  "aiTitle": "<concise title, max 8 words${isGB ? ', British English' : ''}>",
+  "aiSummary": "<one sentence summary>",
+  "aiDetailedSummary": "<2-4 bullet points starting with •>",
+  "aiImportanceScore": <0.0 to 1.0>,
   "isRecurring": <true|false>,
   "signals": [
-    { "type": "event|payment|rsvp|action|info|awaiting_reply", "date": "<ISO date or null>", "amount": <number or null>, "description": "<short>" }
+    { "type": "event|payment|rsvp|action|info|awaiting_reply", "date": "<ISO or null>", "amount": <number or null>, "description": "<short label>" }
   ]
 }`
 
-  const result = await aiComplete({ prompt, maxTokens: 700 })
+  // aiComplete signature: (db, prompt, maxTokens) → { text, inputTokens, outputTokens, model, costUsd }
+  const result = await aiComplete(db, prompt, 700)
 
   let parsed: Record<string, any> = {}
   try {
     const clean = result.text.replace(/^```json\n?|```$/gm, '').trim()
     parsed = JSON.parse(clean)
   } catch {
-    console.error('[background-scan] S1 parse error. Raw:', result.text.slice(0, 300))
+    console.error('[background-scan] S1 JSON parse error. Raw:', result.text.slice(0, 200))
   }
 
-  return { ...parsed, usage: result.usage }
+  return {
+    ...parsed,
+    inputTokens:  result.inputTokens,
+    outputTokens: result.outputTokens,
+    costUsd:      result.costUsd,
+    model:        result.model,
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
+// ── Route handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   if (!isAuthorised(req)) {
@@ -210,166 +286,184 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing uid or newHistoryId' }, { status: 400 })
     }
 
-    let fbReads = 0
+    const db = getAdminDb()
+    let fbReads  = 0
     let fbWrites = 0
 
-    // ── Fetch account + hints ──────────────────────────────────────────────
-    const [accountDoc, hintsSnap] = await Promise.all([
-      adminDb.doc(`users/${uid}`).get(),
-      adminDb.collection(`users/${uid}/categoryHints`).limit(50).get(),
+    // ── Load user data ─────────────────────────────────────────────────────
+    const [rootDoc, catsSnap, hintsSnap] = await Promise.all([
+      db.doc(`users/${uid}`).get(),
+      db.collection(`users/${uid}/categories`).where('archived', '==', false).get(),
+      db.collection(`users/${uid}/categoryHints`).limit(50).get(),
     ])
-    fbReads += 1 + hintsSnap.size
+    fbReads += 1 + catsSnap.size + hintsSnap.size
 
-    if (!accountDoc.exists) {
+    if (!rootDoc.exists) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const account = accountDoc.data()!
+    const rootData = rootDoc.data()!
 
-    // Guard: feature may have been disabled during the debounce window
-    if (!account.autoScanEnabled) {
+    // Guard: user may have disabled the feature during debounce window
+    if (!rootData.autoScanEnabled) {
       return NextResponse.json({ skipped: true, reason: 'autoScanEnabled is false' })
     }
 
-    // ── OAuth tokens ───────────────────────────────────────────────────────
-    // Adjust field names to match your actual Firestore schema.
-    // Common patterns: googleAccessToken / googleRefreshToken on account doc,
-    // or accessToken / refreshToken in users/{uid}/tokens/gmail subcollection.
-    const accessToken = account.googleAccessToken ?? account.accessToken
-    const refreshToken = account.googleRefreshToken ?? account.refreshToken
-
-    if (!accessToken || !refreshToken) {
-      return NextResponse.json({ error: 'OAuth tokens not found on account doc' }, { status: 400 })
-    }
-
-    const gmail = buildGmailClient(accessToken, refreshToken)
-
-    // ── Advance cursor (always, even on empty results) ─────────────────────
-    // We update watchHistoryId to newHistoryId regardless of what we find.
-    // If historyId is stale (404 from History API), we still advance so the
-    // next notification has a fresh baseline.
-    const lastHistoryId = account.watchHistoryId
-    await adminDb.doc(`users/${uid}`).update({
-      watchHistoryId: newHistoryId,
-      lastBackgroundScanAt: admin.firestore.FieldValue.serverTimestamp(),
+    // ── Always advance historyId cursor ────────────────────────────────────
+    // Do this before any Gmail calls so the next notification has a fresh baseline
+    // even if this call errors or returns empty.
+    const lastHistoryId = rootData.watchHistoryId as string | undefined
+    await db.doc(`users/${uid}`).update({
+      watchHistoryId:        newHistoryId,
+      lastBackgroundScanAt:  FieldValue.serverTimestamp(),
     })
     fbWrites++
 
     if (!lastHistoryId) {
-      // First notification — no baseline cursor yet. Cursor now seeded.
+      // First notification — cursor now seeded for next time
       return NextResponse.json({ skipped: true, reason: 'Baseline historyId seeded' })
     }
 
-    // ── Get changed threads ────────────────────────────────────────────────
-    const allChangedIds = await getChangedThreadIds(gmail, lastHistoryId)
+    // ── Get valid access token (refreshes if expired) ──────────────────────
+    let accessToken: string
+    try {
+      accessToken = await getValidAccessToken(db, uid)
+      fbReads++   // getValidAccessToken reads account_primary
+    } catch (err: any) {
+      console.error(`[background-scan] Token error for uid=${uid}:`, err.message)
+      return NextResponse.json({ error: 'OAuth token unavailable' }, { status: 400 })
+    }
+
+    // ── Discover changed threads ───────────────────────────────────────────
+    const allChangedIds = await getChangedThreadIds(accessToken, lastHistoryId)
     if (allChangedIds.length === 0) {
       return NextResponse.json({ success: true, newItems: 0, updatedItems: 0, skippedItems: 0 })
     }
 
     const threadIds = allChangedIds.slice(0, MAX_THREADS)
 
-    // ── Category context ───────────────────────────────────────────────────
-    const categoryIds: string[] = account.categoryIds ?? []
-    const categoryDescriptions: Record<string, string> = account.categoryDescriptions ?? {}
-    const categoryContext = categoryIds
-      .map(id => `${id}: ${categoryDescriptions[id] || '(built-in)'}`)
-      .join('\n')
+    // ── Build category + hints context ─────────────────────────────────────
+    const categories = catsSnap.docs.map(d => ({
+      id:          d.id,
+      name:        d.data().name        as string,
+      description: d.data().description as string || '',
+    }))
 
-    const categoryHints = hintsSnap.docs.map(d => `- ${d.data().hint}`).join('\n')
+    const hints = hintsSnap.docs.map(d => d.data() as {
+      categoryId: string; categoryName: string;
+      senderEmail: string; senderName: string; subjectClue: string; aiTitle: string;
+    })
 
-    // ── Check existing Firestore items for these threads ───────────────────
-    const existingSnap = await adminDb
+    const locale = rootData.locale ?? 'en-GB'
+
+    // ── Check for existing items with these threadIds ──────────────────────
+    const existingSnap = await db
       .collection(`users/${uid}/items`)
       .where('threadId', 'in', threadIds)
+      .select('threadId', 'updatedAt', 'lastMessageInternalDate', 'manualPriority', 'manualCategory')
       .get()
     fbReads += existingSnap.size
 
-    const existingByThreadId = new Map<string, { docId: string; updatedAt: any }>()
-    for (const doc of existingSnap.docs) {
-      const d = doc.data()
-      existingByThreadId.set(d.threadId, { docId: doc.id, updatedAt: d.updatedAt })
-    }
+    const threadToItemId   = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.id]))
+    const threadToUpdatedAt = new Map(existingSnap.docs.map(d => {
+      const gmailTs = d.data().lastMessageInternalDate
+      const keelTs  = d.data().updatedAt
+      return [d.data().threadId as string, gmailTs ?? keelTs?.toMillis?.() ?? 0]
+    }))
+    const threadManualPrio     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualPriority as boolean]))
+    const threadManualCategory = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualCategory as boolean]))
 
     // ── Process threads ────────────────────────────────────────────────────
-    let newItems = 0
-    let updatedItems = 0
-    let skippedItems = 0
-    let totalInputTokens = 0
+    let newItems          = 0
+    let updatedItems      = 0
+    let skippedItems      = 0
+    let totalInputTokens  = 0
     let totalOutputTokens = 0
-    let totalAiCost = 0
+    let totalAiCost       = 0
 
     for (const threadId of threadIds) {
       try {
-        const threadRes = await gmail.users.threads.get({
-          userId: 'me',
-          id: threadId,
-          format: 'full',
-        })
+        const thread = await fetchThread(accessToken, threadId)
+        if (!thread) { skippedItems++; continue }
 
-        const thread = threadRes.data
         const messages = thread.messages ?? []
         if (messages.length === 0) { skippedItems++; continue }
 
-        const latest = messages[messages.length - 1]
-        const internalDate = parseInt(latest.internalDate ?? '0', 10)
+        const latest         = messages[messages.length - 1]
+        const internalDate   = parseInt(latest.internalDate ?? '0', 10)
+        const storedDate     = threadToUpdatedAt.get(threadId) ?? 0
+        const existingItemId = threadToItemId.get(threadId)
 
-        // Skip if this thread hasn't changed since we last processed it
-        const existing = existingByThreadId.get(threadId)
-        if (existing?.updatedAt) {
-          const storedMs = existing.updatedAt.toMillis?.() ?? (existing.updatedAt * 1000)
-          if (storedMs >= internalDate) { skippedItems++; continue }
-        }
+        // Skip if unchanged since we last processed it
+        if (existingItemId && storedDate >= internalDate) { skippedItems++; continue }
 
         const first = messages[0]
-        const subject = getHeader(first, 'subject') || '(no subject)'
-        const { senderName, senderEmail } = parseFrom(getHeader(first, 'from'))
+        const headers    = first.payload?.headers ?? []
+        const subject    = extractHeader(headers, 'subject') || '(no subject)'
+        const from       = extractHeader(headers, 'from')
+        const { senderName, senderEmail } = parseFrom(from)
         const receivedAt = parseInt(first.internalDate ?? '0', 10)
-        const threadBody = buildThreadBody(messages)
+        const threadBody = buildThreadContext(thread)
 
-        const s1 = await runS1({
-          subject,
-          senderName,
-          senderEmail,
+        // Skip re-classification if user manually assigned a category
+        const hasManualCategory = threadManualCategory.get(threadId) ?? false
+
+        const s1 = await runS1(db, {
+          subject, senderName, senderEmail,
           body: threadBody,
-          categoryContext,
-          locale: account.locale ?? 'en-GB',
-          categoryHints,
+          categories,
+          hints,
+          locale,
         })
 
-        totalInputTokens += s1.usage?.inputTokens ?? 0
-        totalOutputTokens += s1.usage?.outputTokens ?? 0
-        totalAiCost += s1.usage?.costUsd ?? 0
+        totalInputTokens  += s1.inputTokens  ?? 0
+        totalOutputTokens += s1.outputTokens ?? 0
+        totalAiCost       += s1.costUsd      ?? 0
 
-        const itemData = {
+        const itemData: Record<string, any> = {
           threadId,
-          accountId: uid,
+          accountId:    'account_primary',
           senderName,
           senderEmail,
           subject,
-          receivedAt: admin.firestore.Timestamp.fromMillis(receivedAt),
-          categoryId: s1.categoryId ?? 'other',
-          status: s1.status ?? 'new',
-          aiTitle: s1.aiTitle ?? subject,
-          aiSummary: s1.aiSummary ?? '',
-          aiDetailedSummary: typeof s1.aiDetailedSummary === 'string' ? s1.aiDetailedSummary : '',
-          aiImportanceScore: s1.aiImportanceScore ?? 0.5,
-          signals: Array.isArray(s1.signals) ? s1.signals : [],
-          isRecurring: s1.isRecurring ?? false,
-          updatedAt: admin.firestore.Timestamp.fromMillis(internalDate),
-          lastProcessedBy: 'background',
+          receivedAt:              Timestamp.fromMillis(receivedAt),
+          status:                  s1.status            ?? 'new',
+          aiTitle:                 s1.aiTitle           ?? subject,
+          aiSummary:               s1.aiSummary         ?? '',
+          aiDetailedSummary:       typeof s1.aiDetailedSummary === 'string' ? s1.aiDetailedSummary : '',
+          aiImportanceScore:       s1.aiImportanceScore ?? 0.5,
+          signals:                 Array.isArray(s1.signals) ? s1.signals : [],
+          isRecurring:             s1.isRecurring        ?? false,
+          updatedAt:               Timestamp.fromMillis(internalDate),
+          lastMessageInternalDate: internalDate,
+          lastProcessedBy:         'background',
         }
 
-        if (existing) {
-          await adminDb.doc(`users/${uid}/items/${existing.docId}`).update(itemData)
+        // Only update categoryId if the user hasn't manually set one
+        if (!hasManualCategory) {
+          itemData.categoryId = s1.categoryId ?? 'cat_other'
+        }
+
+        // Preserve manual priority override
+        if (threadManualPrio.get(threadId)) {
+          delete itemData.aiImportanceScore
+        }
+
+        if (existingItemId) {
+          await db.doc(`users/${uid}/items/${existingItemId}`).update(itemData)
           updatedItems++
         } else {
-          await adminDb.collection(`users/${uid}/items`).add({
+          const itemId = `${threadId}_${uid}`
+          await db.doc(`users/${uid}/items/${itemId}`).set({
             ...itemData,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            itemId,
+            messageId:  latest.id ?? '',
+            createdAt:  FieldValue.serverTimestamp(),
           })
           newItems++
         }
         fbWrites++
+
       } catch (threadErr) {
         console.error(`[background-scan] thread ${threadId} failed:`, threadErr)
         skippedItems++
@@ -377,43 +471,41 @@ export async function POST(req: NextRequest) {
     }
 
     const durationMs = Date.now() - startTime
-    const fbCost = fbReads * FB_READ_COST + fbWrites * FB_WRITE_COST
-    const totalCost = totalAiCost + fbCost
+    const fbCost     = fbReads * FB_READ_COST + fbWrites * FB_WRITE_COST
+    const totalCost  = totalAiCost + fbCost
 
     // ── Write scanRun doc ──────────────────────────────────────────────────
-    await adminDb.collection(`users/${uid}/scanRuns`).add({
-      scanAt: admin.firestore.FieldValue.serverTimestamp(),
-      job: 'background',
-      daysBack: 0,
-      threadsFound: allChangedIds.length,
+    await db.collection(`users/${uid}/scanRuns`).add({
+      scanAt:           FieldValue.serverTimestamp(),
+      job:              'background',
+      daysBack:         0,
+      threadsFound:     allChangedIds.length,
       threadsProcessed: newItems + updatedItems,
       newItems,
       updatedItems,
-      skipped: skippedItems,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      aiCostUsd: totalAiCost,
+      skipped:          skippedItems,
+      inputTokens:      totalInputTokens,
+      outputTokens:     totalOutputTokens,
+      aiCostUsd:        totalAiCost,
       fbReads,
       fbWrites,
-      fbCostUsd: fbCost,
-      totalCostUsd: totalCost,
-      model: account.aiProvider ?? 'gemini-2.5-flash',
-      provider: account.aiProvider ?? 'gemini',
+      fbCostUsd:        fbCost,
+      totalCostUsd:     totalCost,
+      model:            'gemini-2.5-flash',
+      provider:         'gemini-flash',
       durationMs,
     })
+    fbWrites++
 
     // ── Update meta/usage ─────────────────────────────────────────────────
-    await adminDb.doc('meta/usage').set(
-      {
-        backgroundScanRuns: admin.firestore.FieldValue.increment(1),
-        backgroundScanCostUsd: admin.firestore.FieldValue.increment(totalAiCost),
-        backgroundScanInputTokens: admin.firestore.FieldValue.increment(totalInputTokens),
-        backgroundScanOutputTokens: admin.firestore.FieldValue.increment(totalOutputTokens),
-        backgroundScanNewItems: admin.firestore.FieldValue.increment(newItems),
-        backgroundScanUpdatedItems: admin.firestore.FieldValue.increment(updatedItems),
-      },
-      { merge: true }
-    )
+    await db.doc('meta/usage').set({
+      backgroundScanRuns:          FieldValue.increment(1),
+      backgroundScanCostUsd:       FieldValue.increment(totalAiCost),
+      backgroundScanInputTokens:   FieldValue.increment(totalInputTokens),
+      backgroundScanOutputTokens:  FieldValue.increment(totalOutputTokens),
+      backgroundScanNewItems:      FieldValue.increment(newItems),
+      backgroundScanUpdatedItems:  FieldValue.increment(updatedItems),
+    }, { merge: true })
 
     console.log(
       `[background-scan] uid=${uid} new=${newItems} updated=${updatedItems} ` +
@@ -425,10 +517,11 @@ export async function POST(req: NextRequest) {
       newItems,
       updatedItems,
       skippedItems,
-      aiCostUsd: totalAiCost,
+      aiCostUsd:    totalAiCost,
       totalCostUsd: totalCost,
       durationMs,
     })
+
   } catch (err: any) {
     console.error('[background-scan] fatal error:', err)
     return NextResponse.json({ error: err.message ?? 'Internal error' }, { status: 500 })
