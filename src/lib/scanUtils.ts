@@ -163,6 +163,17 @@ RECEIPT vs INVOICE — critical distinction:
 - Receipt clues: "receipt", "thank you for your payment", "payment received", "you paid", "paid to", "has been paid", "final invoice paid", past tense payment, confirmation number
 - Invoice clues: "invoice", "bill", "amount due", "payment due", "please pay", future tense, bank details or payment link provided (implying user needs to pay manually)
 
+CONDITIONAL/OPTIONAL PAYMENTS — important distinction:
+- If payment is only due IF the user decides to participate/sign up/attend (e.g. "if you'd like to book", "if you wish to attend", "optional extra", "should you choose to"), treat as status="new", aiImportanceScore=0.50-0.65. Do NOT use "awaiting_action" — no action is required unless they choose to proceed.
+- The payment signal should still be created so the amount is visible, but the description must make clear it's conditional: e.g. "Sports camp fee if attending — £37/day"
+- Conditional payment clues: "if you wish", "if you would like", "should you decide", "optional", "only if", "to register", "to book", prices listed as information rather than demands
+
+PAYMENT AMOUNTS — when multiple amounts appear:
+- Capture the PRIMARY cost as the main payment signal (the largest or most essential amount)
+- Optional add-ons or secondary charges should be separate payment signals with descriptions making clear they are optional
+- Example: main camp £37/day = primary signal; early drop-off £10/day = secondary signal described as "Optional early drop-off add-on — £10/day"
+- NEVER let an optional add-on amount overshadow or replace the primary cost
+
 RESOLVED THREADS: If fully closed with zero further action (e.g. "now resolved", "has been fixed", "all sorted", "issue closed", "no further action") — set status="quietly_logged", aiImportanceScore=0.10. When in doubt, lean toward quietly_logged.
 
 TRANSIENT SAME-DAY ITEMS: Calendar reminders, delivery dispatch/out-for-delivery notifications, event day-of reminders, shipping alerts, and any purely informational notification about something happening today with no action required — set status="quietly_logged", aiImportanceScore=0.10-0.15. These are heads-up notifications, not actionable items. Exception: if the delivery has failed or requires a response (e.g. rebook, collect from depot), treat as awaiting_action.
