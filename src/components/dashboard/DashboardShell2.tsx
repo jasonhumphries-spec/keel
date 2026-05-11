@@ -33,6 +33,7 @@ function filterByBand(
       ...d,
       items: d.items.filter(i => {
         if (resolvedItems.has(i.itemId)) return false
+        if (i.status === 'snoozed') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
         return l >= minLevel && l <= maxLevel
       }),
@@ -53,6 +54,7 @@ function calSignalsForBand(
     categoryData
       .flatMap(d => d.items)
       .filter(i => {
+        if (i.status === 'snoozed') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
         return l >= minLevel && l <= maxLevel
       })

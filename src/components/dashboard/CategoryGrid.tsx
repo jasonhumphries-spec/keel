@@ -371,7 +371,30 @@ export function CategoryCard({
   uid:           string
 }) {
   const { category, items: liveItems } = data
-  const [hovered, setHovered] = useState<string | null>(null)
+  const [hovered,    setHovered]    = useState<string | null>(null)
+  const [snoozingId, setSnoozingId] = useState<string | null>(null)
+
+  async function handleSnooze(item: KeelItem, days: number) {
+    const wake = new Date()
+    wake.setDate(wake.getDate() + days)
+    setSnoozingId(null)
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status:            'snoozed',
+      snoozedUntil:      Timestamp.fromDate(wake),
+      preSnoozePriority: item.aiImportanceScore,
+      updatedAt:         Timestamp.now(),
+    })
+  }
+
+  async function handleUnsnooze(item: KeelItem) {
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status:            'new',
+      snoozedUntil:      null,
+      preSnoozePriority: null,
+      aiImportanceScore: (item as any).preSnoozePriority ?? item.aiImportanceScore,
+      updatedAt:         Timestamp.now(),
+    })
+  }
   const iconPath = ICON_PATHS[category.icon] ?? ICON_PATHS.tag
 
   const resolvedForCategory = Array.from(resolvedItems.values())
@@ -379,8 +402,11 @@ export function CategoryCard({
   const liveIds      = new Set(liveItems.map(i => i.itemId))
   const resolvedOnly = resolvedForCategory.filter(i => !liveIds.has(i.itemId))
 
-  // Sort: urgent first, then by detected deadline date, then by recency
+  // Sort: urgent first, then by score, then by recency. Snoozed always last.
   const sortedItems = [...liveItems].sort((a, b) => {
+    const aSnoozed = a.status === 'snoozed'
+    const bSnoozed = b.status === 'snoozed'
+    if (aSnoozed !== bSnoozed) return aSnoozed ? 1 : -1
     const scoreA = a.aiImportanceScore ?? 0
     const scoreB = b.aiImportanceScore ?? 0
     const urgencyA = scoreA >= 0.80 ? 0 : a.status === 'awaiting_action' ? 1 : 2
@@ -390,7 +416,8 @@ export function CategoryCard({
     return b.receivedAt.getTime() - a.receivedAt.getTime()
   })
   const allItems    = [...sortedItems, ...resolvedOnly]
-  const activeCount = liveItems.length
+  // Active count excludes snoozed — they're present but not demanding attention
+  const activeCount = liveItems.filter(i => i.status !== 'snoozed').length
   const isQuiet     = allItems.length === 0
 
   return (
@@ -439,6 +466,45 @@ export function CategoryCard({
               (item.aiSummary || '').toLowerCase().includes('receipt for') ||
               (item.aiSummary || '').toLowerCase().includes('paid to') && item.aiImportanceScore <= 0.35
             const hasPayment  = !!paymentSig && (!!paymentAmount || !!paymentDue)
+
+            // ── Collapsed snoozed rendering ─────────────────────────────
+            if (item.status === 'snoozed') {
+              const wake = (item as any).snoozedUntil
+              const wakeStr = wake
+                ? (wake instanceof Date ? wake : wake.toDate?.())
+                    ?.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                : null
+              return (
+                <div key={item.itemId}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 7px 10px',
+                    borderLeft: '3px solid #9CA3AF', opacity: 0.55,
+                    background: 'transparent', borderRadius: 'var(--radius-md)' }}>
+                  {/* Moon icon */}
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                  <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.aiTitle || item.senderName}
+                  </span>
+                  {wakeStr && (
+                    <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10,
+                      color: 'var(--color-text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      until {wakeStr}
+                    </span>
+                  )}
+                  <button
+                    onClick={e => { e.stopPropagation(); handleUnsnooze(item) }}
+                    style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 6px',
+                      borderRadius: 4, border: '1px solid var(--color-border-strong)',
+                      background: 'var(--color-surface)', color: 'var(--color-text-muted)',
+                      cursor: 'pointer', flexShrink: 0 }}>
+                    Wake
+                  </button>
+                </div>
+              )
+            }
 
             return (
               <div
@@ -549,6 +615,51 @@ export function CategoryCard({
                     <Tag label={display.tag} style={display.tagStyle} />
                   )}
                   {!isResolved && <PriorityDot item={item} />}
+                  {/* Snooze button — clock icon, expands to duration picker */}
+                  {!isResolved && (
+                    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+                      {snoozingId === item.itemId ? (
+                        // Duration picker — inline, no floating popover
+                        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                          {[{label:'1d',days:1},{label:'3d',days:3},{label:'7d',days:7}].map(opt => (
+                            <button key={opt.days}
+                              onClick={() => handleSnooze(item, opt.days)}
+                              style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9,
+                                padding: '2px 5px', borderRadius: 3,
+                                border: '1px solid var(--color-accent)',
+                                background: 'var(--color-accent-sub)',
+                                color: 'var(--color-accent)', cursor: 'pointer', fontWeight: 600 }}>
+                              {opt.label}
+                            </button>
+                          ))}
+                          <button onClick={() => setSnoozingId(null)}
+                            style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9,
+                              padding: '2px 4px', borderRadius: 3,
+                              border: '1px solid var(--color-border)',
+                              background: 'transparent', color: 'var(--color-text-muted)',
+                              cursor: 'pointer' }}>
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        // Clock icon — only visible on hover
+                        hovered === item.itemId && (
+                          <button
+                            onClick={() => setSnoozingId(item.itemId)}
+                            title="Snooze"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer',
+                              padding: 2, color: 'var(--color-text-muted)', display: 'flex',
+                              alignItems: 'center', opacity: 0.6 }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10"/>
+                              <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )

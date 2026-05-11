@@ -427,7 +427,31 @@ export const nightlyItemExpiry = onSchedule(
           logger.info(`nightlyItemExpiry: uid=${uid} re-scored ${rescored} items by proximity`)
         }
 
-        // ── Step 2: expire items whose event date has passed ─────────────────
+        // ── Step 2: wake snoozed items whose snooze has expired ─────────────────
+        const snoozedSnap = await db
+          .collection(`users/${uid}/items`)
+          .where('status', '==', 'snoozed')
+          .where('snoozedUntil', '<=', admin.firestore.Timestamp.fromDate(new Date()))
+          .get()
+
+        if (!snoozedSnap.empty) {
+          const wakeBatch = db.batch()
+          for (const doc of snoozedSnap.docs) {
+            const d = doc.data()
+            wakeBatch.update(doc.ref, {
+              status:            'new',
+              snoozedUntil:      null,
+              preSnoozePriority: null,
+              // Restore pre-snooze importance score so proximity rescore can act on it
+              aiImportanceScore: d.preSnoozePriority ?? d.aiImportanceScore ?? 0.5,
+              updatedAt:         admin.firestore.FieldValue.serverTimestamp(),
+            })
+          }
+          await wakeBatch.commit()
+          logger.info(`nightlyItemExpiry: uid=${uid} woke ${snoozedSnap.size} snoozed item(s)`)
+        }
+
+        // ── Step 3: expire items whose event date has passed ─────────────────
         // Fetch active items that could be candidates for expiry
         const itemsSnap = await db
           .collection(`users/${uid}/items`)
