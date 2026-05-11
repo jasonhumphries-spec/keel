@@ -34,6 +34,7 @@ interface AuthContextType {
   accessToken:  string | null
   scanProgress: ScanProgress
   lastScanned:  Date | null
+  needsReauth:  boolean
   signIn:       () => Promise<void>
   signOut:      () => Promise<void>
   triggerScan:  (job?: 'onboarding' | 'manual' | 'auto') => Promise<void>
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken,  setAccessToken]  = useState<string | null>(null)
   const [scanProgress, setScanProgress] = useState<ScanProgress>(IDLE)
   const [lastScanned,  setLastScanned]  = useState<Date | null>(null)
+  const [needsReauth,  setNeedsReauth]  = useState(false)
 
   useEffect(() => {
     // Check for redirect result first (fires after Google redirects back)
@@ -268,7 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, signIn, signOut, triggerScan }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, needsReauth, signIn, signOut, triggerScan }}>
       {children}
     </AuthContext.Provider>
   )
