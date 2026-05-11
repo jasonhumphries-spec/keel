@@ -14,6 +14,9 @@ import { CategoriseModal }   from './CategoriseModal'
 import { BottomNav }         from './BottomNav'
 import { DevTools }          from '../dev/DevTools'
 import { CategoryCard, scoreToLevel, getPriorityColour } from './CategoryGrid'
+import { SessionBanner }          from '@/components/layout/SessionBanner'
+import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
+import { CategoryFilterProvider, useCategoryFilter } from '@/contexts/CategoryFilterContext'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 
 // ─── Priority band helpers ────────────────────────────────────────────────────
@@ -687,6 +690,10 @@ export function DashboardShell2() {
   const { categoryData, loading } = useDashboardData()
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
+  const { isVisible: isCatVisible } = useCategoryFilter()
+
+  // Apply sidebar category filter
+  const filteredCategoryData = categoryData.filter(d => isCatVisible(d.category.categoryId))
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -715,12 +722,12 @@ export function DashboardShell2() {
   }, [user])
 
   // ── Priority bands ──────────────────────────────────────────────────────────
-  const urgentData  = filterByBand(categoryData, 4, 4, resolvedItems)
-  const highData    = filterByBand(categoryData, 3, 3, resolvedItems)
-  const fyiData     = filterByBand(categoryData, 1, 2, resolvedItems)
+  const urgentData  = filterByBand(filteredCategoryData, 4, 4, resolvedItems)
+  const highData    = filterByBand(filteredCategoryData, 3, 3, resolvedItems)
+  const fyiData     = filterByBand(filteredCategoryData, 1, 2, resolvedItems)
 
   // Awaiting replies — items where user sent last message with open question
-  const awaitingData: CategoryWithItems[] = categoryData
+  const awaitingData: CategoryWithItems[] = filteredCategoryData
     .map(d => ({
       ...d,
       items: d.items.filter(i =>
@@ -812,7 +819,10 @@ export function DashboardShell2() {
   // ── Mobile ─────────────────────────────────────────────────────────────────
   if (isMobile) {
     return (
+      <CategoryFilterProvider>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
+        <SessionBanner />
+        <BackgroundScanToast />
         <div style={{ background: 'var(--color-topbar-bg)', borderBottom: '1px solid var(--color-border)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>{greeting()}, {firstName}</div>
@@ -843,12 +853,16 @@ export function DashboardShell2() {
         {commonPanels}
         {scanOverlay}
       </div>
+      </CategoryFilterProvider>
     )
   }
 
   // ── Desktop / Tablet ─────────────────────────────────────────────────────────
   return (
+    <CategoryFilterProvider>
     <div style={{ display: 'flex', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
+      <SessionBanner />
+      <BackgroundScanToast />
       {/* Sidebar */}
       {isTablet ? (
         <>
@@ -1048,5 +1062,6 @@ export function DashboardShell2() {
       {commonPanels}
       {scanOverlay}
     </div>
+    </CategoryFilterProvider>
   )
 }
