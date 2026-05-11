@@ -259,8 +259,7 @@ export function CalendarColumn({
   // ── Step 2: cross-item dedup — collapse signals from different emails about
   // the same real-world event (e.g. booking confirmation + reminder email).
   // If two signals share a date and their items' aiTitles share 2+ significant
-  // words, they
-e likely the same event — keep the higher-importance one.
+  // words, they are likely the same event — keep the higher-importance one.
   function sigWords(s: string): string[] {
     const STOP = new Set(['the','and','for','with','from','your','their','this','that','have','will'])
     return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
