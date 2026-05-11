@@ -3,7 +3,6 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
-import { decodeBody, buildThreadContext } from '@/lib/scanUtils'
 
 function getAdminDb() {
   if (!getApps().length) {
@@ -69,7 +68,28 @@ function extractHeader(headers: { name: string; value: string }[], name: string)
   return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
 }
 
-// decodeBody and buildThreadContext imported from @/lib/scanUtils
+function decodeBody(message: any): string {
+  const parts = message.payload?.parts ?? [message.payload]
+  const decode = (p: any): string => {
+    if (!p) return ''
+    if (p.parts) return p.parts.map(decode).join('\n')
+    const data = p.body?.data ?? ''
+    try { return atob(data.replace(/-/g, '+').replace(/_/g, '/')) } catch { return '' }
+  }
+  return parts.map(decode).join('\n').replace(/\r\n/g, '\n').trim()
+}
+
+function buildThreadContext(thread: any): string {
+  const msgs = thread.messages ?? []
+  return msgs.map((msg: any, i: number) => {
+    const headers  = msg.payload?.headers ?? []
+    const from     = extractHeader(headers, 'from')
+    const date     = extractHeader(headers, 'date')
+    const maxLen   = i < msgs.length - 3 ? 200 : 600
+    const body     = decodeBody(msg).slice(0, maxLen)
+    return `[${date}] FROM: ${from}\n${body}`
+  }).join('\n\n---\n\n')
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -149,10 +169,12 @@ Rules:
   • CURRENT STATE: Final agreed outcome with concrete details — dates, times, names.
   • NEXT STEP: Who specifically needs to do what next? Identify by name. If the last outbound message asks a question, the next step is waiting for the other party's reply. Omit if nothing needed.
 - NAMES: Never use "the user", "you", or "the account owner". Use real first names.
+- STATUS: Use "quietly_logged" ONLY if the matter is 100% resolved with zero further relevance. If there is a date, an event, a payment, or any information worth knowing — use "new" not "quietly_logged". When in doubt, use "new".
 - SIGNALS — strict quality rules:
-  • event: ONLY for confirmed, agreed, upcoming appointments. NOT for declined dates, obstacle dates, or scheduling context.
+  • event: For confirmed upcoming appointments or events — INCLUDING informational school/activity notices where a date and time are given, even if no action is required. Create event signals for school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date.
   • awaiting: ONLY for genuinely open questions in the most recent outbound message. Not for already-confirmed matters.
-  • deadline/payment/rsvp: Only when genuinely present and unresolved.`
+  • deadline/payment/rsvp: Only when genuinely present and unresolved.
+- IMPORTANCE: Upcoming events within 7 days score 0.65-0.75 even if informational. Do not score informational school/activity notices below 0.5 if they describe something happening soon.`
 
     const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
     const json = text.match(/\{[\s\S]*\}/)?.[0]
@@ -163,12 +185,23 @@ Rules:
     const now = Timestamp.now()
 
     // Build update — always update content fields, preserve category if manually set
+    const wasActive = item.status !== 'quietly_logged'
+
+    // Guard: never let reanalyse silently move an active item to quietly_logged.
+    // Only the user can explicitly ignore an item. The AI may classify something as
+    // "no action needed" (quietly_logged) but if the user has been seeing this item
+    // as active, preserve its current status rather than hiding it.
+    // Exception: if the item was already quietly_logged, allow the AI to keep it there.
+    const resolvedStatus = (parsed.status === 'quietly_logged' && wasActive)
+      ? item.status   // keep the existing active status
+      : (parsed.status ?? item.status)
+
     const update: Record<string, any> = {
       aiTitle:           parsed.aiTitle ?? item.aiTitle,
       aiSummary:         parsed.aiSummary ?? item.aiSummary,
       aiDetailedSummary: parsed.aiDetailedSummary ?? item.aiDetailedSummary,
       aiImportanceScore: parsed.aiImportanceScore ?? item.aiImportanceScore,
-      status:            parsed.status ?? item.status,
+      status:            resolvedStatus,
       updatedAt:         now,
     }
 
