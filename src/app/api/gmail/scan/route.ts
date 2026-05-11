@@ -369,7 +369,7 @@ export async function POST(req: NextRequest) {
         const senderName  = senderMatch?.[1]?.trim().replace(/^"(.*)"$/, '$1') ?? from.split('@')[0]
         const senderEmail = senderMatch?.[2] ?? from
 
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK)
+        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
         // isOutbound: true when the user sent the first message in the thread
         // 'from' here is from the first/representative message in the active window,

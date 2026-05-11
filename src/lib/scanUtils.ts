@@ -77,13 +77,14 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * @param isUK       Whether to use British English in AI output
  */
 export async function classifyThread(
-  db:         ReturnType<typeof getFirestore>,
-  subject:    string,
-  from:       string,
-  threadBody: string,
-  categories: { id: string; name: string; description: string }[],
-  hints:      { categoryId: string; categoryName: string; senderEmail: string; senderName: string; subjectClue: string }[],
-  isUK:       boolean = true
+  db:          ReturnType<typeof getFirestore>,
+  subject:     string,
+  from:        string,
+  threadBody:  string,
+  categories:  { id: string; name: string; description: string }[],
+  hints:       { categoryId: string; categoryName: string; senderEmail: string; senderName: string; subjectClue: string }[],
+  isUK:        boolean = true,
+  isOutbound:  boolean = false
 ): Promise<ClassificationResult | null> {
   const categoryList = categories
     .map(c => {
@@ -102,9 +103,16 @@ export async function classifyThread(
       hints.map(h => `- Emails from "${h.senderName}" (${h.senderEmail}) about "${h.subjectClue}" → ${h.categoryName}`).join('\n')
     : ''
 
+  const outboundNote = isOutbound
+    ? '\nDIRECTION: This is a thread the account owner initiated — they sent the first message. ' +
+      'The recipient has not yet replied. If the message contains a genuine question, request, or ' +
+      'anything requiring a response, classify as awaiting_reply with an appropriate importance score (0.55+). ' +
+      'Only use quietly_logged if this is clearly automated, transactional, or requires no response at all.\n'
+    : ''
+
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.
 ${isUK ? 'Write all text in British English — use UK spellings throughout (e.g. "organise" not "organize", "colour" not "color", "enquire" not "inquire", "cheque" not "check", "licence" not "license").\n' : ''}
-IMPORTANT: The thread below may contain older messages for full context, but your classification must reflect the CURRENT STATE of the thread — what is happening now, what action (if any) is still needed today. A thread that started months ago may already be fully resolved. Judge by the most recent messages.
+${outboundNote}IMPORTANT: The thread below may contain older messages for full context, but your classification must reflect the CURRENT STATE of the thread — what is happening now, what action (if any) is still needed today. A thread that started months ago may already be fully resolved. Judge by the most recent messages.
 
 CATEGORIES:
 ${categoryList}${hintList}
