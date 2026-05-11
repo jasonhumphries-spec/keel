@@ -152,8 +152,9 @@ IMPORTANCE SCORING — be precise:
 
 STATUS RULES:
 - "quietly_logged": Matter is fully resolved OR informational only with zero action needed
-- "awaiting_reply": ONLY if most recent message is outbound AND contains an open question genuinely needing a response. NOT for confirmations, RSVP acceptances, or terminal actions.
-- "awaiting_action": Something the user needs to do (pay, approve, respond to a question, attend)
+- "awaiting_reply": ONLY if the most recent outbound message contains a direct question to the other party AND the account owner's sole next step is to wait for their response. The account owner has nothing left to do until the other party replies.
+- "awaiting_action": The account owner needs to do something — including cases where they have committed to following up after completing a task first (e.g. "I'll check and get back to you", "I'll confirm X", "let me look into that"). If the account owner still has a task to complete before they can reply, this is awaiting_action NOT awaiting_reply — even if an outbound message was the last one sent.
+- CRITICAL DISTINCTION — "I asked them a question, now I wait for their answer" = awaiting_reply. "I said I'd do something, I still need to do it" = awaiting_action. When in doubt prefer awaiting_action — surfacing an item is always better than parking it passively.
 - "new": Informational, no clear action required
 
 RECEIPT vs INVOICE — critical distinction:
@@ -187,7 +188,7 @@ RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do N
   • PURPOSE: What is this thread actually about and why does it matter? Include key context (e.g. the underlying goal, relationship, or project). Use real names.
   • EVOLUTION (only if meaningful): How did the thread develop — what was asked/proposed and what changed or was agreed along the way? Skip if single-message thread.
   • CURRENT STATE: The final agreed outcome with all concrete details — dates, times, locations, amounts, names, reference numbers. Be specific.
-  • NEXT STEP: Who specifically needs to do what next, and by when? Identify the person by name — is it the account owner (${from.split('<')[0].trim() || 'the account owner'}) or the other party? Judge by the direction of the most recent message. If the most recent outbound message asks a question, the next step is waiting for the other party's reply. If nothing is needed, omit this bullet entirely.
+  • NEXT STEP: Who specifically needs to do what next, and by when? Identify the person by name — is it the account owner (${from.split('<')[0].trim() || 'the account owner'}) or the other party? Judge by the direction of the most recent message. If the most recent outbound message asks a direct question and the account owner has nothing left to do, the next step is waiting for the other party's reply. If the account owner's last message was a commitment to follow up (e.g. 'I'll check', 'I'll confirm'), the next step is on the account owner — name what they need to do. If nothing is needed, omit this bullet entirely.
 - NAMES: Never use "the user", "you", or "the account owner" in summaries or next steps. Use real first names from the thread.
 - SIGNALS — strict quality rules:
   • event: For confirmed, agreed, upcoming appointments or events — including informational school/activity notices where a date and time are given, even if no parental action is required. The timing information is valuable regardless of whether action is needed. Create event signals for: school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, or vague "sometime next week" references.
