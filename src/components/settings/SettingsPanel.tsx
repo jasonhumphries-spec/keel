@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme, Theme, DarkMode } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { getPillStyle, setPillStyle, type PillStyle } from '@/lib/pillStyle'
+import { BackgroundScanToggle } from '@/components/settings/BackgroundScanToggle'
 
 interface SettingsPanelProps {
   open:    boolean
@@ -75,11 +76,13 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
   const [calCheckRunning, setCalCheckRunning] = useState(false)
+  // Root doc data for BackgroundScanToggle (autoScanEnabled, watchStatus, etc.)
+  const [rootAccountData, setRootAccountData] = useState<Record<string, any>>({})
 
   useEffect(() => {
     setScanDays(getScanDaysBack())
     if (user) {
-      import('firebase/firestore').then(({ doc, getDoc }) => {
+      import('firebase/firestore').then(({ doc, getDoc, onSnapshot }) => {
         import('@/lib/firebase').then(({ db }) => {
           getDoc(doc(db, `users/${user.uid}/meta/onboarding`)).then(snap => {
             if (snap.exists() && snap.data()?.watchingSince) {
@@ -90,6 +93,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           getDoc(doc(db, `users/${user.uid}/accounts/account_primary`)).then(snap => {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
           })
+          // Live listener on root doc for background scan state
+          const unsubRoot = onSnapshot(doc(db, `users/${user.uid}`), snap => {
+            if (snap.exists()) setRootAccountData(snap.data() ?? {})
+          })
+          return unsubRoot
         })
       })
     }
@@ -266,6 +274,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           {/* Scanning */}
           <div>
             <SectionTitle>Scanning</SectionTitle>
+
+            {/* Background scanning toggle */}
+            {user && (
+              <BackgroundScanToggle uid={user.uid} accountData={rootAccountData} />
+            )}
 
             {/* Thread activity window */}
             <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
