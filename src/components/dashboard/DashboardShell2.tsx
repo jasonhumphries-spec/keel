@@ -736,14 +736,14 @@ export function DashboardShell2() {
     }))
     .filter(d => d.items.length > 0)
 
-  const urgentCount  = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
+  const urgentCount  = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
   const awaitingCount = awaitingData.flatMap(d => d.items).length
-  const highCount    = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply').length
-  const fyiCount     = categoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
+  const highCount    = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply').length
+  const fyiCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
 
   // ── Calendar signals per band ───────────────────────────────────────────────
-  const urgentCal   = calSignalsForBand(categoryData, signals, 4, 4)
-  const allItems    = categoryData.flatMap(d => d.items)
+  const urgentCal   = calSignalsForBand(filteredCategoryData, signals, 4, 4)
+  const allItems    = filteredCategoryData.flatMap(d => d.items)
   const awaitingCal = signals
     .filter(s => {
       const item = allItems.find(i => i.itemId === s.itemId)
@@ -752,9 +752,9 @@ export function DashboardShell2() {
     .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
     .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
     .filter(x => x.item)
-  const highCal   = calSignalsForBand(categoryData, signals, 3, 3)
+  const highCal   = calSignalsForBand(filteredCategoryData, signals, 3, 3)
   // FYI cal: only show events from the currently expanded category
-  const fyiCalAll = calSignalsForBand(categoryData, signals, 1, 2)
+  const fyiCalAll = calSignalsForBand(filteredCategoryData, signals, 1, 2)
   const fyiCal    = fyiExpandedId
     ? fyiCalAll.filter(({ item }) => item.categoryId === fyiExpandedId)
     : []
@@ -950,9 +950,9 @@ export function DashboardShell2() {
                     <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
                   ))}
                 </div>
-                {categoryData.length - urgentData.length > 0 && (
+                {filteredCategoryData.length - urgentData.length > 0 && (
                   <SectNote>
-                    Only categories with urgent items — {categoryData.length - urgentData.length} others have nothing at this level.
+                    Only categories with urgent items — {filteredCategoryData.length - urgentData.length} others have nothing at this level.
                   </SectNote>
                 )}
               </>
