@@ -68,12 +68,12 @@ function NavBadge({ count, variant = 'dark' }: { count: number; variant?: 'dark'
   )
 }
 
-const sectionLabelBase: React.CSSProperties = {
+const catSectionLabel: React.CSSProperties = {
   fontFamily:    'var(--font-dm-mono)',
   fontSize:      10,
   letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  color:         'rgba(255,255,255,0.3)',
+  textTransform: 'uppercase' as const,
+  color:         'rgba(255,255,255,0.45)',
   padding:       '6px 8px 4px',
   flexShrink:    0,
 }
@@ -85,7 +85,7 @@ function CategoryFilterHeader({ categories }: { categories: { categoryId: string
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2, padding: '0 8px' }}>
-      <div style={sectionLabelBase}>Categories</div>
+      <div style={catSectionLabel}>Categories</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {isFiltered ? (
           <button
@@ -99,14 +99,14 @@ function CategoryFilterHeader({ categories }: { categories: { categoryId: string
           <button
             onClick={() => selectNone(allIds)}
             title="Deselect all categories"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(255,255,255,0.2)', padding: 0, letterSpacing: '0.04em' }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(255,255,255,0.35)', padding: 0, letterSpacing: '0.04em' }}
           >
             none
           </button>
         )}
         <Link
           href="/categories"
-          style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(255,255,255,0.25)', textDecoration: 'none', letterSpacing: '0.06em' }}
+          style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', letterSpacing: '0.06em' }}
           title="Edit categories and AI descriptions"
         >
           edit →
@@ -128,32 +128,34 @@ function CategoryFilterItem({ cat, allIds, count }: {
   return (
     <div
       style={{
-        display:     'flex',
-        alignItems:  'center',
-        gap:         8,
-        padding:     '5px 8px',
-        borderRadius: 'var(--radius-md)',
-        cursor:      'pointer',
-        transition:  'background 0.1s',
-        opacity:     checked ? 1 : 0.45,
-        userSelect:  'none' as React.CSSProperties['userSelect'],
+        display:        'flex',
+        alignItems:     'center',
+        gap:            8,
+        padding:        '5px 8px',
+        borderRadius:   'var(--radius-md)',
+        cursor:         'pointer',
+        transition:     'background 0.1s',
+        userSelect:     'none' as React.CSSProperties['userSelect'],
+        pointerEvents:  'auto',
+        position:       'relative',
       }}
-      onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+      onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
       onMouseOut={e => e.currentTarget.style.background = 'transparent'}
       onClick={() => toggle(cat.categoryId, allIds)}
     >
       {/* Checkbox */}
       <div style={{
-        width:        14,
-        height:       14,
-        borderRadius: 3,
-        border:       `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(255,255,255,0.25)'}`,
-        background:   checked ? 'var(--color-accent)' : 'transparent',
-        flexShrink:   0,
-        display:      'flex',
-        alignItems:   'center',
-        justifyContent: 'center',
-        transition:   'all 0.15s',
+        width:           14,
+        height:          14,
+        borderRadius:    3,
+        border:          `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(255,255,255,0.4)'}`,
+        background:      checked ? 'var(--color-accent)' : 'transparent',
+        flexShrink:      0,
+        display:         'flex',
+        alignItems:      'center',
+        justifyContent:  'center',
+        transition:      'all 0.15s',
+        pointerEvents:   'none',
       }}>
         {checked && (
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
@@ -164,48 +166,50 @@ function CategoryFilterItem({ cat, allIds, count }: {
 
       {/* Name */}
       <span style={{
-        overflow:     'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace:   'nowrap',
-        flex:         1,
-        fontSize:     'var(--fs-md)',
-        color:        checked ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
-        transition:   'color 0.15s',
+        overflow:      'hidden',
+        textOverflow:  'ellipsis',
+        whiteSpace:    'nowrap',
+        flex:          1,
+        fontSize:      'var(--fs-md)',
+        color:         checked ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.35)',
+        transition:    'color 0.15s',
+        pointerEvents: 'none',
       }}>
         {cat.name}
       </span>
 
-      {/* Count badge + "only" button */}
+      {/* Count + only button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         {count > 0 && (
           <span style={{
-            fontFamily:  'var(--font-dm-mono)',
-            fontSize:    10,
-            color:       'rgba(255,255,255,0.3)',
-            minWidth:    18,
-            textAlign:   'right',
+            fontFamily:    'var(--font-dm-mono)',
+            fontSize:      10,
+            color:         'rgba(255,255,255,0.35)',
+            minWidth:      18,
+            textAlign:     'right' as const,
+            pointerEvents: 'none',
           }}>
             {count}
           </span>
         )}
-        {/* "Only" button — select just this one */}
         {!isOnlyOne && (
           <button
             onClick={e => { e.stopPropagation(); selectOnly(cat.categoryId) }}
             title="Show only this category"
             style={{
-              background:   'transparent',
-              border:       'none',
-              cursor:       'pointer',
-              color:        'rgba(255,255,255,0.2)',
-              fontSize:     10,
-              padding:      '0 2px',
-              lineHeight:   1,
-              fontFamily:   'var(--font-dm-mono)',
-              borderRadius: 3,
+              background:    'transparent',
+              border:        'none',
+              cursor:        'pointer',
+              color:         'rgba(255,255,255,0.3)',
+              fontSize:      10,
+              padding:       '1px 4px',
+              lineHeight:    1,
+              fontFamily:    'var(--font-dm-mono)',
+              borderRadius:  3,
+              pointerEvents: 'auto',
             }}
-            onMouseOver={e => { e.currentTarget.style.color = 'var(--color-accent)'; e.currentTarget.style.background = 'rgba(184,150,78,0.12)' }}
-            onMouseOut={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.2)'; e.currentTarget.style.background = 'transparent' }}
+            onMouseOver={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--color-accent)'; e.currentTarget.style.background = 'rgba(184,150,78,0.15)' }}
+            onMouseOut={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent' }}
           >
             only
           </button>
@@ -289,45 +293,12 @@ function SidebarInner() {
       <div style={{ padding: '14px 8px 4px' }}>
         <div style={sectionLabel}>Views</div>
 
-        {/* Dashboard 2.0 — step-based layout (default) */}
+        {/* Dashboard */}
         <Link href="/dashboard2" scroll={false} style={navStyle(isActive('/dashboard2') || isActive('/dashboard'))}>
           <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
           Dashboard
           <NavBadge count={counts.dashboard} variant="dark" />
         </Link>
-
-        {/* Dashboard 1.0 — original category grid */}
-        <Link href="/dashboard1" scroll={false} style={navStyle(isActive('/dashboard1'))}>
-          <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
-          Dashboard 1.0
-        </Link>
-
-        {/* Awaiting Reply — indented filter */}
-        <Link href="/awaiting-reply" scroll={false} style={{ ...navStyle(isActive('/awaiting-reply')), paddingLeft: 28, fontSize: 'var(--fs-base)' }}>
-          <span style={{ color: 'rgba(255,255,255,0.25)' }}><Icon d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" size={13} /></span>
-          Awaiting Reply
-          <NavBadge count={counts.awaitingReply} variant="warn" />
-        </Link>
-
-        {/* Priority filters — indented under Dashboard */}
-        {[
-          { label: 'High & above', filter: '3', colour: '#B8964E', count: counts.highPlus },
-          { label: 'Urgent only',  filter: '4', colour: '#9C5E2B', count: counts.urgentOnly },
-        ].map(({ label, filter, colour, count }) => {
-          const isFilterActive = isActive('/dashboard') && currentFilter === filter
-          return (
-            <Link
-              key={filter}
-              href={`/dashboard?priority=${filter}`}
-              scroll={false}
-              style={{ ...navStyle(isFilterActive), paddingLeft: 28, fontSize: 'var(--fs-base)' }}
-            >
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: colour, flexShrink: 0 }} />
-              <span style={{ color: isFilterActive ? colour : 'rgba(255,255,255,0.45)' }}>{label}</span>
-              <NavBadge count={count} variant="mute" />
-            </Link>
-          )
-        })}
       </div>
 
       <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '8px 8px' }} />

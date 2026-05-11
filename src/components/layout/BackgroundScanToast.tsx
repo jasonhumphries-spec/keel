@@ -27,22 +27,26 @@ export function useBackgroundScanToast() {
         if (change.type !== 'added') continue
 
         const data     = change.doc.data()
-        const scanAtMs = data.scanAt?.toMillis?.() ?? 0
+        const scanAtMs = data.scanAt?.toMillis?.() ?? Date.now() // server timestamp may be null on optimistic write
 
         // Only background scans that happened after we mounted
         if (data.job !== 'background') continue
-        if (scanAtMs < mountedAt) continue
-        if (Date.now() - scanAtMs > 90_000) continue
+        // If scanAt is not yet resolved (null), Date.now() is used — treat as recent
+        if (data.scanAt && scanAtMs < mountedAt) continue
+        if (data.scanAt && Date.now() - scanAtMs > 90_000) continue
 
         const newItems     = (data.newItems     as number) ?? 0
         const updatedItems = (data.updatedItems as number) ?? 0
-        if (newItems === 0 && updatedItems === 0) continue
+        const newIgnored   = (data.newIgnored   as number) ?? 0
+        // Don't toast if everything that arrived was quietly_logged
+        const visibleNew = newItems - newIgnored
+        if (visibleNew <= 0 && updatedItems === 0) continue
 
         let message: string
-        if (newItems > 0 && updatedItems > 0) {
-          message = `${newItems} new · ${updatedItems} updated`
-        } else if (newItems > 0) {
-          message = newItems === 1 ? '1 new email organised' : `${newItems} new emails organised`
+        if (visibleNew > 0 && updatedItems > 0) {
+          message = `${visibleNew} new · ${updatedItems} updated`
+        } else if (visibleNew > 0) {
+          message = visibleNew === 1 ? '1 new email organised' : `${visibleNew} new emails organised`
         } else {
           message = updatedItems === 1 ? '1 item updated' : `${updatedItems} items updated`
         }
