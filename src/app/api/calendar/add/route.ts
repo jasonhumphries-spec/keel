@@ -109,9 +109,18 @@ export async function POST(req: NextRequest) {
 
     const event: Record<string, any> = {
       summary:     sig.description || item?.aiTitle || item?.subject || 'Event',
-      description: item?.aiSummary
-        ? `${item.aiSummary}\n\nAdded by Keel from: ${item.senderName}`
-        : 'Added by Keel',
+      description: (() => {
+        const parts: string[] = []
+        if (item?.aiDetailedSummary) {
+          // aiDetailedSummary uses "• " bullets — clean up for calendar readability
+          parts.push(item.aiDetailedSummary.replace(/^•\s*/gm, '• ').trim())
+        } else if (item?.aiSummary) {
+          parts.push(item.aiSummary)
+        }
+        if (item?.senderName) parts.push(`\nFrom: ${item.senderName}`)
+        parts.push('Added by Keel')
+        return parts.join('\n')
+      })(),
     }
 
     if (extractedTimes) {
