@@ -33,8 +33,11 @@ const STATUS_COLOUR: Record<ItemStatus, string> = {
 
 const SENT_BLUE = '#4A7FA5'
 
-function isSentByUser(item: KeelItem, _userEmail: string): boolean {
-  return (item as any).isOutbound === true
+function isSentByUser(item: KeelItem, userEmail: string): boolean {
+  // Use isOutbound if set (items scanned after the field was added)
+  // Fall back to senderEmail comparison for older items not yet rescanned
+  if ((item as any).isOutbound !== undefined) return (item as any).isOutbound === true
+  return item.senderEmail.toLowerCase() === userEmail.toLowerCase()
 }
 
 function groupByWeek(items: KeelItem[]): { label: string; items: KeelItem[] }[] {
