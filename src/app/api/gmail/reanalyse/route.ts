@@ -3,7 +3,6 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
-import { getValidAccessToken } from '@/lib/server/tokenUtils'
 
 function getAdminDb() {
   if (!getApps().length) {
@@ -25,6 +24,44 @@ async function fetchThread(accessToken: string, threadId: string) {
   )
   if (!res.ok) return { data: null, status: res.status }
   return { data: await res.json(), status: res.status }
+}
+
+async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: string): Promise<string | null> {
+  const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
+  const data        = accountSnap.data()
+  if (!data?.accessToken) return null
+
+  // Check if token is expired or expiring within 2 minutes
+  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
+  if (expiresAt > Date.now() + 120_000) return data.accessToken as string
+
+  // Refresh it
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    new URLSearchParams({
+        client_id:     process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        refresh_token: data.refreshToken as string,
+        grant_type:    'refresh_token',
+      }),
+    })
+    if (!tokenRes.ok) {
+      console.warn('[reanalyse] Token refresh failed — user must re-sign-in')
+      return null  // Don't fall back to stale token — caller should surface auth error
+    }
+    const td = await tokenRes.json()
+    await db.doc(`users/${uid}/accounts/account_primary`).update({
+      accessToken:    td.access_token,
+      tokenExpiresAt: Timestamp.fromMillis(Date.now() + td.expires_in * 1000),
+      tokenUpdatedAt: Timestamp.now(),
+    })
+    return td.access_token as string
+  } catch (e) {
+    console.warn('[reanalyse] Token refresh threw:', e)
+    return null
+  }
 }
 
 function extractHeader(headers: { name: string; value: string }[], name: string): string {
@@ -137,7 +174,7 @@ Rules:
   • event: For confirmed upcoming appointments or events — INCLUDING informational school/activity notices where a date and time are given, even if no action is required. Create event signals for school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date.
   • awaiting: ONLY for genuinely open questions in the most recent outbound message. Not for already-confirmed matters.
   • deadline/payment/rsvp: Only when genuinely present and unresolved.
-- IMPORTANCE: Upcoming events within 7 days score 0.65-0.75 even if informational. Do not score informational school/activity notices below 0.5 if they describe something happening soon.`
+- IMPORTANCE: Upcoming events within 7 days score 0.72-0.78 (High priority) even if no action required — proximity alone justifies surfacing them. Events today/tomorrow score 0.78, later this week 0.72. Events more than 7 days away score 0.55-0.65 (Medium). Never score an imminent informational school/activity notice below 0.70.`
 
     const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
     const json = text.match(/\{[\s\S]*\}/)?.[0]
