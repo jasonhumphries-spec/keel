@@ -603,7 +603,7 @@ export function CategoryGrid({
   const { isVisible }             = useCategoryFilter()
 
   // Apply category filter from sidebar, then priority filter
-  const catFiltered  = categoryData.filter(cat => isVisible(cat.categoryId))
+  const catFiltered  = categoryData.filter(cat => isVisible(cat.category.categoryId))
   const minLevel     = priorityFilter === '4' ? 4 : priorityFilter === '3' ? 3 : 0
   const filteredData = minLevel > 0
     ? catFiltered.map(d => ({
