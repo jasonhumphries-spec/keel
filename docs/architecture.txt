@@ -1,5 +1,5 @@
 KEEL — TECHNICAL ARCHITECTURE
-Last updated: 2026-05-06 Session 5
+Last updated: 2026-05-10 Session 6
 
 ═══════════════════════════════════════════════
 OVERVIEW
@@ -13,6 +13,9 @@ Two separate Next.js apps:
   keel       — user-facing app  → www.jaison.app / keel-icl6.vercel.app
   keel-admin — internal admin   → keel-admin.vercel.app
 
+IMPORTANT: The active dashboard is DashboardShell2 at /dashboard2 (not /dashboard1).
+dashboard2/page.tsx wraps DashboardShell2 in CategoryFilterProvider.
+
 ═══════════════════════════════════════════════
 INFRASTRUCTURE
 ═══════════════════════════════════════════════
@@ -20,23 +23,19 @@ INFRASTRUCTURE
 Hosting:          Vercel (Hobby plan, serverless, Node.js runtime)
 Database:         Firebase Firestore (eur3 region, EU data residency)
 Auth:             Firebase Auth + Google OAuth 2.0
-                  prompt:'consent' — always returns refresh token
-                  explicit browserLocalPersistence — survives browser restarts
-File storage:     Firebase Storage (not yet used)
-AI (scan S1):     gemini-2.5-flash via Google AI SDK
-AI (scan S2):     gemini-2.5-flash (same model, second pass for signals)
-AI (reclassify):  gemini-2.5-flash
-AI (reanalyse):   gemini-2.5-flash (single-item re-fetch + full S1 + cal check)
+AI (all scans):   gemini-2.5-flash via Google AI SDK (switchable via admin)
 Background jobs:  Firebase Cloud Functions v2 (europe-west1, 60min timeout, 512MiB)
-Domain registrar: GoDaddy (jaison.app)
-Repo:             GitHub (jasonhumphries-spec/keel, jasonhumphries-spec/keel-admin) — private
+Pub/Sub:          gmail-inbox-notifications topic in keel-6921a
+Domain:           GoDaddy (jaison.app) → www.jaison.app
+Repos:            GitHub jasonhumphries-spec/keel + keel-admin (private)
 Firebase project: keel-6921a
+Security rules:   firestore.rules — users can only access users/{their uid}/**
 
 ═══════════════════════════════════════════════
 AI PROVIDERS & COSTS
 ═══════════════════════════════════════════════
 
-Active provider: gemini-2.5-flash (switchable via admin panel)
+Active provider: gemini-2.5-flash (switchable via admin panel in 60s)
 
 Provider            Model                        Input $/M   Output $/M
 ──────────────────  ───────────────────────────  ─────────   ──────────
@@ -45,132 +44,96 @@ Gemini Pro          gemini-2.5-pro               $1.25       $10.00
 Claude Haiku        claude-haiku-4-5-20251001    $0.80       $4.00
 Claude Sonnet       claude-sonnet-4-6            $3.00       $15.00
 
-Typical incremental scan (Gemini Flash): ~$0.0008–0.002, ~20s
-Typical onboarding scan (7 days):        ~$0.005–0.02
+Typical manual incremental scan:  ~$0.0008–0.002, ~20s
+Typical background scan (1 email): ~$0.0002, ~3s
+Typical onboarding scan (7 days):  ~$0.005–0.02
 
-Provider config stored in Firestore: /config/aiProvider (cached 60s in aiComplete.ts)
-Switch via Admin Console → Settings panel.
+Provider config: /config/aiProvider in Firestore (cached 60s in aiComplete.ts)
 
 ═══════════════════════════════════════════════
 SCAN ARCHITECTURE
 ═══════════════════════════════════════════════
 
-Two paths depending on scan type:
+THREE SCAN PATHS:
 
-INCREMENTAL / MANUAL (Vercel serverless, ~20s):
-  Client → triggerScan('manual'|'auto') → POST /api/gmail/scan
-  → getValidAccessToken(): reads token from Firestore, auto-refreshes if expired
-  → Gmail API: existence query + recent query (incremental fetch)
-  → Skip logic: internalDate vs lastMessageInternalDate (Gmail timestamp, not Keel
-    write time — ensures replies always trigger re-classification)
-  → manualCategory guard: never overwrite user-assigned categoryId
-  → terminal status guard: never overwrite done/archived/paid status
-  → S1: classify thread → category + status + aiTitle + aiSummary (with real names,
-    signal accuracy rules, NEXT STEP direction in prompt)
-  → S2: extract signals (payments, events, awaiting reply etc.)
-  → write items to Firestore, write scanRun doc, update meta/usage
-  → runCalendarCheck() fire-and-forget
+1. MANUAL / AUTO (Vercel serverless, ~20s):
+   Client → triggerScan('manual') → POST /api/gmail/scan
+   → reads OAuth token from Firestore server-side
+   → Gmail API: existence + recent query (incremental fetch)
+   → classifyThread() from scanUtils.ts (S1)
+   → write items, scanRun doc, meta/usage
 
-ONBOARDING (Cloud Function, 60min timeout):
-  Client → triggerScan('onboarding') → POST gmailscan Cloud Function URL
-  → same logic as above but handles full 7–30 day window without timeout risk
-  → Cloud Function URL: https://gmailscan-wel4wongwa-ew.a.run.app
+2. ONBOARDING (Cloud Function, 60min timeout):
+   Client → triggerScan('onboarding') → POST https://gmailscan-wel4wongwa-ew.a.run.app
+   → same logic, handles full 7–30 day window without Vercel timeout
 
-REANALYSE SINGLE ITEM (/api/gmail/reanalyse):
-  POST { uid, itemId }
-  → getValidAccessToken() with auto-refresh
-  → fetch thread from Gmail (returns {skipped:true} on 404 — deleted threads)
-  → full S1 classification preserving manualCategory if set
-  → rewrite signals in Firestore
-  → runCalendarCheck() after signal write
-  Accessible from ... menu in ItemExpandedPanel and from admin Dev Operations.
+3. BACKGROUND (Pub/Sub triggered, ~3s per email):
+   New email arrives in Gmail
+   → Gmail pushes to Pub/Sub topic gmail-inbox-notifications
+   → handleGmailNotification CF fires
+   → checks autoScanEnabled + 90s debounce on lastBackgroundScanAt
+   → calls POST /api/gmail/background-scan on Vercel
+   → getChangedThreadIds() via Gmail History API
+   → classifyThread() from scanUtils.ts (same as manual)
+   → write items, scanRun (job='background'), meta/usage backgroundScan* fields
 
-DASHBOARD 2.0 MOUNT SCAN:
-  On mount, reads lastScanCompletedAt from Firestore account doc.
-  Triggers triggerScan('auto') only if > 10 minutes since last scan.
-  Shows full-screen blur overlay (z-index 500) with 1.5s minimum display.
+Watch renewal: renewGmailWatches CF runs every 6 days (watches expire at 7).
+Nightly expiry: nightlyItemExpiry CF runs at 1am — past event items → quietly_logged/overdue.
 
-Live feed during scan: scan route writes meta/scanFeed every 5 threads.
-Client reads meta/scanFeed via onSnapshot for real-time terminal display.
+SHARED CLASSIFICATION (src/lib/scanUtils.ts):
+All three scan paths import classifyThread() from scanUtils.ts.
+Improving the prompt improves all scan types simultaneously.
+Also exports: decodeBody(), buildThreadContext(), runInBatches()
+decodeBody() extracts structured HTML data (dates/times/locations) before tag-stripping —
+critical for invitation emails (Paperless Post, Eventbrite etc.)
 
-Scan run logging: every scan writes to users/{uid}/scanRuns/{timestamp}
+Live feed: scan route writes meta/scanFeed every 5 threads during onboarding.
+
+ScanRun logging: every scan writes to users/{uid}/scanRuns/{timestamp}
 Fields: scanAt, daysBack, threadsFound, threadsProcessed, newItems, updatedItems,
         skipped, inputTokens, outputTokens, aiCostUsd, fbReads, fbWrites,
         fbCostUsd, totalCostUsd, model, provider, job, durationMs
-
-═══════════════════════════════════════════════
-CALENDAR CHECK
-═══════════════════════════════════════════════
-
-runCalendarCheck(db, uid, accessToken):
-  - Reads checkAllCalendars from account doc
-  - If false: queries calendars/primary/events only
-  - If true: fetches all writable calendars via calendarList API, queries each in
-    parallel, pools all events
-  - Compares event/rsvp/deadline signals against calendar events in ±1 day window
-    using fuzzy title matching (sigDesc vs aiTitle vs calEvent.summary)
-  - Writes calendarStatus: 'on_cal' | 'not_on_cal' to signal docs
-  - Writes matchedCalendarName when matched on non-Primary calendar
-  - Runs after every scan and after every reanalyse
-
-SignalCalendarStatus: 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | null
-
-Auto-recheck on tab return:
-  SignalPill and CalendarBadge listen for visibilitychange when calStatus='pending'.
-  When user returns from Google Calendar tab, triggers /api/calendar/check and
-  updates local state to 'on_cal' after 1.5s.
-
-Signal calStatus syncs from parent onSnapshot — no page refresh needed.
+job values: 'onboarding' | 'manual' | 'auto' | 'background' | 'reclassify'
 
 ═══════════════════════════════════════════════
 FIRESTORE DATA MODEL
 ═══════════════════════════════════════════════
 
-/users/{uid}/accounts/account_primary
-  { email, displayName, photoURL, daysBack, lastScanCompletedAt,
-    categoryIds[], categoryDescriptions{}, emailType,
-    checkAllCalendars, accessToken, refreshToken, tokenExpiresAt,
-    tokenUpdatedAt, scanCount, lastScanAt }
+/users/{uid}                        ← root doc: email, autoScanEnabled, watchStatus,
+                                      watchProvider, watchExpiry, watchHistoryId,
+                                      lastBackgroundScanAt
+/users/{uid}/accounts/account_primary ← accessToken, refreshToken, tokenExpiresAt,
+                                         email, displayName, daysBack, categoryIds[],
+                                         categoryDescriptions{}, emailType,
+                                         checkAllCalendars, lastScanAt, scanCount
 
 /users/{uid}/items/{itemId}
   KeelItem: { itemId, threadId, messageId, accountId, senderEmail, senderName,
-              subject, receivedAt, categoryId, categoryName,
-              manualCategory,        ← true if user assigned (scan won't overwrite)
-              status,                ← new|awaiting_action|awaiting_reply|
-                                        quietly_logged|done|archived|paid|overdue
-              importanceFlag, aiImportanceScore,
-              manualPriority, manuallyIgnored,
+              subject, receivedAt, categoryId, categoryName, status,
+              aiImportanceScore, manualPriority, manuallyIgnored, manualCategory,
               mergedThreadIds[], aiTitle, aiSummary, aiDetailedSummary,
-              participants[],
-              userNote,              ← private note-to-self, never touched by scan
-              lastMessageInternalDate, ← Gmail ms timestamp of latest message
-              createdAt, updatedAt, resolvedAt,
-              snoozedUntil, preSnoozePriority,
-              linkedOutboundId, linkedItemId, isRecurring,
-              fromTrackedReply, trackedReplyId }
+              participants[], signals[], createdAt, updatedAt, resolvedAt,
+              snoozedUntil, isRecurring, lastProcessedBy, expiredBy,
+              lastMessageInternalDate, noteToSelf }
 
-/users/{uid}/signals/{signalId}
-  KeelSignal: { signalId, itemId, type, description, detectedDate,
-                detectedAmountPence, currency, importanceFlag,
-                calendarStatus, matchedCalendarName,
-                status, createdAt, updatedAt }
+/users/{uid}/scanRuns/{timestamp}   ← per-scan cost/token logging
+/users/{uid}/categories/{catId}     ← category definitions
+/users/{uid}/categoryHints/{id}     ← user correction hints for AI
+/users/{uid}/signals/{sigId}        ← extracted signals with calendarStatus
+/users/{uid}/payments/{id}          ← payment records
 
-/users/{uid}/scanRuns/{timestamp}  ← scan run history
-/users/{uid}/categories/{categoryId}
-/users/{uid}/categoryHints/{hintId}
-/users/{uid}/payments/{paymentId}
-/users/{uid}/outbound/{outboundId}
-/users/{uid}/meta/usage            ← aggregated cost tracking
-/users/{uid}/meta/scanFeed         ← live scan progress (overwritten per scan)
-/users/{uid}/meta/usage_archive_{timestamp}  ← archived before dev resets
+/meta/usage                         ← aggregated cost tracking (all users)
+  backgroundScanRuns, backgroundScanCostUsd, backgroundScanInputTokens, etc.
+/meta/scanFeed                      ← live scan progress (overwritten per scan)
+/meta/usage_archive_{timestamp}     ← archived before dev resets
 
-/config/aiProvider  ← active AI provider string (read by aiComplete.ts)
+/config/aiProvider                  ← active AI provider string
 
-Signal types: event | payment | rsvp | action | info | awaiting_reply | deadline
+Item status values:
+  new | awaiting_reply | awaiting_action | quietly_logged | archived | overdue
 
-IMPORTANT — field naming:
-  detectedAmountPence (not detectedAmount) — scan route, Cloud Function, reanalyse
-  docToSignal reads both as fallback: d.detectedAmountPence ?? d.detectedAmount
+Signal types: event | deadline | payment | rsvp | awaiting | info
+SignalCalendarStatus: 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | null
 
 ═══════════════════════════════════════════════
 KEY SOURCE FILES (keel)
@@ -178,103 +141,86 @@ KEY SOURCE FILES (keel)
 
 src/lib/types.ts                    — KeelItem, KeelSignal, all shared types
 src/lib/aiComplete.ts               — provider-aware AI wrapper, PRICING table
-src/lib/hooks.ts                    — useItems, useCounts, useUncategorised,
-                                      markItemClassified(), _classifiedThisSession
-src/lib/firebase.ts                 — Firebase init, OAuth config, browserLocalPersistence
-src/lib/server/calendarCheck.ts     — runCalendarCheck(), all-calendars support
-src/contexts/AuthContext.tsx        — auth state, triggerScan, user session
+src/lib/scanUtils.ts                — classifyThread(), decodeBody(), buildThreadContext()
+src/lib/calendarUtils.ts            — buildCalendarUrl() — shared by all 3 "+ Add" locations
+src/lib/hooks.ts                    — useItems, useCounts, useCategories, useCalendarSignals
+src/lib/firebase.ts                 — Firebase client init, Google OAuth config
+src/lib/emailProviders/             — provider abstraction (gmail.ts, index.ts, types.ts)
+src/contexts/AuthContext.tsx        — auth state, triggerScan, token refresh, needsReauth
 src/contexts/ThemeContext.tsx       — theme/font size preferences
+src/contexts/CategoryFilterContext.tsx — sidebar category filter state
 
-src/app/api/gmail/scan/route.ts     — main scan endpoint (Vercel serverless)
-src/app/api/gmail/reanalyse/route.ts — single-item re-fetch + S1 + cal check
-src/app/api/gmail/reclassify/route.ts — reclassify all items (no Gmail re-fetch)
-src/app/api/gmail/merge/route.ts    — merge duplicate threads endpoint
-src/app/api/calendar/add/route.ts   — add event to Google Calendar
-src/app/api/calendar/check/route.ts — trigger calendar check for user
-src/app/api/auth/refresh/route.ts   — OAuth token refresh
+src/app/api/gmail/scan/route.ts           — manual scan (Vercel serverless)
+src/app/api/gmail/background-scan/route.ts — background scan (called by CF)
+src/app/api/gmail/reclassify/route.ts     — reclassify all items
+src/app/api/gmail/reanalyse/route.ts      — re-analyse single item
+src/app/api/gmail/merge/route.ts          — merge duplicate threads
+src/app/api/inbox-watch/route.ts          — enable/disable Gmail Pub/Sub watch
+src/app/api/calendar/add/route.ts         — add event to Google Calendar (unused by client)
+src/app/api/calendar/check/route.ts       — check calendar status for signals
+src/app/api/auth/refresh/route.ts         — OAuth token refresh
 
-src/app/dashboard/page.tsx          — redirects to /dashboard2
-src/app/dashboard1/page.tsx         — Dashboard 1.0 (category grid, preserved)
-src/app/dashboard2/page.tsx         — Dashboard 2.0 (step-based, default)
-src/app/onboarding/page.tsx         — 6-step flow: welcome→how-it-works→email-type
-                                      →categories→calendar→scan
+src/app/dashboard2/page.tsx         — ACTIVE dashboard page (wraps in CategoryFilterProvider)
+src/app/onboarding/page.tsx         — onboarding flow
 src/app/categories/page.tsx         — category management + reclassify
-src/app/quietly-logged/page.tsx     — ignored items list
-src/app/awaiting-reply/page.tsx     — awaiting reply view
-src/app/payments/page.tsx           — payments view
-src/app/payment-history/page.tsx    — payment history
+src/app/privacy/page.tsx            — privacy policy (updated May 2026)
 
 src/components/dashboard/
-  DashboardShell.tsx                — Dashboard 1.0 layout shell
-  DashboardShell2.tsx               — Dashboard 2.0: steps, scan overlay, cal bands
-  Topbar.tsx                        — search, scan button, categorise badge
-  Sidebar.tsx                       — nav, category list, counts
-  BottomNav.tsx                     — mobile nav
-  ItemExpandedPanel.tsx             — item detail drawer (note-to-self, re-analyse,
-                                      all participants, signal live sync)
-  CategoryGrid.tsx                  — category card grid, CalendarBadge component
-  CalendarColumn.tsx                — calendar signals column (Dashboard 1.0)
-  CategoriseModal.tsx               — 3-col grid, Other hidden, markItemClassified()
-src/components/settings/SettingsPanel.tsx  — incl. checkAllCalendars toggle
-src/components/layout/PageShell.tsx
-src/components/dev/DevTools.tsx     — dev-only (not rendered in production)
+  DashboardShell2.tsx               — ACTIVE dashboard shell (not DashboardShell.tsx)
+  Sidebar.tsx                       — category filter checkboxes, nav links
+  ItemExpandedPanel.tsx             — item detail drawer
+  CategoryGrid.tsx                  — category card view (uses calendarUtils)
+  CalendarColumn.tsx                — calendar signals column (uses calendarUtils)
+  CategoriseModal.tsx               — uncategorised items modal
+src/components/layout/
+  SessionBanner.tsx                 — expired token warning banner
+  BackgroundScanToast.tsx           — toast on new background scan
+src/components/settings/SettingsPanel.tsx — includes BackgroundScanToggle
+src/components/dev/DevTools.tsx     — dev-only wipe/reset tools
 
-src/lib/categoryDefaults.ts         — DEFAULT_CATEGORY_DESCRIPTIONS, HINTS
-src/lib/signalUtils.ts              — signal processing helpers
-src/lib/pillStyle.ts                — pill style v1/v2 toggle
+src/lib/server/calendarCheck.ts     — runCalendarCheck(); 365-day window;
+                                      titlesMatch() with high-entropy word rule;
+                                      senderMatchesCalTitle() sender domain fallback;
+                                      reader-access calendars included
 
-functions/src/scan.ts               — Cloud Function scan logic (mirrors API route)
-functions/src/index.ts              — Cloud Function exports
-
-docs/PRD.md                         — Product Requirements Document (v1.5)
-docs/backlog.txt                    — Prioritised backlog
-docs/journal.txt                    — Session-by-session change log
-docs/architecture.txt               — This file
+functions/src/scan.ts               — Cloud Function: handleGmailScan (HTTP)
+functions/src/backgroundScan.ts     — Cloud Function: handleGmailNotification (Pub/Sub),
+                                      renewGmailWatches (scheduled 6d),
+                                      nightlyItemExpiry (scheduled 1am)
+functions/src/index.ts              — exports all CF functions
 
 ═══════════════════════════════════════════════
 KEY SOURCE FILES (keel-admin)
 ═══════════════════════════════════════════════
 
-src/app/page.tsx                    — main admin dashboard + DevOpsCard component
-src/app/api/stats/route.ts          — aggregate usage stats
+src/app/page.tsx                    — main admin dashboard
+src/app/api/stats/route.ts          — aggregate usage stats (incl. backgroundScan* fields)
 src/app/api/scan-runs/route.ts      — per-user scan run history
 src/app/api/ai-config/route.ts      — GET/POST active AI provider
-src/app/api/dev-ops/route.ts        — dev operations proxy to keel app
-                                      ops: flush_items | reset_account | reanalyse_all
-                                           trigger_scan | calendar_check | ping
-src/components/admin/AdminSettingsPanel.tsx  — provider switcher
+src/components/admin/AdminSettingsPanel.tsx — provider switcher
 
 ═══════════════════════════════════════════════
 ENVIRONMENT VARIABLES
 ═══════════════════════════════════════════════
 
 keel (Vercel):
-  NEXT_PUBLIC_FIREBASE_API_KEY
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-  NEXT_PUBLIC_FIREBASE_APP_ID
-  FIREBASE_PROJECT_ID
-  FIREBASE_CLIENT_EMAIL
-  FIREBASE_PRIVATE_KEY
-  ANTHROPIC_API_KEY
+  NEXT_PUBLIC_FIREBASE_* (×6)
+  FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
+  ANTHROPIC_API_KEY (kept for fallback)
   GOOGLE_AI_API_KEY
-  GOOGLE_CLIENT_ID
-  GOOGLE_CLIENT_SECRET
+  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
   NEXT_PUBLIC_SCAN_FUNCTION_URL=https://gmailscan-wel4wongwa-ew.a.run.app
   ADMIN_SECRET=(see secure notes)
+  NEXT_PUBLIC_APP_VERSION (set from package.json in next.config.js)
 
 keel-admin (Vercel):
-  FIREBASE_PROJECT_ID
-  FIREBASE_CLIENT_EMAIL
-  FIREBASE_PRIVATE_KEY
+  FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
   ADMIN_SECRET
-  KEEL_APP_URL=https://www.jaison.app   ← required for Dev Operations card
+  KEEL_APP_URL=https://www.jaison.app
 
 Cloud Functions (Firebase Secrets):
-  ANTHROPIC_API_KEY  ← firebase functions:secrets:set
-  GOOGLE_AI_API_KEY  ← firebase functions:secrets:set
+  ADMIN_SECRET  ← firebase functions:secrets:set ADMIN_SECRET
+  GOOGLE_AI_API_KEY  ← firebase functions:secrets:set GOOGLE_AI_API_KEY
 
 ═══════════════════════════════════════════════
 DEPLOYMENT
@@ -287,30 +233,15 @@ functions:  firebase deploy --only functions --project keel-6921a
 Local dev:
   keel:       npm run dev  (port 3000)
   keel-admin: npm run dev  (port 3001)
-  Firebase emulators: firebase emulators:start
-
-Deployment pattern for code changes:
-  1. Build tarball with --transform 's|^keel/|keel-fix/|'
-  2. User untars from ~/Downloads, copies files to ~/projects/keel
-  3. git add -A && git commit -m "..." && git push
-  4. Cloud Function changes additionally need:
-     firebase deploy --only functions --project keel-6921a
 
 ═══════════════════════════════════════════════
 KNOWN LIMITATIONS / WATCH POINTS
 ═══════════════════════════════════════════════
 
-- Vercel serverless 5min timeout: onboarding uses Cloud Function automatically
-  via NEXT_PUBLIC_SCAN_FUNCTION_URL. Incremental scans (~20s) fine on Vercel.
-- Google OAuth app unverified: max 100 test users until verification submitted.
-  Non-sensitive scopes (gmail.readonly, gmail.send, calendar) — standard review.
-  Restricted scopes (gmail.modify) would require $15–75k CASA audit — avoid.
-- Gemini free tier quota = 0 for some endpoints: billing must be enabled.
-- Firestore eur3 region: data stays in EU (Frankfurt/Netherlands).
-- No field-level encryption yet: PII in Firestore is at-rest encrypted by GCP only.
-- Multiple local docToItem() copies: awaiting-reply/page.tsx, quietly-logged/page.tsx,
-  Topbar.tsx, ItemExpandedPanel.tsx, hooks.ts all have local versions.
-  Any new KeelItem field must be added to ALL copies — fragile, needs centralising.
-- KEEL_APP_URL must be set in keel-admin Vercel env vars for Dev Operations to work.
-- detectedAmountPence is the canonical field name for signal amounts. docToSignal
-  reads both detectedAmountPence and detectedAmount as fallback for old data.
+- Vercel 5min timeout: onboarding uses Cloud Function. Incremental ~20s is fine.
+- Google OAuth unverified: max 100 test users until verification submitted.
+- Gemini billing must be enabled for production scale (free tier quota = 0).
+- Background scan cost hardcoded as 'gemini-flash' in route — should read aiComplete.
+- GCal API maxResults=2500 (hard limit) — paginate if users have very busy calendars.
+- dashboard1/DashboardShell.tsx still exists but is unused — can be deleted.
+- No field-level encryption: PII in Firestore encrypted at rest by GCP only (V2 roadmap).
