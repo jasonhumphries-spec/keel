@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import { useDashboardData } from '@/lib/hooks'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
+import { buildCalendarUrl } from '@/lib/calendarUtils'
 
 // Priority bands — used by PriorityButtons
 const PRIORITY_BANDS = [0.10, 0.25, 0.50, 0.70, 0.85, 0.95]
@@ -225,34 +226,18 @@ function MiniPill({ signal }: { signal: KeelSignal }) {
   )
 }
 
-// ── Calendar URL builder ─────────────────────────────────────────────────────
-
-function buildCalUrl(signal: KeelSignal, itemTitle?: string): string {
-  const date   = signal.detectedDate!
-  const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const pad    = (n: number) => String(n).padStart(2, '0')
-  const fmt    = (d: Date) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
-  const start  = fmt(date)
-  const end    = fmt(new Date(date.getTime() + 60 * 60 * 1000))
-  const params = new URLSearchParams({
-    action: 'TEMPLATE', text: itemTitle || signal.description || 'Event',
-    dates: `${start}/${end}`, details: signal.description || 'Added by Keel.', ctz: userTz,
-  })
-  return `https://calendar.google.com/calendar/render?${params.toString()}`
-}
-
 // ── Calendar badge ────────────────────────────────────────────────────────────
 
 const CAL_TEAL = '#3D7A6B'
 const CAL_GREY = '#9CA3AF'
 
 function CalendarBadge({
-  signal, uid, priorityColour, itemTitle,
+  signal, uid, priorityColour, item,
 }: {
   signal:         KeelSignal
   uid:            string
   priorityColour: string
-  itemTitle?:     string
+  item?:          KeelItem
 }) {
   const [status,   setStatus]   = useState(signal.calendarStatus)
   const [acting,   setActing]   = useState(false)
@@ -295,7 +280,7 @@ function CalendarBadge({
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!signal.detectedDate) return
-    window.open(buildCalUrl(signal, itemTitle), '_blank')
+    window.open(buildCalendarUrl(signal, item), '_blank')
     setStatus('pending')
   }
 
@@ -530,7 +515,7 @@ export function CategoryCard({
                             signal={sig}
                             uid={uid}
                             priorityColour={getPriorityColour(item)}
-                            itemTitle={item.aiTitle}
+                            item={item}
                           />
                         ))}
                       </div>
