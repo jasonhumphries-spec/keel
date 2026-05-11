@@ -222,7 +222,8 @@ async function fetchGmailMessages(accessToken: string, daysBack = 7) {
   do {
     const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
     url.searchParams.set('maxResults', '500')
-    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d -category:promotions -category:social`)
+    const exclusions = excludedLabels.map((l: string) => `-category:${l}`).join(' ')
+    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
     if (pageToken) url.searchParams.set('pageToken', pageToken)
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (res.status === 401) throw Object.assign(new Error("Gmail token expired"), { code: "GMAIL_401" })
@@ -612,6 +613,7 @@ export async function handleGmailScan(req: any, res: any) {
     const locale              = accountDoc.data()?.locale ?? 'en-GB'
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
+    const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social']
 
     // Optimised items fetch
     const existenceQuery = db.collection(`users/${uid}/items`)

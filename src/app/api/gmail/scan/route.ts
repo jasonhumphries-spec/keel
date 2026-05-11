@@ -4,7 +4,6 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
-import { getValidAccessToken } from '@/lib/server/tokenUtils'
 
 // ---- Firebase Admin init ----
 function getAdminDb() {
@@ -28,7 +27,9 @@ async function fetchGmailMessages(accessToken: string, daysBack = 7) {
   do {
     const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
     url.searchParams.set('maxResults', '500')
-    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d -category:promotions -category:social`)
+    // Build query — exclude labels the user hasn't opted in to
+    const exclusions = excludedLabels.map(l => `-category:${l}`).join(' ')
+    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
     if (pageToken) url.searchParams.set('pageToken', pageToken)
 
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -141,12 +142,16 @@ export async function POST(req: NextRequest) {
 
     const scanStartedAt = Date.now()
 
-    // Get a valid (auto-refreshed) access token — reads from account_primary,
-    // refreshes via Google OAuth if expired or expiring within 2 minutes.
-    const accessToken = await getValidAccessToken(db, uid)
-    if (!accessToken) {
-      return NextResponse.json({ error: 'Auth expired — please sign in again', authError: true }, { status: 401 })
+    // Read access token from Firestore server-side — avoids stale/wrong client tokens
+    const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
+    if (!accountSnap.exists) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 })
     }
+    const accessToken = accountSnap.data()?.accessToken as string
+    if (!accessToken) {
+      return NextResponse.json({ error: 'No access token — please sign in again' }, { status: 401 })
+    }
+    console.log(`[Keel] Using stored token: ${accessToken.slice(0,10)}...`)
 
     // Firestore operation counters for cost tracking
     let fbReads   = 0
@@ -169,6 +174,8 @@ export async function POST(req: NextRequest) {
     const locale              = accountDoc.data()?.locale ?? 'en-GB'
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
+    // Labels excluded from scanning — defaults to promotions + social if not set
+    const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social']
 
     // Optimised items fetch — split into two cheap queries instead of one full collection read:
     //

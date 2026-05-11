@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useTheme, Theme, DarkMode } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { getPillStyle, setPillStyle, type PillStyle } from '@/lib/pillStyle'
-import { BackgroundScanToggle } from '@/components/settings/BackgroundScanToggle'
 
 interface SettingsPanelProps {
   open:    boolean
@@ -76,13 +75,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
   const [calCheckRunning, setCalCheckRunning] = useState(false)
-  // Root doc data for BackgroundScanToggle (autoScanEnabled, watchStatus, etc.)
-  const [rootAccountData, setRootAccountData] = useState<Record<string, any>>({})
+  // Excluded Gmail labels (defaults: promotions + social excluded, not scanned)
+  const DEFAULT_EXCLUDED = ['promotions', 'social']
+  const [excludedLabels, setExcludedLabels] = useState<string[]>(DEFAULT_EXCLUDED)
 
   useEffect(() => {
     setScanDays(getScanDaysBack())
     if (user) {
-      import('firebase/firestore').then(({ doc, getDoc, onSnapshot }) => {
+      import('firebase/firestore').then(({ doc, getDoc }) => {
         import('@/lib/firebase').then(({ db }) => {
           getDoc(doc(db, `users/${user.uid}/meta/onboarding`)).then(snap => {
             if (snap.exists() && snap.data()?.watchingSince) {
@@ -92,12 +92,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           })
           getDoc(doc(db, `users/${user.uid}/accounts/account_primary`)).then(snap => {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
+            const stored = snap.data()?.excludedLabels
+            setExcludedLabels(stored ?? DEFAULT_EXCLUDED)
           })
-          // Live listener on root doc for background scan state
-          const unsubRoot = onSnapshot(doc(db, `users/${user.uid}`), snap => {
-            if (snap.exists()) setRootAccountData(snap.data() ?? {})
-          })
-          return unsubRoot
         })
       })
     }
@@ -122,6 +119,20 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     })
       .catch(e => console.warn('[CalCheck] Re-check failed:', e))
       .finally(() => setCalCheckRunning(false))
+  }
+
+  const handleLabelToggle = async (label: string) => {
+    if (!user) return
+    const next = excludedLabels.includes(label)
+      ? excludedLabels.filter(l => l !== label)
+      : [...excludedLabels, label]
+    setExcludedLabels(next)
+    const { doc: firestoreDoc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+    const { db: firestoreDb } = await import('@/lib/firebase')
+    await updateDoc(firestoreDoc(firestoreDb, `users/${user.uid}/accounts/account_primary`), {
+      excludedLabels: next,
+      updatedAt: serverTimestamp(),
+    })
   }
 
   const handleScanDaysChange = (val: number) => {
@@ -275,11 +286,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <div>
             <SectionTitle>Scanning</SectionTitle>
 
-            {/* Background scanning toggle */}
-            {user && (
-              <BackgroundScanToggle uid={user.uid} accountData={rootAccountData} />
-            )}
-
             {/* Thread activity window */}
             <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -343,6 +349,37 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               >
                 Scan earlier emails → (available on Pro)
               </button>
+            </div>
+          </div>
+
+          {/* Email scope — what labels get scanned */}
+          <div>
+            <SectionTitle>Email scope</SectionTitle>
+            <div style={{ padding: '8px 0 4px', fontSize: '10px', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+              Keel scans your inbox by default. You can include additional Gmail categories below — they will be scanned on manual and scheduled scans. Background push scanning always stays inbox-only.
+            </div>
+            {[
+              { label: 'promotions', name: 'Promotions', desc: 'Marketing emails, deals, newsletters — usually high volume' },
+              { label: 'social',     name: 'Social',     desc: 'Notifications from LinkedIn, Twitter, Facebook etc.' },
+              { label: 'spam',       name: 'Spam',       desc: 'Gmail spam folder — very noisy, rarely useful' },
+            ].map(({ label, name, desc }) => {
+              const excluded = excludedLabels.includes(label)
+              return (
+                <div key={label} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: excluded ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}>{name}</span>
+                      <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: '9px', background: 'var(--color-accent-sub)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)', borderRadius: 3, padding: '1px 5px', letterSpacing: '0.06em' }}>PRO</span>
+                      {excluded && <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: '9px', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)', borderRadius: 3, padding: '1px 5px' }}>not scanned</span>}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{desc}</div>
+                  </div>
+                  <Toggle on={!excluded} onToggle={() => handleLabelToggle(label)} />
+                </div>
+              )
+            })}
+            <div style={{ padding: '8px 0 4px', fontSize: '10px', color: 'var(--color-text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
+              Enabling these will increase scan time and may surface more noise. Pro feature — all testers have access during alpha.
             </div>
           </div>
 
