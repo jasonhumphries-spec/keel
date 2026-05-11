@@ -18,6 +18,7 @@ import { SessionBanner }          from '@/components/layout/SessionBanner'
 import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
 import { CategoryFilterProvider, useCategoryFilter } from '@/contexts/CategoryFilterContext'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
+import { buildCalendarUrl } from '@/lib/calendarUtils'
 
 // ─── Priority band helpers ────────────────────────────────────────────────────
 
@@ -99,26 +100,11 @@ function CalBandEvent({
     return today ? 'Today' : d.toLocaleDateString('en-GB', opts)
   }
 
-  const buildCalUrl = () => {
-    const date = signal.detectedDate!
-    const pad  = (n: number) => String(n).padStart(2, '0')
-    const fmt  = (d: Date) =>
-      `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
-    const start  = fmt(date)
-    const end    = fmt(new Date(date.getTime() + 60 * 60 * 1000))
-    const params = new URLSearchParams({
-      action: 'TEMPLATE',
-      text:   item.aiTitle || signal.description || 'Event',
-      dates:  `${start}/${end}`,
-      details: signal.description || 'Added by Keel.',
-      ctz:    Intl.DateTimeFormat().resolvedOptions().timeZone,
-    })
-    return `https://calendar.google.com/calendar/render?${params.toString()}`
-  }
+  // Uses shared buildCalendarUrl — extracts times from descriptions, builds rich event details
 
   const handleAdd = (e: MouseEvent) => {
     e.stopPropagation()
-    window.open(buildCalUrl(), '_blank')
+    window.open(buildCalendarUrl(signal, item ?? undefined), '_blank')
     setStatus('pending')
   }
 
