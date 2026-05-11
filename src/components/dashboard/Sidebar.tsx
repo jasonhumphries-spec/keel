@@ -148,7 +148,7 @@ function CategoryFilterItem({ cat, allIds, count }: {
         width:           14,
         height:          14,
         borderRadius:    3,
-        border:          `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(255,255,255,0.4)'}`,
+        border:          `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(255,255,255,0.5)'}`,
         background:      checked ? 'var(--color-accent)' : 'transparent',
         flexShrink:      0,
         display:         'flex',
@@ -171,7 +171,7 @@ function CategoryFilterItem({ cat, allIds, count }: {
         whiteSpace:    'nowrap',
         flex:          1,
         fontSize:      'var(--fs-md)',
-        color:         checked ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.35)',
+        color:         checked ? '#ffffff' : 'rgba(255,255,255,0.65)',
         transition:    'color 0.15s',
         pointerEvents: 'none',
       }}>
@@ -184,7 +184,7 @@ function CategoryFilterItem({ cat, allIds, count }: {
           <span style={{
             fontFamily:    'var(--font-dm-mono)',
             fontSize:      10,
-            color:         'rgba(255,255,255,0.35)',
+            color:         'rgba(255,255,255,0.5)',
             minWidth:      18,
             textAlign:     'right' as const,
             pointerEvents: 'none',
