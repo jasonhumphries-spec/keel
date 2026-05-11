@@ -216,14 +216,14 @@ async function runCalendarCheck(uid: string, accessToken: string): Promise<void>
 
 // ─── Gmail helpers ─────────────────────────────────────────────────────────────
 
-async function fetchGmailMessages(accessToken: string, daysBack = 7) {
+async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social']) {
   const messages: { id: string; threadId: string }[] = []
   let pageToken: string | undefined
   do {
     const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
     url.searchParams.set('maxResults', '500')
     const exclusions = excludedLabels.map((l: string) => `-category:${l}`).join(' ')
-    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
+    url.searchParams.set('q', `{in:inbox in:sent} newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
     if (pageToken) url.searchParams.set('pageToken', pageToken)
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
     if (res.status === 401) throw Object.assign(new Error("Gmail token expired"), { code: "GMAIL_401" })
@@ -676,11 +676,11 @@ export async function handleGmailScan(req: any, res: any) {
     const threadManualPrio   = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualPriority as boolean]))
 
     // Step 1: Fetch messages
-    let messages = await fetchGmailMessages(accessToken, daysBack)
+    let messages = await fetchGmailMessages(accessToken, daysBack, excludedLabels)
     logger.info(`Found ${messages.length} messages in ${daysBack}-day window`)
     if (messages.length < 10 && daysBack < 30) {
       logger.info('Fewer than 10 messages — extending to 30 days')
-      messages = await fetchGmailMessages(accessToken, 30)
+      messages = await fetchGmailMessages(accessToken, 30, excludedLabels)
     }
 
     // Step 2: Fetch message details
