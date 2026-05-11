@@ -120,12 +120,11 @@ export function buildCalendarUrl(signal: KeelSignal, item?: KeelItem): string {
   }
 
   const params = new URLSearchParams({
-    action:  'TEMPLATE',
     text:    item?.aiTitle || signal.description || 'Event',
     dates:   dateParam,
     details: description,
     ctz:     userTz,
   })
 
-  return `https://calendar.google.com/calendar/render?${params.toString()}`
+  return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`
 }
