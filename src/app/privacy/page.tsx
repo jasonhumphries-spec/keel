@@ -105,6 +105,8 @@ export default function PrivacyPage() {
             <P>This subscription is opt-in. You can disable it at any time in Settings → Background scanning. When disabled, the subscription is immediately revoked and no further automatic processing occurs.</P>
             <P>The data processed during background scans is identical to manual scans — email content is classified and discarded; only the extracted signals and metadata are stored.</P>
           </Section>
+
+          <Section title="Your rights">
             <P>If you are in the UK or European Economic Area, you have the following rights regarding your personal data:</P>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
               {[
