@@ -2,16 +2,12 @@
  * Firebase Cloud Functions — Keel
  *
  * Exports:
- *   gmailScan              — HTTP triggered, handles onboarding + long scans
- *                            (existing, unchanged)
+ *   handleGmailScan         — HTTP triggered, handles onboarding + long scans
  *   handleGmailNotification — Pub/Sub triggered, background scanning
- *                            (new — Session 6)
- *   renewGmailWatches      — Scheduled every 6 days, renews Gmail watch() subscriptions
- *                            (new — Session 6)
+ *   renewGmailWatches       — Scheduled every 6 days, renews Gmail watch() subscriptions
+ *   nightlyItemExpiry       — Scheduled nightly, expires past events + marks overdue
  */
 
-// Existing scan function — keep as-is
-export { gmailScan } from './scan'
+export { handleGmailScan } from './scan'
 
-// Background scanning (Phase 2)
-export { handleGmailNotification, renewGmailWatches } from './backgroundScan'
+export { handleGmailNotification, renewGmailWatches, nightlyItemExpiry } from './backgroundScan'

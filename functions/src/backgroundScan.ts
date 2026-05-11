@@ -262,3 +262,144 @@ export const renewGmailWatches = onSchedule(
     logger.info('renewGmailWatches complete')
   }
 )
+
+// ---------------------------------------------------------------------------
+// nightly Item Expiry
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs nightly to expire items whose event date has passed.
+ *
+ * Two behaviours based on item status:
+ *
+ *   status = 'new' (informational) + all event signal dates in the past
+ *     → set status = 'quietly_logged' (auto-archived, no action was needed)
+ *
+ *   status = 'awaiting_action' + all event/deadline signal dates in the past
+ *     → set status = 'overdue' (user missed something — surface prominently)
+ *
+ * Items with payment signals, awaiting_reply, or future dates are untouched.
+ *
+ * A 1-day grace period is applied — items expire the day AFTER their event
+ * date, so same-day events stay visible until midnight.
+ */
+export const nightlyItemExpiry = onSchedule(
+  {
+    schedule: '0 1 * * *',  // 1:00 AM UTC every day
+    timeZone: 'Europe/London',
+    region: 'europe-west1',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+  },
+  async () => {
+    // Expiry threshold: anything dated before yesterday midnight (1-day grace)
+    const threshold = new Date()
+    threshold.setDate(threshold.getDate() - 1)
+    threshold.setHours(0, 0, 0, 0)
+    const thresholdTs = admin.firestore.Timestamp.fromDate(threshold)
+
+    logger.info(`nightlyItemExpiry: expiring events before ${threshold.toISOString()}`)
+
+    let archived = 0
+    let overdue  = 0
+    let skipped  = 0
+
+    // Get all users
+    const usersSnap = await db.collection('users').select().get()
+
+    for (const userDoc of usersSnap.docs) {
+      const uid = userDoc.id
+
+      try {
+        // Fetch active items that could be candidates for expiry
+        const itemsSnap = await db
+          .collection(`users/${uid}/items`)
+          .where('status', 'in', ['new', 'awaiting_action'])
+          .get()
+
+        if (itemsSnap.empty) continue
+
+        const itemIds = itemsSnap.docs.map(d => d.id)
+
+        // Fetch all event/deadline signals for these items in one query
+        // Process in chunks of 10 (Firestore 'in' limit)
+        const signalsByItem = new Map<string, { type: string; detectedDate: admin.firestore.Timestamp | null }[]>()
+
+        for (let i = 0; i < itemIds.length; i += 10) {
+          const chunk = itemIds.slice(i, i + 10)
+          const sigsSnap = await db
+            .collection(`users/${uid}/signals`)
+            .where('itemId', 'in', chunk)
+            .where('type', 'in', ['event', 'deadline', 'rsvp'])
+            .get()
+
+          for (const sigDoc of sigsSnap.docs) {
+            const sig = sigDoc.data()
+            const existing = signalsByItem.get(sig.itemId) ?? []
+            existing.push({ type: sig.type, detectedDate: sig.detectedDate })
+            signalsByItem.set(sig.itemId, existing)
+          }
+        }
+
+        // Evaluate each item
+        const batch = db.batch()
+        let batchCount = 0
+
+        for (const itemDoc of itemsSnap.docs) {
+          const item     = itemDoc.data()
+          const signals  = signalsByItem.get(itemDoc.id) ?? []
+
+          // Skip items with no event signals — they expire through other means
+          if (signals.length === 0) { skipped++; continue }
+
+          // Check: does this item have any FUTURE event/deadline dates?
+          const hasFutureDate = signals.some(sig => {
+            if (!sig.detectedDate) return false
+            return sig.detectedDate.toMillis() > thresholdTs.toMillis()
+          })
+
+          if (hasFutureDate) { skipped++; continue }
+
+          // All event dates are in the past — expire this item
+          const itemRef = db.doc(`users/${uid}/items/${itemDoc.id}`)
+          const now     = admin.firestore.FieldValue.serverTimestamp()
+
+          if (item.status === 'new') {
+            // Informational item — event happened, quietly archive it
+            batch.update(itemRef, {
+              status:     'quietly_logged',
+              resolvedAt: now,
+              updatedAt:  now,
+              expiredBy:  'nightly_expiry',
+            })
+            archived++
+          } else if (item.status === 'awaiting_action') {
+            // User needed to act and didn't — mark overdue
+            batch.update(itemRef, {
+              status:    'overdue',
+              updatedAt: now,
+              expiredBy: 'nightly_expiry',
+            })
+            overdue++
+          }
+
+          batchCount++
+
+          // Commit in batches of 400 (Firestore limit is 500)
+          if (batchCount % 400 === 0) {
+            await batch.commit()
+            batchCount = 0
+          }
+        }
+
+        // Commit any remaining
+        if (batchCount > 0) await batch.commit()
+
+      } catch (err) {
+        logger.error(`nightlyItemExpiry: error processing uid=${uid}:`, err)
+      }
+    }
+
+    logger.info(`nightlyItemExpiry complete: archived=${archived} overdue=${overdue} skipped=${skipped}`)
+  }
+)
