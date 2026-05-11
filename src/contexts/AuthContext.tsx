@@ -34,7 +34,6 @@ interface AuthContextType {
   accessToken:  string | null
   scanProgress: ScanProgress
   lastScanned:  Date | null
-  needsReauth:  boolean
   signIn:       () => Promise<void>
   signOut:      () => Promise<void>
   triggerScan:  (job?: 'onboarding' | 'manual' | 'auto') => Promise<void>
@@ -49,7 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken,  setAccessToken]  = useState<string | null>(null)
   const [scanProgress, setScanProgress] = useState<ScanProgress>(IDLE)
   const [lastScanned,  setLastScanned]  = useState<Date | null>(null)
-  const [needsReauth,  setNeedsReauth]  = useState(false)
 
   useEffect(() => {
     // Check for redirect result first (fires after Google redirects back)
@@ -59,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token      = credential?.accessToken ?? null
         if (token && result.user) {
           setAccessToken(token)
-          setNeedsReauth(false)
           await saveTokenAndScan(result.user, token)
         }
       }
@@ -72,62 +69,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const accountDoc = await getDoc(doc(db, `users/${firebaseUser.uid}/accounts`, 'account_primary'))
           if (accountDoc.exists()) {
-            const data       = accountDoc.data()
-            const token      = data?.accessToken as string | undefined
-            const expiresAt  = data?.tokenExpiresAt?.toMillis?.() ?? 0
-
-            if (token) {
-              setAccessToken(token)
-              // If token is expired or about to expire (within 5 min), refresh immediately
-              if (Date.now() > expiresAt - 5 * 60 * 1000) {
-                console.log('[Keel] Token expired or expiring soon — refreshing on load')
-                const refreshed = await refreshAccessTokenForUid(firebaseUser.uid)
-                if (!refreshed) setNeedsReauth(true)
-              } else {
-                setNeedsReauth(false)
-              }
-            }
+            const token = accountDoc.data()?.accessToken
+            if (token) setAccessToken(token)
           }
         } catch (e) {
           console.log('Could not restore access token:', e)
         }
       } else {
         setAccessToken(null)
-        setNeedsReauth(false)
       }
       setLoading(false)
     })
 
     return unsubscribe
   }, [])
-
-  // Proactive refresh every 45 minutes (tokens expire after 60 min)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (!user) return
-      console.log('[Keel] Proactive token refresh (45min interval)')
-      const refreshed = await refreshAccessTokenForUid(user.uid)
-      if (!refreshed) setNeedsReauth(true)
-    }, 45 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [user])
-
-  // Refresh when tab becomes visible (user may have been away for hours)
-  useEffect(() => {
-    const handleVisibility = async () => {
-      if (document.visibilityState !== 'visible' || !user) return
-      const accountDoc = await getDoc(doc(db, `users/${user.uid}/accounts`, 'account_primary'))
-        .catch(() => null)
-      const expiresAt = accountDoc?.data()?.tokenExpiresAt?.toMillis?.() ?? 0
-      if (Date.now() > expiresAt - 5 * 60 * 1000) {
-        console.log('[Keel] Tab refocused with expired/expiring token — refreshing')
-        const refreshed = await refreshAccessTokenForUid(user.uid)
-        if (!refreshed) setNeedsReauth(true)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [user])
 
   const saveTokenAndScan = async (firebaseUser: User, token: string, refreshToken?: string) => {
     const uid        = firebaseUser.uid
@@ -172,49 +127,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Existing users: only auto-scan if last scan was >30 minutes ago
-    // (prevents double-scan after onboarding redirect back to dashboard)
-    const lastScanAt = existing.data()?.lastScanAt
-    const lastScanMs = lastScanAt ? lastScanAt.toMillis() : 0
-    const minutesSinceLastScan = (Date.now() - lastScanMs) / 60000
-    if (minutesSinceLastScan < 30) {
-      console.log(`[Keel] Skipping auto-scan — last scan was ${Math.round(minutesSinceLastScan)}m ago`)
-      return
-    }
-
-    const daysBack = typeof window !== 'undefined'
-      ? parseInt(localStorage.getItem('keel_scan_days_back') ?? '7', 10)
-      : 14
-    await runScan(uid, daysBack, 'auto')
+    // Auto-scan on page load is disabled — background scanning via Gmail Pub/Sub
+    // handles new emails automatically. Manual scan button remains available.
+    // (Previously auto-scanned if last scan was >30 minutes ago)
   }
 
-  // Internal token refresh — returns new token or null if refresh fails
-  const refreshAccessTokenForUid = async (uid: string): Promise<string | null> => {
+  // Silently refresh the access token using the stored refresh token
+  const refreshAccessToken = async (uid: string): Promise<string | null> => {
     try {
       const res = await fetch('/api/auth/refresh', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ uid }),
       })
-      if (!res.ok) {
-        console.warn('[Keel] Token refresh returned', res.status)
-        return null
-      }
-      const data     = await res.json()
+      if (!res.ok) return null
+      const data = await res.json()
       const newToken = data.accessToken as string
       setAccessToken(newToken)
-      setNeedsReauth(false)
-      console.log('[Keel] Access token refreshed')
+      console.log('[Keel] Access token refreshed silently')
       return newToken
     } catch (e) {
-      console.error('[Keel] Token refresh failed:', e)
+      console.error('Token refresh failed:', e)
       return null
     }
-  }
-
-  // Silently refresh the access token using the stored refresh token
-  const refreshAccessToken = async (uid: string): Promise<string | null> => {
-    return refreshAccessTokenForUid(uid)
   }
 
   const runScan = async (uid: string, daysBack = 7, job: 'onboarding' | 'manual' | 'auto' = 'manual') => {
@@ -259,16 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       clearInterval(messageTimer)
       if (res.status === 401) {
-        // Token expired — attempt silent refresh then retry once
-        console.log('[Keel] Scan got 401 — attempting token refresh')
-        const newToken = await refreshAccessTokenForUid(uid)
-        if (newToken) {
-          // Retry the scan with fresh token (server reads token from Firestore)
-          await runScan(uid, daysBack, job)
-          return
-        }
-        // Refresh failed — user needs to sign in again
-        setNeedsReauth(true)
+        // Gmail token expired — surface a clear re-auth message rather than generic failure
         setScanProgress({ status: 'error', processed: 0, total: 0, message: 'Session expired — please sign in again' })
         setTimeout(() => setScanProgress(IDLE), 6000)
         return
@@ -299,12 +225,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     try {
+      // signInWithPopup works on mobile when triggered by direct user gesture (button tap)
       const result     = await signInWithPopup(auth, googleProvider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
       const token      = credential?.accessToken ?? null
       if (token && result.user) {
         setAccessToken(token)
-        setNeedsReauth(false)
         await saveTokenAndScan(result.user, token)
       }
     } catch (error: any) {
@@ -342,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, needsReauth, signIn, signOut, triggerScan }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, signIn, signOut, triggerScan }}>
       {children}
     </AuthContext.Provider>
   )

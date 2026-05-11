@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -8,13 +8,12 @@ import { useAuth } from '@/contexts/AuthContext'
 export function useBackgroundScanToast() {
   const { user } = useAuth()
   const [toast, setToast] = useState<{ message: string; id: number } | null>(null)
+  const seenIds = useRef(new Set<string>())
+  const initialised = useRef(false)
   const dismiss = useCallback(() => setToast(null), [])
 
   useEffect(() => {
     if (!user) return
-
-    // Record mount time — only show toasts for scans that arrive after we load
-    const mountedAt = Date.now()
 
     const q = query(
       collection(db, `users/${user.uid}/scanRuns`),
@@ -23,30 +22,31 @@ export function useBackgroundScanToast() {
     )
 
     const unsub = onSnapshot(q, snap => {
+      // On first snapshot, just record the existing IDs — don't toast
+      if (!initialised.current) {
+        snap.docs.forEach(d => seenIds.current.add(d.id))
+        initialised.current = true
+        return
+      }
+
+      // On subsequent snapshots, check for genuinely new docs
       for (const change of snap.docChanges()) {
         if (change.type !== 'added') continue
+        if (seenIds.current.has(change.doc.id)) continue
+        seenIds.current.add(change.doc.id)
 
-        const data     = change.doc.data()
-        const scanAtMs = data.scanAt?.toMillis?.() ?? Date.now() // server timestamp may be null on optimistic write
-
-        // Only background scans that happened after we mounted
+        const data = change.doc.data()
         if (data.job !== 'background') continue
-        // If scanAt is not yet resolved (null), Date.now() is used — treat as recent
-        if (data.scanAt && scanAtMs < mountedAt) continue
-        if (data.scanAt && Date.now() - scanAtMs > 90_000) continue
 
         const newItems     = (data.newItems     as number) ?? 0
         const updatedItems = (data.updatedItems as number) ?? 0
-        const newIgnored   = (data.newIgnored   as number) ?? 0
-        // Don't toast if everything that arrived was quietly_logged
-        const visibleNew = newItems - newIgnored
-        if (visibleNew <= 0 && updatedItems === 0) continue
+        if (newItems === 0 && updatedItems === 0) continue
 
         let message: string
-        if (visibleNew > 0 && updatedItems > 0) {
-          message = `${visibleNew} new · ${updatedItems} updated`
-        } else if (visibleNew > 0) {
-          message = visibleNew === 1 ? '1 new email organised' : `${visibleNew} new emails organised`
+        if (newItems > 0 && updatedItems > 0) {
+          message = `${newItems} new · ${updatedItems} updated`
+        } else if (newItems > 0) {
+          message = newItems === 1 ? '1 new email organised' : `${newItems} new emails organised`
         } else {
           message = updatedItems === 1 ? '1 item updated' : `${updatedItems} items updated`
         }
@@ -55,7 +55,11 @@ export function useBackgroundScanToast() {
       }
     })
 
-    return unsub
+    return () => {
+      unsub()
+      initialised.current = false
+      seenIds.current.clear()
+    }
   }, [user])
 
   return { toast, dismiss }
