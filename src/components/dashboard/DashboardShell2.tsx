@@ -649,41 +649,49 @@ export function DashboardShell2() {
   const [triageDismissed, setTriageDismissed] = useState(false)
   const [fyiExpandedId,   setFyiExpandedId]   = useState<string | null>(null)
   const [initialScanDone, setInitialScanDone] = useState(false)
-  const [showOverlay,     setShowOverlay]     = useState(true)  // always show until both scan done AND min time elapsed
+  // Overlay starts hidden — only shown when we actually decide to run a scan.
+  // This prevents the blur flashing on every page refresh regardless of scan state.
+  const [showOverlay,     setShowOverlay]     = useState(false)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
 
-  // Show overlay for at least 1.5s so user always sees the check happening
+  // Show overlay for at least 1.5s when a scan actually runs
   const markDone = useCallback(() => {
     setInitialScanDone(true)
     setTimeout(() => setShowOverlay(false), 1500)
   }, [])
 
   // On mount: decide whether to trigger a scan.
-  // - If background scanning is enabled, Gmail Pub/Sub handles new emails — skip the scan.
-  // - If background scanning is off, fall back to a time-based debounce (30 min).
+  // Reads two docs in parallel:
+  //   - root users/{uid}            → autoScanEnabled (written by inbox-watch)
+  //   - accounts/account_primary    → lastScanCompletedAt
   useEffect(() => {
     if (!user) return
     const check = async () => {
       try {
-        const accountSnap = await getDoc(doc(db, `users/${user.uid}/accounts/account_primary`))
-        const data        = accountSnap.data()
+        const [rootSnap, accountSnap] = await Promise.all([
+          getDoc(doc(db, `users/${user.uid}`)),
+          getDoc(doc(db, `users/${user.uid}/accounts/account_primary`)),
+        ])
 
-        // Background scanning active — trust Pub/Sub, no need to scan on every page load
-        if (data?.autoScanEnabled) {
-          markDone()
-          return
+        // Background scanning active — Pub/Sub handles new emails, skip scan entirely
+        if (rootSnap.data()?.autoScanEnabled) {
+          setInitialScanDone(true)
+          return  // no overlay, no scan
         }
 
         // Background scanning off — debounce to avoid scanning on every refresh
-        const lastScanTs = data?.lastScanCompletedAt
+        const lastScanTs = accountSnap.data()?.lastScanCompletedAt
         const lastScanMs = lastScanTs ? lastScanTs.toMillis() : 0
         const minsAgo    = (Date.now() - lastScanMs) / 60000
         if (minsAgo < 30) {
-          markDone()
-          return
+          setInitialScanDone(true)
+          return  // recent enough, skip
         }
       } catch { /* proceed with scan if read fails */ }
+
+      // Only show the overlay when we actually run a scan
+      setShowOverlay(true)
       triggerScan('auto').finally(markDone)
     }
     check()
