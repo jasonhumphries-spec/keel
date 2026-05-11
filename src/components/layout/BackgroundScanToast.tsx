@@ -31,12 +31,12 @@ export function useBackgroundScanToast() {
   useEffect(() => {
     if (!user) return
 
-    // Listen for the most recent background scan run
+    // Listen for the most recent scan run of any type —
+    // filter for background job client-side to avoid composite index requirement
     const q = query(
       collection(db, `users/${user.uid}/scanRuns`),
-      where('job', '==', 'background'),
       orderBy('scanAt', 'desc'),
-      limit(1),
+      limit(3),  // small window to catch background scans amid manual scans
     )
 
     let initialLoad = true
@@ -52,6 +52,9 @@ export function useBackgroundScanToast() {
         if (change.type !== 'added') continue
 
         const data = change.doc.data()
+
+        // Only toast for background scans
+        if (data.job !== 'background') continue
         const newItems     = data.newItems     as number ?? 0
         const updatedItems = data.updatedItems as number ?? 0
 
