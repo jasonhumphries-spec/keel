@@ -264,6 +264,116 @@ export const renewGmailWatches = onSchedule(
 )
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Proximity re-scoring helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the importance score implied by how many days away an event is.
+ * Used by the nightly job to bump scores upward as events approach.
+ *
+ * Thresholds mirror the AI prompt scoring bands in scanUtils.ts:
+ *   <= 1 day  → 0.78  (High — tomorrow or today)
+ *   <= 3 days → 0.75  (High — happening very soon)
+ *   <= 7 days → 0.72  (High — this week)
+ *   >  7 days → null  (no change — AI score stands)
+ *
+ * Only ever bumps upward. manualPriority items are never touched.
+ */
+function proximityScore(daysUntil: number): number | null {
+  if (daysUntil <= 1) return 0.78
+  if (daysUntil <= 3) return 0.75
+  if (daysUntil <= 7) return 0.72
+  return null
+}
+
+/**
+ * Re-score active items whose upcoming event/deadline/rsvp signals are within
+ * 7 days. Pure date arithmetic — no AI call. Only increases scores, never
+ * lowers them. Returns the number of items updated.
+ */
+async function rescoreByProximity(uid: string, now: Date): Promise<number> {
+  const nowMs        = now.getTime()
+  const sevenDaysMs  = 7 * 24 * 60 * 60 * 1000
+  const cutoffTs     = admin.firestore.Timestamp.fromDate(new Date(nowMs + sevenDaysMs))
+  const nowTs        = admin.firestore.Timestamp.fromDate(now)
+
+  // Items that could benefit: active statuses, not manually prioritised
+  const itemsSnap = await db
+    .collection(`users/${uid}/items`)
+    .where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply'])
+    .get()
+
+  if (itemsSnap.empty) return 0
+
+  const itemIds = itemsSnap.docs.map(d => d.id)
+  const itemDataById = new Map(itemsSnap.docs.map(d => [d.id, d.data()]))
+
+  // Fetch upcoming event/deadline/rsvp signals for these items (within 7 days)
+  const earliestSignalMs = new Map<string, number>() // itemId → ms of nearest signal
+
+  for (let i = 0; i < itemIds.length; i += 10) {
+    const chunk    = itemIds.slice(i, i + 10)
+    const sigsSnap = await db
+      .collection(`users/${uid}/signals`)
+      .where('itemId', 'in', chunk)
+      .where('type', 'in', ['event', 'deadline', 'rsvp'])
+      .where('detectedDate', '>', nowTs)
+      .where('detectedDate', '<=', cutoffTs)
+      .get()
+
+    for (const sigDoc of sigsSnap.docs) {
+      const sig    = sigDoc.data()
+      const sigMs  = (sig.detectedDate as admin.firestore.Timestamp).toMillis()
+      const itemId = sig.itemId as string
+      const prev   = earliestSignalMs.get(itemId)
+      if (prev === undefined || sigMs < prev) {
+        earliestSignalMs.set(itemId, sigMs)
+      }
+    }
+  }
+
+  if (earliestSignalMs.size === 0) return 0
+
+  let batch      = db.batch()
+  let batchCount = 0
+  let rescored   = 0
+
+  for (const [itemId, nearestMs] of earliestSignalMs) {
+    const item = itemDataById.get(itemId)
+    if (!item) continue
+
+    // Never touch items the user has manually set priority on
+    if (item.manualPriority) continue
+
+    const daysUntil    = (nearestMs - nowMs) / (24 * 60 * 60 * 1000)
+    const newScore     = proximityScore(daysUntil)
+    const currentScore = item.aiImportanceScore ?? 0
+
+    // Only update if the proximity score is higher than what the AI assigned
+    if (newScore !== null && newScore > currentScore) {
+      const itemRef = db.doc(`users/${uid}/items/${itemId}`)
+      batch.update(itemRef, {
+        aiImportanceScore: newScore,
+        updatedAt:         admin.firestore.FieldValue.serverTimestamp(),
+        rescoredBy:        'nightly_proximity',
+      })
+      rescored++
+      batchCount++
+
+      // Firestore batch limit is 500 — commit and start a new batch
+      if (batchCount % 400 === 0) {
+        await batch.commit()
+        batch = db.batch()
+      }
+    }
+  }
+
+  if (batchCount % 400 !== 0) await batch.commit()
+  return rescored
+}
+
 // nightly Item Expiry
 // ---------------------------------------------------------------------------
 
@@ -311,6 +421,13 @@ export const nightlyItemExpiry = onSchedule(
       const uid = userDoc.id
 
       try {
+        // ── Step 1: re-score items approaching their event date ──────────────
+        const rescored = await rescoreByProximity(uid, new Date())
+        if (rescored > 0) {
+          logger.info(`nightlyItemExpiry: uid=${uid} re-scored ${rescored} items by proximity`)
+        }
+
+        // ── Step 2: expire items whose event date has passed ─────────────────
         // Fetch active items that could be candidates for expiry
         const itemsSnap = await db
           .collection(`users/${uid}/items`)
@@ -400,6 +517,6 @@ export const nightlyItemExpiry = onSchedule(
       }
     }
 
-    logger.info(`nightlyItemExpiry complete: archived=${archived} overdue=${overdue} skipped=${skipped}`)
+    logger.info(`nightlyItemExpiry complete: archived=${archived} overdue=${overdue} skipped=${skipped} (proximity re-scoring done per-user)`)
   }
 )
