@@ -78,8 +78,6 @@ export function buildCalendarUrl(signal: KeelSignal, item?: KeelItem): string {
     if (times) break
   }
 
-  console.log(`[CalendarUtils] title="${item?.aiTitle}" times=${JSON.stringify(times)} allDay=${!times}`)
-
   let dateParam: string
 
   if (times) {
