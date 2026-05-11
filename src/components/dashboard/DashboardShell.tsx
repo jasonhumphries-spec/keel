@@ -203,6 +203,7 @@ export function DashboardShell() {
         </div>
       </div>
       {commonPanels}
+    </div>
     </CategoryFilterProvider>
   )
 }
