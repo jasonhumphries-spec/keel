@@ -34,6 +34,8 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     aiDetailedSummary: d.aiDetailedSummary ?? '',
     manuallyIgnored:   d.manuallyIgnored ?? false,
     userNote:          d.userNote ?? null,
+    preSnoozePriority: d.preSnoozePriority ?? null,
+    isOutbound:        d.isOutbound ?? false,
     mergedThreadIds:   d.mergedThreadIds ?? [],
   }
 }

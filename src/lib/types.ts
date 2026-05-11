@@ -50,6 +50,7 @@ export interface KeelItem {
   userNote:          string | null
   snoozedUntil:      Date | null
   preSnoozePriority: number | null
+  isOutbound:        boolean
   linkedOutboundId: string | null
   linkedItemId:     string | null
   isRecurring:      boolean

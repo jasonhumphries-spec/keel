@@ -172,6 +172,7 @@ export async function POST(req: NextRequest) {
     fbReads += catsSnap.size + hintsSnap.size + 1
 
     const locale              = accountDoc.data()?.locale ?? 'en-GB'
+    const accountEmail        = (accountDoc.data()?.email as string ?? '').toLowerCase()
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
     // Labels excluded from scanning — defaults to promotions + social if not set
@@ -370,7 +371,12 @@ export async function POST(req: NextRequest) {
 
         const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
-        return { threadId, messageId, detail, participants, from, subject, dateStr, senderName, senderEmail, classification }
+        // isOutbound: true when the user sent the first message in the thread
+        // 'from' here is from the first/representative message in the active window,
+        // but we want the very first message — detail is that message.
+        // For threads in sent, the from header will match the account email.
+        const isOutbound = senderEmail.toLowerCase() === accountEmail
+        return { threadId, messageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
       }
     )
 
@@ -378,7 +384,7 @@ export async function POST(req: NextRequest) {
     try { await feedRef.delete() } catch {}
 
     // Step 7: Write results to Firestore (batch where possible)
-    for (const { threadId, messageId, detail, participants, subject, dateStr, senderName, senderEmail, classification } of classifications) {
+    for (const { threadId, messageId, detail, participants, subject, dateStr, senderName, senderEmail, isOutbound, classification } of classifications) {
       if (!classification) { skipped++; continue }
 
       if (classification._usage) {
@@ -401,6 +407,7 @@ export async function POST(req: NextRequest) {
             status:            'quietly_logged',
             importanceFlag:    false,
             aiImportanceScore: classification.aiImportanceScore || 0.1,
+            isOutbound:   isOutbound ?? false,
             snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
             isRecurring: classification.isRecurring || false,
             fromTrackedReply: false, trackedReplyId: null,
@@ -469,6 +476,7 @@ export async function POST(req: NextRequest) {
           status:            effectiveStatus,
           importanceFlag:    false,
           aiImportanceScore: classification.aiImportanceScore,
+          isOutbound:        isOutbound ?? false,
           snoozedUntil:      null, linkedOutboundId: null, linkedItemId: null,
           isRecurring:       classification.isRecurring,
           fromTrackedReply:  false, trackedReplyId: null,

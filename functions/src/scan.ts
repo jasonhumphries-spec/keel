@@ -611,6 +611,7 @@ export async function handleGmailScan(req: any, res: any) {
     fbReads += catsSnap.size + hintsSnap.size + 1
 
     const locale              = accountDoc.data()?.locale ?? 'en-GB'
+    const accountEmail        = (accountDoc.data()?.email as string ?? '').toLowerCase()
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
     const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social']
@@ -753,13 +754,14 @@ export async function handleGmailScan(req: any, res: any) {
       const senderEmail = senderMatch?.[2] ?? from
       const classification = await classifyThread(subject, from, threadBody, categories, hints, isUK)
       await writeFeed(subject, senderName)
-      return { threadId, messageId, detail, participants, from, subject, dateStr, senderName, senderEmail, classification }
+        const isOutbound = senderEmail.toLowerCase() === accountEmail
+        return { threadId, messageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
     })
 
     try { await feedRef.delete() } catch { /* ok */ }
 
     // Step 7: Write results
-    for (const { threadId, messageId, participants, subject, dateStr, senderName, senderEmail, classification } of classifications) {
+    for (const { threadId, messageId, participants, subject, dateStr, senderName, senderEmail, isOutbound, classification } of classifications) {
       if (!classification) { skipped++; continue }
       if (classification._usage) {
         totalInputTok  += classification._usage.inputTokens  ?? 0
@@ -778,6 +780,7 @@ export async function handleGmailScan(req: any, res: any) {
             categoryId: classification.categoryId || 'cat_other', categoryName: classification.categoryName || 'Other',
             subcategoryId: null, subcategoryName: null, status: 'quietly_logged',
             importanceFlag: false, aiImportanceScore: classification.aiImportanceScore || 0.1,
+            isOutbound:   isOutbound ?? false,
             snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
             isRecurring: classification.isRecurring || false,
             fromTrackedReply: false, trackedReplyId: null,

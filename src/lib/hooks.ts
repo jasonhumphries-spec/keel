@@ -52,6 +52,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     userNote:        d.userNote ?? null,
     snoozedUntil:      d.snoozedUntil ? toDate(d.snoozedUntil) : null,
     preSnoozePriority: d.preSnoozePriority ?? null,
+    isOutbound:        d.isOutbound ?? false,
     linkedOutboundId: d.linkedOutboundId ?? null, linkedItemId: d.linkedItemId ?? null,
     isRecurring: d.isRecurring ?? false, fromTrackedReply: d.fromTrackedReply ?? false,
     trackedReplyId: d.trackedReplyId ?? null, mergedThreadIds: d.mergedThreadIds ?? [], createdAt: toDate(d.createdAt),
