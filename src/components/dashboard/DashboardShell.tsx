@@ -147,6 +147,7 @@ export function DashboardShell() {
   // ---- Tablet (768–1023px) ----
   if (isTablet) {
     return (
+      <CategoryFilterProvider>
       <div style={{ display: 'flex', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
         <SessionBanner />
         <BackgroundScanToast />
@@ -177,11 +178,13 @@ export function DashboardShell() {
         </div>
         {commonPanels}
       </div>
+      </CategoryFilterProvider>
     )
   }
 
   // ---- Desktop (>=1024px) ----
   return (
+    <CategoryFilterProvider>
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: 'var(--color-bg)' }}>
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -200,7 +203,6 @@ export function DashboardShell() {
         </div>
       </div>
       {commonPanels}
-    </div>
     </CategoryFilterProvider>
   )
 }
