@@ -107,20 +107,21 @@ export async function POST(req: NextRequest) {
     // ── Build event date/time ─────────────────────────────────────────────
     const detectedDate: Date = sig.detectedDate?.toDate() ?? new Date()
 
+    // Build calendar event description from aiDetailedSummary → aiSummary
+    let calDescription = 'Added by Keel'
+    if (item?.aiDetailedSummary && typeof item.aiDetailedSummary === 'string' && item.aiDetailedSummary.trim()) {
+      calDescription = item.aiDetailedSummary.trim()
+      if (item.senderName) calDescription += `\n\nFrom: ${item.senderName}`
+      calDescription += '\n\nAdded by Keel'
+    } else if (item?.aiSummary && typeof item.aiSummary === 'string' && item.aiSummary.trim()) {
+      calDescription = item.aiSummary.trim()
+      if (item.senderName) calDescription += `\n\nFrom: ${item.senderName}`
+      calDescription += '\n\nAdded by Keel'
+    }
+
     const event: Record<string, any> = {
       summary:     sig.description || item?.aiTitle || item?.subject || 'Event',
-      description: (() => {
-        const parts: string[] = []
-        if (item?.aiDetailedSummary) {
-          // aiDetailedSummary uses "• " bullets — clean up for calendar readability
-          parts.push(item.aiDetailedSummary.replace(/^•\s*/gm, '• ').trim())
-        } else if (item?.aiSummary) {
-          parts.push(item.aiSummary)
-        }
-        if (item?.senderName) parts.push(`\nFrom: ${item.senderName}`)
-        parts.push('Added by Keel')
-        return parts.join('\n')
-      })(),
+      description: calDescription,
     }
 
     if (extractedTimes) {
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the calendar event
+    console.log(`[CalAdd] summary="${event.summary}" description="${calDescription.slice(0, 80)}..." timed=${!!extractedTimes}`)
     const calRes = await fetch(
       'https://www.googleapis.com/calendar/v3/calendars/primary/events',
       {
