@@ -819,7 +819,6 @@ export function DashboardShell2() {
   // ── Mobile ─────────────────────────────────────────────────────────────────
   if (isMobile) {
     return (
-      <CategoryFilterProvider>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
         <SessionBanner />
         <BackgroundScanToast />
@@ -853,13 +852,11 @@ export function DashboardShell2() {
         {commonPanels}
         {scanOverlay}
       </div>
-      </CategoryFilterProvider>
     )
   }
 
   // ── Desktop / Tablet ─────────────────────────────────────────────────────────
   return (
-    <CategoryFilterProvider>
     <div style={{ display: 'flex', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
       <SessionBanner />
       <BackgroundScanToast />
@@ -1062,6 +1059,5 @@ export function DashboardShell2() {
       {commonPanels}
       {scanOverlay}
     </div>
-    </CategoryFilterProvider>
   )
 }

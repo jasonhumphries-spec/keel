@@ -4,6 +4,7 @@ import { useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { DashboardShell2 } from '@/components/dashboard/DashboardShell2'
+import { CategoryFilterProvider } from '@/contexts/CategoryFilterContext'
 
 function Dashboard2Content() {
   const { user, loading } = useAuth()
@@ -22,7 +23,11 @@ function Dashboard2Content() {
     )
   }
 
-  return <DashboardShell2 />
+  return (
+    <CategoryFilterProvider>
+      <DashboardShell2 />
+    </CategoryFilterProvider>
+  )
 }
 
 export default function Dashboard2Page() {
