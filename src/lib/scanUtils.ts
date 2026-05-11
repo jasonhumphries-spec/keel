@@ -142,10 +142,11 @@ Rules:
 - shouldProcess: true for everything else including bills, invoices, appointments, requests, personal correspondence, receipts, RSVPs, alerts
 
 IMPORTANCE SCORING — be precise:
-- 0.95: Overdue payment, urgent deadline today or tomorrow, legal/medical action needed
+- 0.95: Overdue payment, urgent deadline today or tomorrow, legal/medical action required
 - 0.85-0.90: Payment due within 7 days, important event RSVP needed, time-sensitive request
 - 0.70-0.80: Action needed but not urgent, quote to review, appointment to confirm
-- 0.50-0.65: FYI items needing light review, routine correspondence
+- 0.65-0.75: Upcoming confirmed event or activity within 7 days — even if no action required, the proximity makes it worth surfacing (school trips, sports days, matches, concerts happening this week)
+- 0.50-0.65: FYI items needing light review, routine correspondence, upcoming events more than 7 days away
 - 0.25-0.35: Receipts (payment already made), informational only
 - 0.10-0.20: Automated notifications, resolved matters, no action needed
 
@@ -189,7 +190,7 @@ RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do N
   • NEXT STEP: Who specifically needs to do what next, and by when? Identify the person by name — is it the account owner (${from.split('<')[0].trim() || 'the account owner'}) or the other party? Judge by the direction of the most recent message. If the most recent outbound message asks a question, the next step is waiting for the other party's reply. If nothing is needed, omit this bullet entirely.
 - NAMES: Never use "the user", "you", or "the account owner" in summaries or next steps. Use real first names from the thread.
 - SIGNALS — strict quality rules:
-  • event: ONLY for confirmed, agreed, upcoming appointments or events. NOT for dates mentioned as obstacles, rejected options, past dates, or tentative proposals that weren't agreed. Do not create an event signal for a date that was declined or used only as context.
+  • event: For confirmed, agreed, upcoming appointments or events — including informational school/activity notices where a date and time are given, even if no parental action is required. The timing information is valuable regardless of whether action is needed. Create event signals for: school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, or vague "sometime next week" references.
   • awaiting: ONLY when there is a genuinely open question in the most recent outbound message that has not yet been answered. If the appointment/matter is already confirmed, do NOT create an awaiting signal for it.
   • deadline: Only for hard deadlines with real consequences if missed.
   • payment: Only for actual money due or paid.
