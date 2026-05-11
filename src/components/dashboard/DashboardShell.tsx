@@ -16,6 +16,7 @@ import { BottomNav }         from './BottomNav'
 import { useAllSignals, useUncategorised, useBreakpoint } from '@/lib/hooks'
 import { DevTools }          from '../dev/DevTools'
 import { SessionBanner }     from '@/components/layout/SessionBanner'
+import { BackgroundScanToast } from '@/components/layout/BackgroundScanToast'
 import type { KeelItem }     from '@/lib/types'
 
 function MobileScanButton() {
@@ -116,6 +117,7 @@ export function DashboardShell() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
         <SessionBanner />
+        <BackgroundScanToast />
         <div style={{ background: 'var(--color-topbar-bg)', borderBottom: '1px solid var(--color-border)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>{greeting()}, {firstName}</div>
@@ -144,6 +146,7 @@ export function DashboardShell() {
     return (
       <div style={{ display: 'flex', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
         <SessionBanner />
+        <BackgroundScanToast />
         {sidebarOpen && (
           <>
             <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150, background: 'rgba(0,0,0,0.4)' }} />
