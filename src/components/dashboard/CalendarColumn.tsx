@@ -27,22 +27,7 @@ function isHighPriority(score: number): boolean {
 
 // ── Google Calendar URL ───────────────────────────────────────────────────────
 
-function addToCalendarUrl(signal: KeelSignal, item?: KeelItem): string {
-  const date   = signal.detectedDate!
-  const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const pad    = (n: number) => String(n).padStart(2, '0')
-  const fmt    = (d: Date) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
-  const start  = fmt(date)
-  const end    = fmt(new Date(date.getTime() + 60 * 60 * 1000))
-  const params = new URLSearchParams({
-    action:  'TEMPLATE',
-    text:    item?.aiTitle || signal.description || 'Event',
-    dates:   `${start}/${end}`,
-    details: signal.description || 'Added by Keel from email.',
-    ctz:     userTz,
-  })
-  return `https://calendar.google.com/calendar/render?${params.toString()}`
-}
+import { buildCalendarUrl } from '@/lib/calendarUtils'
 
 // ── Signal card ───────────────────────────────────────────────────────────────
 
@@ -71,7 +56,7 @@ function SignalCard({
 
   const handleAdd = () => {
     if (!signal.detectedDate) return
-    window.open(addToCalendarUrl(signal, item), '_blank')
+    window.open(buildCalendarUrl(signal, item), '_blank')
     setCalStatus('pending')
   }
 

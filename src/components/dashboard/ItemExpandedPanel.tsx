@@ -5,9 +5,10 @@ import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestor
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCategories } from '@/lib/hooks'
+import { buildCalendarUrl } from '@/lib/calendarUtils'
 import type { KeelItem, KeelSignal } from '@/lib/types'
 
-function SignalPill({ signal, itemId, uid }: { signal: KeelSignal; itemId: string; uid: string }) {
+function SignalPill({ signal, itemId, uid, item }: { signal: KeelSignal; itemId: string; uid: string; item?: KeelItem }) {
   const [calStatus, setCalStatus] = useState(signal.calendarStatus)
   const [checking,  setChecking]  = useState(false)
 
@@ -64,34 +65,7 @@ function SignalPill({ signal, itemId, uid }: { signal: KeelSignal; itemId: strin
   const addToCalendar = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!signal.detectedDate) return
-
-    const userTz   = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const date     = signal.detectedDate
-
-    // Format date for Google Calendar URL: YYYYMMDDTHHmmssZ
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`
-
-    // Use local time format (no Z suffix) so Google Calendar respects the ctz param
-    const start = fmt(date)
-    const end   = fmt(new Date(date.getTime() + 60 * 60 * 1000)) // 1hr default
-
-    const params = new URLSearchParams({
-      action:  'TEMPLATE',
-      text:    signal.description || 'Event',
-      dates:   `${start}/${end}`,
-      details: [
-        signal.description,
-        '',
-        'Added by Keel from email.',
-      ].filter(Boolean).join('\n'),
-      ctz: userTz,
-    })
-
-    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank')
-    // Optimistically mark as on_cal — user may not actually save it
-    // but it's better UX than leaving the button active after they've opened calendar
+    window.open(buildCalendarUrl(signal, item), '_blank')
     setCalStatus('pending')
   }
 
@@ -585,7 +559,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               {/* Signal pills */}
               {itemSignals.length > 0 && (
                 <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {itemSignals.map(sig => <SignalPill key={sig.signalId} signal={sig} itemId={item.itemId} uid={user?.uid ?? ''} />)}
+                  {itemSignals.map(sig => <SignalPill key={sig.signalId} signal={sig} itemId={item.itemId} uid={user?.uid ?? ''} item={item} />)}
                 </div>
               )}
 
