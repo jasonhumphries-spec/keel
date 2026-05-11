@@ -36,54 +36,11 @@ function getAdminDb() {
   return getFirestore()
 }
 
+import { getValidAccessToken } from '@/lib/server/tokenUtils'
+
 // ── Pub/Sub topic ──────────────────────────────────────────────────────────
 
 const PUBSUB_TOPIC = `projects/${process.env.FIREBASE_PROJECT_ID}/topics/gmail-inbox-notifications`
-
-// ── Token helper ───────────────────────────────────────────────────────────
-
-async function getAccessToken(
-  db: ReturnType<typeof getFirestore>,
-  uid: string
-): Promise<string> {
-  const accountDoc = await db.doc(`users/${uid}/accounts/account_primary`).get()
-  if (!accountDoc.exists) throw new Error('account_primary not found')
-
-  const data = accountDoc.data()!
-  const accessToken  = data.accessToken  as string | undefined
-  const refreshToken = data.refreshToken as string | undefined
-  const expiresAt    = (data.tokenExpiresAt as Timestamp | undefined)?.toMillis() ?? 0
-
-  if (accessToken && Date.now() < expiresAt - 60_000) return accessToken
-
-  // Token expired — refresh
-  if (!refreshToken) throw new Error('No refresh token — user must sign in again')
-
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: refreshToken,
-      grant_type:    'refresh_token',
-    }),
-  })
-
-  if (!tokenRes.ok) throw new Error(`Token refresh failed: ${await tokenRes.text()}`)
-
-  const tokenData = await tokenRes.json()
-  const newToken  = tokenData.access_token as string
-  const expiresIn = (tokenData.expires_in  as number) ?? 3600
-
-  await db.doc(`users/${uid}/accounts/account_primary`).update({
-    accessToken:    newToken,
-    tokenUpdatedAt: Timestamp.now(),
-    tokenExpiresAt: Timestamp.fromMillis(Date.now() + expiresIn * 1000),
-  })
-
-  return newToken
-}
 
 // ── Route handler ──────────────────────────────────────────────────────────
 
@@ -123,7 +80,9 @@ export async function POST(req: NextRequest) {
 
       let accessToken: string
       try {
-        accessToken = await getAccessToken(db, uid)
+        const tok = await getValidAccessToken(db, uid)
+        if (!tok) throw new Error('Token unavailable')
+        accessToken = tok
       } catch (err: any) {
         await rootRef.update({ watchStatus: 'error' })
         return NextResponse.json({ error: err.message }, { status: 400 })
@@ -185,7 +144,8 @@ export async function POST(req: NextRequest) {
     if (action === 'disable') {
       // Attempt to clean up the Gmail watch — non-fatal if it fails
       try {
-        const accessToken = await getAccessToken(db, uid)
+        const accessToken = await getValidAccessToken(db, uid)
+        if (!accessToken) throw new Error('Token unavailable')
         const stopRes = await fetch(
           'https://gmail.googleapis.com/gmail/v1/users/me/stop',
           {

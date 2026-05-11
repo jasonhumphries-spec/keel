@@ -3,6 +3,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
+import { getValidAccessToken } from '@/lib/server/tokenUtils'
 
 function getAdminDb() {
   if (!getApps().length) {
@@ -24,44 +25,6 @@ async function fetchThread(accessToken: string, threadId: string) {
   )
   if (!res.ok) return { data: null, status: res.status }
   return { data: await res.json(), status: res.status }
-}
-
-async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: string): Promise<string | null> {
-  const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
-  const data        = accountSnap.data()
-  if (!data?.accessToken) return null
-
-  // Check if token is expired or expiring within 2 minutes
-  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
-  if (expiresAt > Date.now() + 120_000) return data.accessToken as string
-
-  // Refresh it
-  try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    new URLSearchParams({
-        client_id:     process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        refresh_token: data.refreshToken as string,
-        grant_type:    'refresh_token',
-      }),
-    })
-    if (!tokenRes.ok) {
-      console.warn('[reanalyse] Token refresh failed — user must re-sign-in')
-      return null  // Don't fall back to stale token — caller should surface auth error
-    }
-    const td = await tokenRes.json()
-    await db.doc(`users/${uid}/accounts/account_primary`).update({
-      accessToken:    td.access_token,
-      tokenExpiresAt: Timestamp.fromMillis(Date.now() + td.expires_in * 1000),
-      tokenUpdatedAt: Timestamp.now(),
-    })
-    return td.access_token as string
-  } catch (e) {
-    console.warn('[reanalyse] Token refresh threw:', e)
-    return null
-  }
 }
 
 function extractHeader(headers: { name: string; value: string }[], name: string): string {
