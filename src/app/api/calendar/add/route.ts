@@ -37,30 +37,106 @@ export async function POST(req: NextRequest) {
     const itemDoc = await db.doc(`users/${uid}/items/${itemId}`).get()
     const item    = itemDoc.data()
 
-    // Build the calendar event
-    const detectedDate: Date = sig.detectedDate?.toDate() ?? new Date()
+    // ── Time extraction ────────────────────────────────────────────────────
+    // Try to find a start (and optionally end) time from the signal description
+    // and item summaries. Falls back to all-day if nothing found.
 
-    // For all-day events (no specific time), use date only
-    // For timed events, use dateTime
-    const isAllDay = !sig.description?.includes(':') // rough heuristic
+    /**
+     * Parse a time string like "3:00pm", "15:00", "3pm", "11:40" into
+     * { hours, minutes } in 24-hour format. Returns null if not parseable.
+     */
+    function parseTime(t: string): { hours: number; minutes: number } | null {
+      const m = t.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i)
+      if (!m) return null
+      let hours   = parseInt(m[1], 10)
+      const mins  = parseInt(m[2] ?? '0', 10)
+      const ampm  = m[3]?.toLowerCase()
+      if (ampm === 'pm' && hours < 12) hours += 12
+      if (ampm === 'am' && hours === 12) hours = 0
+      if (hours > 23 || mins > 59) return null
+      return { hours, minutes: mins }
+    }
+
+    /**
+     * Extract start and optional end times from a text string.
+     * Handles: "3:00pm - 11:00pm BST", "08:00–08:30", "11:40am to 5:45pm",
+     *          "starting at 1pm", "depart 11:40", "return 5:45pm"
+     * Returns null if no time found.
+     */
+    function extractTimes(text: string): { start: { hours: number; minutes: number }; end?: { hours: number; minutes: number } } | null {
+      if (!text) return null
+
+      // Pattern: time SEPARATOR time (start–end range)
+      const rangePattern = /(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:[-–—]|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/gi
+      for (const m of text.matchAll(rangePattern)) {
+        const start = parseTime(m[1])
+        const end   = parseTime(m[2])
+        if (start) return { start, end: end ?? undefined }
+      }
+
+      // Pattern: standalone time with contextual keyword
+      const singlePattern = /(?:at|from|starting|start|depart(?:ure)?|arrive[sd]?|time[:]?)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/gi
+      for (const m of text.matchAll(singlePattern)) {
+        const start = parseTime(m[1])
+        if (start) return { start }
+      }
+
+      // Pattern: any bare time in HH:MM format (high confidence it's a time)
+      const barePattern = /\b(\d{1,2}:\d{2})\s*(?:am|pm|BST|GMT|UTC)?\b/gi
+      for (const m of text.matchAll(barePattern)) {
+        const start = parseTime(m[1])
+        if (start && start.hours <= 23) return { start }
+      }
+
+      return null
+    }
+
+    // Search for times in: signal description → aiSummary → aiDetailedSummary
+    const searchTexts = [
+      sig.description ?? '',
+      item?.aiSummary ?? '',
+      item?.aiDetailedSummary ?? '',
+    ]
+
+    let extractedTimes: { start: { hours: number; minutes: number }; end?: { hours: number; minutes: number } } | null = null
+    for (const text of searchTexts) {
+      extractedTimes = extractTimes(text)
+      if (extractedTimes) break
+    }
+
+    // ── Build event date/time ─────────────────────────────────────────────
+    const detectedDate: Date = sig.detectedDate?.toDate() ?? new Date()
 
     const event: Record<string, any> = {
       summary:     sig.description || item?.aiTitle || item?.subject || 'Event',
       description: item?.aiSummary
         ? `${item.aiSummary}\n\nAdded by Keel from: ${item.senderName}`
-        : `Added by Keel`,
+        : 'Added by Keel',
     }
 
-    if (isAllDay) {
+    if (extractedTimes) {
+      // We have a time — create a timed event
+      const startDate = new Date(detectedDate)
+      startDate.setHours(extractedTimes.start.hours, extractedTimes.start.minutes, 0, 0)
+
+      let endDate: Date
+      if (extractedTimes.end) {
+        endDate = new Date(detectedDate)
+        endDate.setHours(extractedTimes.end.hours, extractedTimes.end.minutes, 0, 0)
+        // Handle midnight crossover (e.g. 11pm–1am)
+        if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1)
+      } else {
+        // No end time — default to 1 hour
+        endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
+      }
+
+      event.start = { dateTime: startDate.toISOString(), timeZone: 'Europe/London' }
+      event.end   = { dateTime: endDate.toISOString(),   timeZone: 'Europe/London' }
+    } else {
+      // No time found — all-day event
       const dateStr = detectedDate.toISOString().split('T')[0]
       event.start = { date: dateStr }
       event.end   = { date: dateStr }
-    } else {
-      event.start = { dateTime: detectedDate.toISOString(), timeZone: 'Europe/London' }
-      event.end   = {
-        dateTime: new Date(detectedDate.getTime() + 60 * 60 * 1000).toISOString(),
-        timeZone: 'Europe/London',
-      }
     }
 
     // Add reminders
