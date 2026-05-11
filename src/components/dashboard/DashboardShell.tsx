@@ -15,8 +15,9 @@ import { CategoriseModal }   from './CategoriseModal'
 import { BottomNav }         from './BottomNav'
 import { useAllSignals, useUncategorised, useBreakpoint } from '@/lib/hooks'
 import { DevTools }          from '../dev/DevTools'
-import { SessionBanner }     from '@/components/layout/SessionBanner'
-import { BackgroundScanToast } from '@/components/layout/BackgroundScanToast'
+import { SessionBanner }          from '@/components/layout/SessionBanner'
+import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
+import { CategoryFilterProvider } from '@/contexts/CategoryFilterContext'
 import type { KeelItem }     from '@/lib/types'
 
 function MobileScanButton() {
@@ -115,6 +116,7 @@ export function DashboardShell() {
   // ---- Mobile (<768px) ----
   if (isMobile) {
     return (
+      <CategoryFilterProvider>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
         <SessionBanner />
         <BackgroundScanToast />
@@ -138,6 +140,7 @@ export function DashboardShell() {
         <BottomNav onSettingsOpen={() => setSettingsOpen(true)} />
         {commonPanels}
       </div>
+      </CategoryFilterProvider>
     )
   }
 
@@ -198,5 +201,6 @@ export function DashboardShell() {
       </div>
       {commonPanels}
     </div>
+    </CategoryFilterProvider>
   )
 }

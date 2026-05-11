@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { useDashboardData } from '@/lib/hooks'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
+import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 
 // Priority bands — used by PriorityButtons
 const PRIORITY_BANDS = [0.10, 0.25, 0.50, 0.70, 0.85, 0.95]
@@ -599,15 +600,17 @@ export function CategoryGrid({
 }) {
   const { user }               = useAuth()
   const { categoryData, loading } = useDashboardData()
+  const { isVisible }             = useCategoryFilter()
 
-  // Apply priority filter
-  const minLevel = priorityFilter === '4' ? 4 : priorityFilter === '3' ? 3 : 0
+  // Apply category filter from sidebar, then priority filter
+  const catFiltered  = categoryData.filter(cat => isVisible(cat.categoryId))
+  const minLevel     = priorityFilter === '4' ? 4 : priorityFilter === '3' ? 3 : 0
   const filteredData = minLevel > 0
-    ? categoryData.map(d => ({
+    ? catFiltered.map(d => ({
         ...d,
         items: d.items.filter(item => scoreToLevel(item.aiImportanceScore ?? 0.5) >= minLevel),
       })).filter(d => d.items.length > 0)
-    : categoryData
+    : catFiltered
 
   const activeCount = filteredData.reduce((acc, d) => acc + d.items.length, 0)
 

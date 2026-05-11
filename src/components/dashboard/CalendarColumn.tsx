@@ -28,6 +28,7 @@ function isHighPriority(score: number): boolean {
 // ── Google Calendar URL ───────────────────────────────────────────────────────
 
 import { buildCalendarUrl } from '@/lib/calendarUtils'
+import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 
 // ── Signal card ───────────────────────────────────────────────────────────────
 
@@ -228,11 +229,18 @@ export function CalendarColumn({
 
   const itemsMap = new Map<string, KeelItem>(items.map(i => [i.itemId, i]))
 
+  // Apply category filter — match what's visible in the main grid
+  const { isVisible } = useCategoryFilter()
+  const catFilteredSignals = signals.filter(sig => {
+    const item = itemsMap.get(sig.itemId)
+    return item ? isVisible(item.categoryId) : true
+  })
+
   // Apply priority filter — match what's visible in the main grid
   const minScore = priorityFilter === '4' ? 0.85 : priorityFilter === '3' ? 0.70 : 0
   const visibleSignals = minScore > 0
-    ? signals.filter(sig => (itemsMap.get(sig.itemId)?.aiImportanceScore ?? 0) >= minScore)
-    : signals
+    ? catFilteredSignals.filter(sig => (itemsMap.get(sig.itemId)?.aiImportanceScore ?? 0) >= minScore)
+    : catFilteredSignals
 
   // Deduplicate: one signal per item per date
   // Priority: event > rsvp > deadline > payment — avoids same item appearing multiple times
