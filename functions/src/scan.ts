@@ -216,7 +216,7 @@ async function runCalendarCheck(uid: string, accessToken: string): Promise<void>
 
 // ─── Gmail helpers ─────────────────────────────────────────────────────────────
 
-async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social']) {
+async function fetchGmailMessages(accessToken: string, daysBack = 7) {
   const messages: { id: string; threadId: string }[] = []
   let pageToken: string | undefined
   do {
@@ -676,11 +676,11 @@ export async function handleGmailScan(req: any, res: any) {
     const threadManualPrio   = new Map(existingSnap.docs.map((d) => [d.data().threadId as string, d.data().manualPriority as boolean]))
 
     // Step 1: Fetch messages
-    let messages = await fetchGmailMessages(accessToken, daysBack, excludedLabels)
+    let messages = await fetchGmailMessages(accessToken, daysBack)
     logger.info(`Found ${messages.length} messages in ${daysBack}-day window`)
     if (messages.length < 10 && daysBack < 30) {
       logger.info('Fewer than 10 messages — extending to 30 days')
-      messages = await fetchGmailMessages(accessToken, 30, excludedLabels)
+      messages = await fetchGmailMessages(accessToken, 30)
     }
 
     // Step 2: Fetch message details

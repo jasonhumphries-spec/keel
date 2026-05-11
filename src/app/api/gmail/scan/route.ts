@@ -29,7 +29,7 @@ async function fetchGmailMessages(accessToken: string, daysBack = 7) {
     url.searchParams.set('maxResults', '500')
     // Build query — exclude labels the user hasn't opted in to
     const exclusions = excludedLabels.map(l => `-category:${l}`).join(' ')
-    url.searchParams.set('q', `in:inbox newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
+    url.searchParams.set('q', `{in:inbox in:sent} newer_than:${daysBack}d${exclusions ? ' ' + exclusions : ''}`)
     if (pageToken) url.searchParams.set('pageToken', pageToken)
 
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
