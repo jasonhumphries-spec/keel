@@ -34,6 +34,8 @@ function filterByBand(
       items: d.items.filter(i => {
         if (resolvedItems.has(i.itemId)) return false
         if (i.status === 'snoozed') return false
+        // awaiting_reply items appear in their own dedicated step — never repeat them here
+        if (i.status === 'awaiting_reply') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
         return l >= minLevel && l <= maxLevel
       }),
