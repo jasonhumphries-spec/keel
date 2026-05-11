@@ -84,7 +84,6 @@ function docToOutbound(id: string, d: DocumentData): KeelOutbound {
     categoryName: d.categoryName ?? null, status: d.status ?? 'open',
     sentAt: toDate(d.sentAt), ageDays: d.ageDays ?? 0,
     snoozedUntil:      d.snoozedUntil ? toDate(d.snoozedUntil) : null,
-    preSnoozePriority: d.preSnoozePriority ?? null,
     repliedAt: d.repliedAt ? toDate(d.repliedAt) : null,
     replyMessageId: d.replyMessageId ?? null, linkedItemId: d.linkedItemId ?? null,
     graceExpiresAt: d.graceExpiresAt ? toDate(d.graceExpiresAt) : null,
