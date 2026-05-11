@@ -6,6 +6,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   Timestamp,
   DocumentData,
@@ -186,6 +187,28 @@ export function useActiveItems() {
     })
     return unsub
   }, [user])
+
+  return { items, loading }
+}
+
+export function useAllItems(limitCount = 300) {
+  const { user } = useAuth()
+  const [items, setItems]     = useState<KeelItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(db, `users/${user.uid}/items`),
+      orderBy('receivedAt', 'desc'),
+      limit(limitCount),
+    )
+    const unsub = onSnapshot(q, snap => {
+      setItems(snap.docs.map(d => docToItem(d.id, d.data())))
+      setLoading(false)
+    })
+    return unsub
+  }, [user, limitCount])
 
   return { items, loading }
 }

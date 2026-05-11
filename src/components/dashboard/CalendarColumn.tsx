@@ -242,20 +242,56 @@ export function CalendarColumn({
     ? catFilteredSignals.filter(sig => (itemsMap.get(sig.itemId)?.aiImportanceScore ?? 0) >= minScore)
     : catFilteredSignals
 
-  // Deduplicate: one signal per item per date
-  // Priority: event > rsvp > deadline > payment — avoids same item appearing multiple times
+  // ── Step 1: per-item dedup — one signal per item per date ────────────────
+  // Priority: event > rsvp > deadline > payment
   const TYPE_RANK: Record<string, number> = { event: 4, rsvp: 3, deadline: 2, payment: 1 }
-  const dedupMap = new Map<string, KeelSignal>() // key: `${itemId}:${dateKey}`
+  const perItemMap = new Map<string, KeelSignal>() // key: `${itemId}:${dateKey}`
   for (const sig of visibleSignals) {
     if (!sig.detectedDate) continue
-    const dateKey = sig.detectedDate.toISOString().split('T')[0]
-    const key     = `${sig.itemId}:${dateKey}`
-    const existing = dedupMap.get(key)
+    const dateKey  = sig.detectedDate.toISOString().split('T')[0]
+    const key      = `${sig.itemId}:${dateKey}`
+    const existing = perItemMap.get(key)
     if (!existing || (TYPE_RANK[sig.type] ?? 0) > (TYPE_RANK[existing.type] ?? 0)) {
-      dedupMap.set(key, sig)
+      perItemMap.set(key, sig)
     }
   }
-  const dedupedSignals = Array.from(dedupMap.values())
+
+  // ── Step 2: cross-item dedup — collapse signals from different emails about
+  // the same real-world event (e.g. booking confirmation + reminder email).
+  // If two signals share a date and their items' aiTitles share 2+ significant
+  // words, theye likely the same event — keep the higher-importance one.
+  function sigWords(s: string): string[] {
+    const STOP = new Set(['the','and','for','with','from','your','their','this','that','have','will'])
+    return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+      .filter(w => w.length > 3 && !STOP.has(w)).slice(0, 5)
+  }
+  function titlesSimilar(a: string, b: string): boolean {
+    const wa = new Set(sigWords(a))
+    return sigWords(b).filter(w => wa.has(w)).length >= 2
+  }
+
+  // Build final list: for each signal, check whether an existing entry on the
+  // same date has a similar title. If so, keep the higher-importance item.
+  const crossDedupEntries: { sig: KeelSignal; date: string; title: string; score: number }[] = []
+  for (const sig of perItemMap.values()) {
+    const date  = sig.detectedDate!.toISOString().split('T')[0]
+    const item  = itemsMap.get(sig.itemId)
+    const title = item?.aiTitle ?? ''
+    const score = item?.aiImportanceScore ?? 0
+
+    const matchIdx = crossDedupEntries.findIndex(
+      e => e.date === date && titlesSimilar(e.title, title)
+    )
+    if (matchIdx >= 0) {
+      if (score > crossDedupEntries[matchIdx].score) {
+        crossDedupEntries[matchIdx] = { sig, date, title, score }
+      }
+      // else keep existing — it has higher importance
+    } else {
+      crossDedupEntries.push({ sig, date, title, score })
+    }
+  }
+  const dedupedSignals = crossDedupEntries.map(e => e.sig)
 
   // Group deduplicated signals by date
   const grouped = new Map<string, KeelSignal[]>()

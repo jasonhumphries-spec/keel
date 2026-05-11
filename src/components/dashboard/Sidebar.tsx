@@ -254,6 +254,7 @@ function SidebarInner() {
     { label: 'Awaiting Reply',  href: '/awaiting-reply', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',             count: counts.awaitingReply, badgeVariant: 'warn' as const },
     { label: 'Ignored',  href: '/quietly-logged', icon: 'M21 8v13H3V8M1 3h22v5H1zM10 12h4',                                                  count: counts.quietlyLogged, badgeVariant: 'mute' as const },
     { label: 'Payment History', href: '/payments',       icon: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1zM8 10h8M8 14h8', count: 0, badgeVariant: 'dark' as const },
+    { label: 'All Mail',        href: '/all-mail',      icon: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6',       count: 0, badgeVariant: 'mute' as const },
   ]
 
   const sectionLabel: React.CSSProperties = {
@@ -324,6 +325,10 @@ function SidebarInner() {
         <Link href="/payments" scroll={false} style={navStyle(isActive('/payments'))}>
           <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1zM8 10h8M8 14h8" /></span>
           Payment History
+        </Link>
+        <Link href="/all-mail" scroll={false} style={navStyle(isActive('/all-mail'))}>
+          <span style={{ color: 'rgba(255,255,255,0.35)' }}><Icon d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6" /></span>
+          All Mail
         </Link>
       </div>
 

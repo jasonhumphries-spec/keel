@@ -48,11 +48,10 @@ function BottomNavInner({ onSettingsOpen }: { onSettingsOpen: () => void }) {
       icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
     },
     {
-      href: '/quietly-logged',
-      label: 'Ignored',
-      count: counts.quietlyLogged,
-      active: pathname === '/quietly-logged',
-      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="22" height="5"/><path d="M21 8v13H3V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
+      href: '/all-mail',
+      label: 'All Mail',
+      active: pathname === '/all-mail',
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
     },
   ]
 

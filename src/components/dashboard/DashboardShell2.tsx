@@ -659,16 +659,27 @@ export function DashboardShell2() {
     setTimeout(() => setShowOverlay(false), 1500)
   }, [])
 
-  // On mount: read lastScanCompletedAt from Firestore for reliable debounce
+  // On mount: decide whether to trigger a scan.
+  // - If background scanning is enabled, Gmail Pub/Sub handles new emails — skip the scan.
+  // - If background scanning is off, fall back to a time-based debounce (30 min).
   useEffect(() => {
     if (!user) return
     const check = async () => {
       try {
         const accountSnap = await getDoc(doc(db, `users/${user.uid}/accounts/account_primary`))
-        const lastScanTs  = accountSnap.data()?.lastScanCompletedAt
-        const lastScanMs  = lastScanTs ? lastScanTs.toMillis() : 0
-        const minsAgo     = (Date.now() - lastScanMs) / 60000
-        if (minsAgo < 10) {
+        const data        = accountSnap.data()
+
+        // Background scanning active — trust Pub/Sub, no need to scan on every page load
+        if (data?.autoScanEnabled) {
+          markDone()
+          return
+        }
+
+        // Background scanning off — debounce to avoid scanning on every refresh
+        const lastScanTs = data?.lastScanCompletedAt
+        const lastScanMs = lastScanTs ? lastScanTs.toMillis() : 0
+        const minsAgo    = (Date.now() - lastScanMs) / 60000
+        if (minsAgo < 30) {
           markDone()
           return
         }
