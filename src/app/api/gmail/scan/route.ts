@@ -20,7 +20,7 @@ function getAdminDb() {
 }
 
 // ---- Gmail API helpers ----
-async function fetchGmailMessages(accessToken: string, daysBack = 7) {
+async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social']) {
   const messages: { id: string; threadId: string }[] = []
   let pageToken: string | undefined
 
@@ -259,13 +259,13 @@ export async function POST(req: NextRequest) {
     // Step 1: Fetch messages active within the thread activity window
     // This finds threads with recent activity — not a hard lookback cutoff
     // Items already on the dashboard are never evicted by this window
-    let messages = await fetchGmailMessages(accessToken, daysBack)
+    let messages = await fetchGmailMessages(accessToken, daysBack, excludedLabels)
     console.log(`Found ${messages.length} messages in ${daysBack}-day activity window`)
 
     // Adaptive extension: if fewer than 10 messages, widen the window up to 30 days
     if (messages.length < 10 && daysBack < 30) {
       console.log(`Fewer than 10 messages — extending window to 30 days`)
-      messages = await fetchGmailMessages(accessToken, 30)
+      messages = await fetchGmailMessages(accessToken, 30, excludedLabels)
       console.log(`Extended scan found ${messages.length} messages`)
     }
 
