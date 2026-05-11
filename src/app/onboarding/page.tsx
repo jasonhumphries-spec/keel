@@ -222,7 +222,7 @@ function HowItWorksStep({ onNext, onBack }: { onNext: () => void; onBack: () => 
           },
           {
             title: 'Extracts what matters',
-            body: 'Bills due, RSVPs needed, questions awaiting replies, upcoming dates — surfaced as clear, actionable items.',
+            body: 'Bills due, RSVPs needed, questions awaiting replies, upcoming dates — surfaced as clear, actionable items. Email content is processed by AI and immediately discarded — only the extracted details are kept.',
             colour: 'var(--color-status-warning)',
           },
           {
@@ -231,8 +231,8 @@ function HowItWorksStep({ onNext, onBack }: { onNext: () => void; onBack: () => 
             colour: 'var(--color-accent)',
           },
           {
-            title: 'You act in Gmail, not here',
-            body: 'Keel is read-only. When you need to reply or pay something, it takes you straight to the email in Gmail.',
+            title: 'Stays up to date automatically',
+            body: 'With background scanning enabled, new emails are organised as they arrive — no need to press a button. You can also scan manually any time from the dashboard.',
             colour: 'var(--color-status-positive)',
           },
         ].map((item, i) => (

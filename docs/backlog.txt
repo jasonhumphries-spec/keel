@@ -1,173 +1,5 @@
 KEEL — BACKLOG
-Last updated: 2026-05-10 Session 6
-Status key: [ ] todo  [~] in progress  [x] done
-
-═══════════════════════════════════════════════
-CRITICAL / PRE-BETA
-═══════════════════════════════════════════════
-
-[ ] Google OAuth app verification
-    Required before public beta. Currently unverified — works for ≤100 test users.
-    Submit via Google Cloud Console → OAuth consent screen.
-    Non-sensitive scopes (gmail.readonly, gmail.send, calendar) — standard review,
-    a few weeks. Required before opening public signups.
-
-[ ] Security/GDPR doc
-    UK GDPR compliance, data handling, retention policy. Required before any real
-    user testing beyond developer accounts.
-
-[ ] Replace privacy@keel.app placeholder
-    Also update LAST_UPDATED date in privacy policy page.
-
-[ ] Firestore indexes
-    - scanRuns: scanAt desc (Firebase will prompt with link on first query)
-    - items: (status, receivedAt) — needed for reclassify quietly_logged query
-
-[ ] KEEL_APP_URL env var in keel-admin Vercel
-    Required for Dev Operations card to call keel app. Set to https://www.jaison.app
-
-═══════════════════════════════════════════════
-INFRASTRUCTURE
-═══════════════════════════════════════════════
-
-[ ] Terminate active scan before dev reset
-    AbortController on scan fetch in AuthContext; call from DevTools wipe button
-    before data reset.
-
-[ ] Move scan to long-running server (monitor)
-    Vercel 5min timeout. Onboarding uses Cloud Function (60min). Incremental scans
-    (~20s) are fine on Vercel. Monitor if incremental scans ever approach limit.
-
-[ ] Background scan: read active provider from aiComplete
-    background-scan/route.ts hardcodes 'gemini-flash' for cost tracking.
-    Should read /config/aiProvider (same as aiComplete does) so cost is accurate
-    when provider is switched via admin panel.
-
-[ ] Calendar matching — consider pagination for very busy calendars
-    GCal API maxResults is 2500 (hard limit). Users with multiple busy calendars
-    over 12 months could theoretically hit this. Add pagination if needed at scale.
-
-═══════════════════════════════════════════════
-PERFORMANCE / COST
-═══════════════════════════════════════════════
-
-[ ] threadIds[] array on account doc
-    Flat existence index to eliminate full items collection read per scan.
-    Biggest remaining Firestore read saving. Currently ~582 reads/incremental scan.
-
-[ ] Efficiency review
-    Firestore reads per scan, batch sizes, onSnapshot listener counts.
-
-[ ] AI cost review
-    Prompt lengths, token usage per classification.
-    Current: ~$0.0008–0.002/manual scan, ~$0.0002/background scan (Gemini Flash).
-
-[ ] DB cost review
-    Read/write counts, index usage, data shape optimisation.
-
-═══════════════════════════════════════════════
-FEATURES
-═══════════════════════════════════════════════
-
-[ ] Beta landing page
-    Partially built in a separate session. Needs completion + copy.
-
-[ ] Email reply/send feature
-    gmail.send already in scope list — wired up but not used.
-    Could support: reply drafting, follow-up sending from expanded panel.
-
-[ ] Nightly auto-archive Cloud Function
-    Scheduled Cloud Function: date/info signals → archived;
-    payment_due/action_required → OVERDUE status.
-
-[ ] Email preview drawer
-    Slide-in panel replacing "Open in Gmail" button. User setting to toggle
-    preference (open in Gmail vs preview in-app).
-
-[ ] Multi-account support
-    Account switcher in sidebar (Slack-style). Multiple Gmail accounts per user.
-
-[ ] Snooze + Overdue sidebar views
-    snoozedUntil + preSnoozePriority fields on KeelItem (designed in session 5 doc).
-
-[ ] Payment Due sidebar view
-    Items with unpaid payment signal — currently accessible via category but no
-    dedicated filter view.
-
-[ ] Alpha code gate
-    Post sign-in gate for early access. Code: HELM3X (env var). Designed, not built.
-
-[ ] Version display in sidebar footer
-    "Keel · Alpha · v0.x.x" from NEXT_PUBLIC_APP_VERSION env var. Designed, not built.
-
-[ ] Background scanning — gate as Pro feature
-    Currently available to all alpha users. Add Pro tier check before enabling.
-
-═══════════════════════════════════════════════
-CODE QUALITY
-═══════════════════════════════════════════════
-
-[ ] Standardise docToItem pattern
-    Multiple pages have local docToItem copies — fragile. Centralise.
-
-[ ] Code review
-    Structure, patterns, remaining dead code. Check for orphaned files.
-
-[ ] Field-level encryption (V2)
-    Before public launch. Encrypt sensitive Firestore fields client-side.
-
-[ ] Gemini Flash billing
-    Ensure Google AI billing enabled for production scale (free tier quota = 0).
-
-[ ] googleapis vs fetch — review when expanding Google API usage
-    emailProviders/gmail.ts uses fetch for consistency with rest of codebase.
-    If Keel expands to use Drive, Sheets, or many Calendar endpoints, googleapis
-    package earns its weight (typed responses, auto-refresh, pagination helpers).
-    For now fetch is correct — revisit if Google API surface grows significantly.
-
-═══════════════════════════════════════════════
-DONE
-═══════════════════════════════════════════════
-
-[x] Background scanning via Gmail Pub/Sub ← Session 6
-    handleGmailNotification CF + renewGmailWatches scheduler + /api/inbox-watch
-    + /api/gmail/background-scan + BackgroundScanToggle in settings
-[x] scanUtils.ts — shared classifyThread(), all scan types at parity ← Session 6
-[x] Calendar matching — 6 bugs fixed ← Session 6
-    Token refresh, 365-day window (server + client), reader calendars included,
-    sender domain fallback matching, checkAllCalendars toggle re-check
-[x] Dashboard 2.0 — step-based layout, default at /dashboard ← Session 5
-[x] Scan blur overlay — full-screen lock during initial check ← Session 5
-[x] Categorise modal — 3-col grid, Other hidden, instant count update ← Session 5
-[x] manualCategory flag — scan never overwrites user assignments ← Session 5
-[x] Terminal status guard — done/archived/paid never resurrected by scan ← Session 5
-[x] lastMessageInternalDate — accurate skip logic for reply detection ← Session 5
-[x] Re-analyse single item — full S1 + cal check, token refresh, 404 skip ← Session 5
-[x] Re-analyse all — admin Dev Operations card ← Session 5
-[x] Note to self — userNote field on KeelItem, textarea in expanded panel ← Session 5
-[x] All connected calendars — setting + onboarding step ← Session 5
-[x] matchedCalendarName — shown in expanded panel when not Primary ← Session 5
-[x] Calendar auto-recheck — visibilitychange listener on return from GCal tab ← Session 5
-[x] Signal calStatus live sync — onSnapshot propagates to pills without refresh ← Session 5
-[x] Awaiting Responses step 2 — steel blue, between urgent and high priority ← Session 5
-[x] Admin Dev Operations card — 6 operations, user picker, error detail ← Session 5
-[x] Full account reset — wipes all subcollections incl. accounts doc ← Session 5
-[x] Auth persistence fix — consent prompt + explicit browserLocalPersistence ← Session 5
-[x] AI prompt quality — names, signal accuracy, NEXT STEP direction ← Session 5
-[x] Payment amount fix — detectedAmountPence field mismatch resolved ← Session 5
-[x] All participants in expanded panel header ← Session 5
-[x] Deploy keel to Vercel (www.jaison.app) ← Session 4
-[x] Deploy keel-admin to Vercel (keel-admin.vercel.app) ← Session 4
-[x] Cloud Function (gmailScan) deployed + IAM fixed ← Session 4
-[x] Custom domain www.jaison.app live ← Session 4
-[x] Gemini 2.5 Flash integration + cost confirmed ← Session 3
-[x] Scan run logging (users/{uid}/scanRuns) ← Session 3
-[x] Admin per-user drill-down ← Session 3
-[x] Reclassify all ← Session 3
-[x] Categorise modal (nav, ignore, bail-out) ← Session 3
-[x] AI provider abstraction (aiComplete.ts) ← Session 2
-[x] Onboarding overhaul (email type, SVG icons, live feed) ← Session 2
-[x] Signal bars priority UI ← Session 2
+Last updated: 2026-05-06 Session 5
 Status key: [ ] todo  [~] in progress  [x] done
 
 ═══════════════════════════════════════════════
@@ -325,3 +157,54 @@ DONE
 [x] AI provider abstraction (aiComplete.ts) ← Session 2
 [x] Onboarding overhaul (email type, SVG icons, live feed) ← Session 2
 [x] Signal bars priority UI ← Session 2
+
+═══════════════════════════════════════════════
+SECURITY / PRIVACY (V2 ROADMAP)
+═══════════════════════════════════════════════
+
+[ ] V2: Field-level encryption of sensitive Firestore fields
+    Fields to encrypt: aiTitle, aiSummary, aiDetailedSummary, senderName,
+    senderEmail, subject, signal descriptions, categoryHints.
+    Fields to leave unencrypted (needed for server queries): status, categoryId,
+    aiImportanceScore, receivedAt, signals.type/date/amount.
+    Architecture: user generates key pair at onboarding. Public key stored in
+    Firestore (unencrypted). Server encrypts results using public key before
+    writing. Client decrypts on read using private key (browser memory only).
+    Effort: ~6 sessions. Touches every Firestore read/write.
+    Decision: implement after public launch. Current GCP AES-256 at-rest
+    encryption is sufficient for alpha/beta. Priority increases once users pay
+    and privacy positioning needs to be technically airtight.
+
+[ ] Google OAuth app verification
+    Required before public beta. Currently unverified — works for ≤100 test users.
+    Submit via Google Cloud Console → OAuth consent screen.
+
+[ ] Security/GDPR doc (internal)
+    UK GDPR data handling procedures, retention schedules, breach response plan.
+    Required before any real user testing beyond developer accounts.
+
+[ ] Proton-style privacy audit / pen test
+    Before public launch. One session with an external security reviewer.
+    Competitors (Fyxer, Shortwave) cite CASA/SOC2/ISO27001 — relevant for
+    enterprise but also signals credibility to privacy-conscious consumers.
+
+═══════════════════════════════════════════════
+DONE (Session 6 additions)
+═══════════════════════════════════════════════
+
+[x] Background scanning via Gmail Pub/Sub ← Session 6
+[x] scanUtils.ts — shared classifyThread, all scan types at parity ← Session 6
+[x] Calendar matching — 6 bugs fixed ← Session 6
+    Token refresh, 365-day window, reader calendars, sender domain matching,
+    checkAllCalendars toggle re-check, high-entropy word matching
+[x] Nightly item expiry Cloud Function ← Session 6
+[x] Category filter in sidebar with checkboxes ← Session 6
+[x] Background scan toast notification ← Session 6
+[x] Remove auto-scan on page load ← Session 6
+[x] Privacy policy updated — correct AI provider, background scanning disclosure ← Session 6
+[x] Calendar add — correct time extraction, aiDetailedSummary as description ← Session 6
+[x] SessionBanner for expired tokens ← Session 6
+[x] Conditional payment prompt rules in S1 ← Session 6
+[x] Event signals for informational notices (school trips etc) ← Session 6
+[x] Structured HTML extraction for invitation emails ← Session 6
+[x] reanalyse route — never moves active items to quietly_logged ← Session 6

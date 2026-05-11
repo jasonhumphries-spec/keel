@@ -2,9 +2,8 @@
 
 import Link from 'next/link'
 
-const LAST_UPDATED = '30 April 2026'
-// TODO: Replace with real contact email once domain is live, and update LAST_UPDATED date
-const CONTACT_EMAIL = 'privacy@keel.app'
+const LAST_UPDATED = '11 May 2026'
+const CONTACT_EMAIL = 'privacy@jaison.app'
 
 export default function PrivacyPage() {
   return (
@@ -78,17 +77,17 @@ export default function PrivacyPage() {
           </Section>
 
           <Section title="Encryption and security">
-            <P>All data stored in our database is encrypted at rest using AES-256, provided by Google Cloud's infrastructure. All data in transit is protected by TLS.</P>
-            <P>Your email content is processed ephemerally — it passes through our AI pipeline to extract signals, and the raw content is immediately discarded. It is never written to disk or stored in our database.</P>
-            <P>We are committed to implementing application-layer field-level encryption of sensitive metadata fields (sender names, email addresses, AI summaries) before public launch. This will ensure that even in the event of a database compromise, your personal data remains unreadable.</P>
+            <P>All data stored in our database is encrypted at rest using AES-256, provided by Google Cloud infrastructure. All data in transit is protected by TLS. Our database is hosted in the EU (Frankfurt/Netherlands region) and your data does not leave the EU.</P>
+            <P>Your email content is processed ephemerally — it passes through our AI classification pipeline to extract signals, and the raw content is immediately discarded. It is never written to disk or stored in our database.</P>
+            <P>Access to your data in Firestore is strictly controlled: only you can read or write your own data, enforced at the database level by Firebase security rules. Keel staff can access aggregated, anonymised usage statistics (scan counts, cost metrics) but not your individual item content.</P>
+            <P>We are planning application-layer field-level encryption of sensitive metadata (sender names, addresses, AI summaries) as a future release. This page will be updated when that is implemented.</P>
           </Section>
 
           <Section title="Third parties">
             <P>Keel uses the following third-party services to operate:</P>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
               {[
-                { name: 'Google (Gmail API, Google Calendar API)', purpose: 'Reading your emails and calendar to extract signals', policy: 'https://policies.google.com/privacy' },
-                { name: 'Anthropic (Claude API)', purpose: 'AI classification of email threads. Email content is sent to Anthropic\'s API for processing and is not retained by Anthropic beyond the API call.', policy: 'https://www.anthropic.com/privacy' },
+                { name: 'Google (Gmail API, Google Calendar API, Gemini AI)', purpose: 'Reading your emails and calendar to extract signals. Email content is sent to Google\'s Gemini AI for classification and is not retained by Google beyond the API call. Keel may also use Anthropic\'s Claude API for certain processing tasks; the same zero-retention principle applies.', policy: 'https://policies.google.com/privacy' },
                 { name: 'Google Firebase / Firestore', purpose: 'Storing your account data, categories, and extracted signals', policy: 'https://firebase.google.com/support/privacy' },
                 { name: 'Vercel', purpose: 'Hosting the application', policy: 'https://vercel.com/legal/privacy-policy' },
               ].map((tp, i) => (
@@ -101,7 +100,11 @@ export default function PrivacyPage() {
             </div>
           </Section>
 
-          <Section title="Your rights (GDPR)">
+          <Section title="Background scanning (optional)">
+            <P>If you enable background scanning in Settings, Keel registers a push notification subscription with Gmail. When a new email arrives in your inbox, Gmail notifies Keel's server, which fetches and classifies that email automatically — without you pressing a button.</P>
+            <P>This subscription is opt-in. You can disable it at any time in Settings → Background scanning. When disabled, the subscription is immediately revoked and no further automatic processing occurs.</P>
+            <P>The data processed during background scans is identical to manual scans — email content is classified and discarded; only the extracted signals and metadata are stored.</P>
+          </Section>
             <P>If you are in the UK or European Economic Area, you have the following rights regarding your personal data:</P>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
               {[
