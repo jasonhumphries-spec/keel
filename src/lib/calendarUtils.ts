@@ -42,8 +42,8 @@ function extractTimes(text: string): {
     if (start) return { start }
   }
 
-  // Bare HH:MM time (high confidence)
-  const barePattern = /\b(\d{1,2}:\d{2})\s*(?:am|pm|BST|GMT|UTC)?\b/gi
+  // Bare HH:MM time — include am/pm in capture so parseTime gets full context
+  const barePattern = /\b(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*(?:BST|GMT|UTC)?\b/gi
   for (const m of text.matchAll(barePattern)) {
     const start = parseTime(m[1])
     if (start && start.hours <= 23) return { start }
@@ -77,6 +77,8 @@ export function buildCalendarUrl(signal: KeelSignal, item?: KeelItem): string {
     times = extractTimes(text)
     if (times) break
   }
+
+  console.log(`[CalendarUtils] title="${item?.aiTitle}" times=${JSON.stringify(times)} allDay=${!times}`)
 
   let dateParam: string
 
