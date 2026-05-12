@@ -8,7 +8,7 @@
  *     finds the user, checks debounce, then delegates all Gmail API
  *     and AI work to POST /api/gmail/background-scan on Vercel.
  *
- *   renewGmailWatches  — Scheduled (every 6 days). Gmail watch()
+ *   renewGmailWatches  — Scheduled (every 5 days). Gmail watch()
  *     subscriptions expire after 7 days. This renews all active watches
  *     by calling POST /api/inbox-watch?action=enable on Vercel.
  *
@@ -181,18 +181,18 @@ export const handleGmailNotification = onMessagePublished(
 // ---------------------------------------------------------------------------
 
 /**
- * Runs every 6 days to renew Gmail watch subscriptions before they expire (7 days).
+ * Runs every 5 days to renew Gmail watch subscriptions before they expire (7 days).
  *
  * Queries all users with autoScanEnabled=true and watchExpiry within the next
  * 2 days, then calls POST /api/inbox-watch?action=enable on Vercel for each.
  * Vercel calls provider.renewWatch() which is identical to setupWatch() for Gmail.
  *
- * Schedule: "every 6 days" — runs more frequently than expiry to provide buffer.
+ * Schedule: "every 5 days" — runs more frequently than expiry to provide buffer.
  * If the job fails, the next run 6 days later provides a second chance.
  */
 export const renewGmailWatches = onSchedule(
   {
-    schedule: 'every 144 hours',  // every 6 days
+    schedule: 'every 120 hours',  // every 5 days — 2-day buffer before Gmail's 7-day expiry
     timeZone: 'Europe/London',
     region: 'europe-west1',
     memory: '256MiB',
