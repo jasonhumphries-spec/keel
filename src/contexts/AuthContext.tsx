@@ -95,6 +95,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const createdAt = existing.data()?.createdAt ?? Timestamp.now()
     const scanCount = (existing.data()?.scanCount ?? 0) + 1
 
+    // Also write email to root users/{uid} doc so the CF can find the user
+    // by email address when a Gmail Pub/Sub notification arrives
+    const rootRef = doc(db, 'users', uid)
+    await setDoc(rootRef, {
+      uid,
+      email:          firebaseUser.email,
+      displayName:    firebaseUser.displayName,
+      updatedAt:      Timestamp.now(),
+    }, { merge: true })
+
     await setDoc(accountRef, {
       accountId:      'account_primary',
       uid,
