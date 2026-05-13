@@ -546,17 +546,24 @@ function ScanStep({ categories }: { categories: typeof DEFAULT_CATEGORIES }) {
     return () => unsub()
   }, [user])
 
-  // Elapsed timer and tip rotation
+  // Elapsed timer, tip rotation, and timeout escape
   useEffect(() => {
     if (scanProgress.status !== 'scanning') return
     const timer    = setInterval(() => setElapsed(e => e + 1), 1000)
     const tipTimer = setInterval(() => setTipIndex(i => (i + 1) % tips.length), 6000)
-    return () => { clearInterval(timer); clearInterval(tipTimer) }
+    // After 3 minutes with no completion, show a manual escape option
+    const timeout  = setTimeout(() => router.push('/dashboard?scan_timeout=1'), 3 * 60 * 1000)
+    return () => { clearInterval(timer); clearInterval(tipTimer); clearTimeout(timeout) }
   }, [scanProgress.status])
 
   useEffect(() => {
     if (scanProgress.status === 'done') {
       setTimeout(() => router.push('/dashboard'), 2000)
+    }
+    if (scanProgress.status === 'error') {
+      // Scan failed — redirect to dashboard after a short pause
+      // User can trigger a manual scan from there
+      setTimeout(() => router.push('/dashboard?scan_failed=1'), 3000)
     }
   }, [scanProgress.status])
 
@@ -604,12 +611,14 @@ function ScanStep({ categories }: { categories: typeof DEFAULT_CATEGORIES }) {
           </>
         ) : (
           <>
-            <div style={{ width: 48, height: 48, border: '3px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+            <div style={{ width: 48, height: 48, border: `3px solid ${scanProgress.status === 'error' ? '#9C5E2B' : 'var(--color-accent)'}`, borderTopColor: 'transparent', borderRadius: '50%', animation: scanProgress.status === 'error' ? 'none' : 'spin 0.8s linear infinite', margin: '0 auto 16px', opacity: scanProgress.status === 'error' ? 0.5 : 1 }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>
-              Setting up your dashboard
+              {scanProgress.status === 'error' ? 'Something went wrong' : 'Setting up your dashboard'}
             </h2>
-            <p style={{ fontSize: 13, color: 'var(--color-accent)', fontWeight: 500, marginBottom: 2 }}>
-              {scanProgress.message || 'Starting…'}
+            <p style={{ fontSize: 13, color: scanProgress.status === 'error' ? '#9C5E2B' : 'var(--color-accent)', fontWeight: 500, marginBottom: 2 }}>
+              {scanProgress.status === 'error'
+                ? 'Redirecting to your dashboard — you can scan manually from there'
+                : (scanProgress.message || 'Starting…')}
             </p>
             {elapsed > 0 && (
               <p style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>
