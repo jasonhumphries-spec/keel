@@ -14,14 +14,6 @@ import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 const PRIORITY_BANDS = [0.10, 0.25, 0.50, 0.70, 0.85, 0.95]
 
 // Signal strength priority indicator — exported for use in Dashboard 2.0
-const NEW_ARRIVAL_MS = 10 * 60 * 1000 // 10 minutes
-
-function isNewArrival(item: KeelItem): boolean {
-  if (!item.createdAt) return false
-  const age = Date.now() - item.createdAt.getTime()
-  return age < NEW_ARRIVAL_MS && (item as any).lastProcessedBy === 'background'
-}
-
 export function scoreToLevel(score: number): 1 | 2 | 3 | 4 {
   if (score >= 0.85) return 4
   if (score >= 0.70) return 3
@@ -374,6 +366,7 @@ export function CategoryCard({
 }: {
   data:          CategoryWithItems
   onItemClick:   (item: KeelItem) => void
+  onResolved:    (item: KeelItem) => void
   resolvedItems: Map<string, KeelItem>
   signals:       KeelSignal[]
   uid:           string
@@ -392,6 +385,15 @@ export function CategoryCard({
       preSnoozePriority: item.aiImportanceScore,
       updatedAt:         Timestamp.now(),
     })
+  }
+
+  async function handleMarkDone(e: React.MouseEvent, item: KeelItem) {
+    e.stopPropagation()
+    if (!uid) return
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    })
+    onResolved(item)
   }
 
   async function handleUnsnooze(item: KeelItem) {
@@ -524,15 +526,13 @@ export function CategoryCard({
                   cursor: 'pointer',
                   background: isResolved
                     ? '#f0f6f2'
-                    : isNewArrival(item)
-                    ? 'rgba(61,122,107,0.07)'
                     : hovered === item.itemId
                     ? getPriorityBg(item)
                     : getPriorityBg(item),
                   borderTop: '1px solid transparent',
                   borderRight: '1px solid transparent',
                   borderBottom: '1px solid transparent',
-                  borderLeft: isResolved ? '3px solid #2e6848' : isNewArrival(item) ? '3px solid #3D7A6B' : `3px solid ${getPriorityColour(item)}`,
+                  borderLeft: isResolved ? '3px solid #2e6848' : `3px solid ${getPriorityColour(item)}`,
                   opacity: isResolved ? 0.65 : 1,
                   transition: 'background 0.1s, opacity 0.2s',
                 }}
@@ -624,17 +624,23 @@ export function CategoryCard({
                   ) : (
                     <Tag label={display.tag} style={display.tagStyle} />
                   )}
-                  {!isResolved && isNewArrival(item) && (
-                    <span style={{
-                      fontFamily: 'var(--font-dm-mono)', fontSize: 9,
-                      background: '#3D7A6B', color: '#fff',
-                      borderRadius: 4, padding: '2px 7px',
-                      letterSpacing: '0.04em', fontWeight: 700,
-                      flexShrink: 0,
-                      boxShadow: '0 1px 4px rgba(61,122,107,0.35)',
-                    }}>Just in!</span>
-                  )}
                   {!isResolved && <PriorityDot item={item} />}
+                  {/* Quick done button — appears on hover */}
+                  {!isResolved && hovered === item.itemId && !snoozingId && (
+                    <button
+                      onClick={e => handleMarkDone(e, item)}
+                      title="Mark as done"
+                      style={{
+                        fontFamily: 'var(--font-dm-mono)', fontSize: 9,
+                        padding: '2px 6px', borderRadius: 4,
+                        border: '1px solid #3D7A6B',
+                        background: 'rgba(61,122,107,0.08)',
+                        color: '#3D7A6B', cursor: 'pointer',
+                        fontWeight: 600, whiteSpace: 'nowrap',
+                      }}>
+                      ✓ Done
+                    </button>
+                  )}
                   {/* Snooze button — clock icon, expands to duration picker */}
                   {!isResolved && (
                     <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
@@ -714,6 +720,7 @@ function SkeletonCard() {
 
 export function CategoryGrid({
   onItemClick,
+  onResolved,
   resolvedItems,
   signals,
   lastScanned,
@@ -722,6 +729,7 @@ export function CategoryGrid({
   singleColumn = false,
 }: {
   onItemClick:     (item: KeelItem) => void
+  onResolved:      (item: KeelItem) => void
   resolvedItems:   Map<string, KeelItem>
   signals:         KeelSignal[]
   lastScanned:     Date | null
@@ -797,6 +805,7 @@ export function CategoryGrid({
             <CategoryCard
               data={data}
               onItemClick={onItemClick}
+              onResolved={onResolved}
               resolvedItems={resolvedItems}
               signals={signals}
               uid={user?.uid ?? ''}

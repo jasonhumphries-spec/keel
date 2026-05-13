@@ -634,8 +634,6 @@ export function DashboardShell2() {
   const [settingsOpen,   setSettingsOpen]   = useState(false)
   const [categoriseOpen, setCategoriseOpen] = useState(false)
   const [selectedItem,   setSelectedItem]   = useState<KeelItem | null>(null)
-  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
-  const [highlightTitle,    setHighlightTitle]    = useState<string | null>(null)
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
   const [triageDismissed, setTriageDismissed] = useState(false)
@@ -755,93 +753,6 @@ export function DashboardShell2() {
   // ── Calendar signals per band ───────────────────────────────────────────────
   const urgentCal   = calSignalsForBand(filteredCategoryData, signals, 4, 4)
   const allItems    = filteredCategoryData.flatMap(d => d.items)
-
-  // Handle ?highlight=itemId — navigate to and open the specified item
-  const searchParams = useSearchParams()
-  useEffect(() => {
-    const itemId = searchParams?.get('highlight')
-    if (!itemId) return
-    // Wait for items to load before attempting
-    if (!allItems.length) return
-
-    const item = allItems.find(i => i.itemId === itemId)
-
-    if (!item) {
-      // Item not in active dashboard items — may be quietly_logged or archived.
-      // Fetch directly from Firestore so we can still open the expanded panel.
-      if (!user) return
-      import('firebase/firestore').then(({ doc, getDoc }) => {
-        import('@/lib/firebase').then(async ({ db }) => {
-          try {
-            const snap = await getDoc(doc(db, `users/${user.uid}/items`, itemId))
-            if (!snap.exists()) return
-            // Build a minimal KeelItem from the doc
-            const d = snap.data()
-            const toDate = (ts: any) => ts?.toDate ? ts.toDate() : new Date()
-            const fetchedItem = {
-              ...d,
-              itemId:            snap.id,
-              receivedAt:        toDate(d.receivedAt),
-              createdAt:         toDate(d.createdAt),
-              updatedAt:         toDate(d.updatedAt),
-              resolvedAt:        d.resolvedAt ? toDate(d.resolvedAt) : null,
-              snoozedUntil:      d.snoozedUntil ? toDate(d.snoozedUntil) : null,
-              preSnoozePriority: d.preSnoozePriority ?? null,
-              isOutbound:        d.isOutbound ?? false,
-              signals:           d.signals ?? [],
-              mergedThreadIds:   d.mergedThreadIds ?? [],
-            } as any
-            setSelectedItem(fetchedItem)
-            // Banner explains why it's not on the dashboard
-            const statusNote = d.status === 'quietly_logged' ? 'Ignored — not shown on dashboard'
-              : d.status === 'archived' ? 'Archived — not shown on dashboard'
-              : 'Not on dashboard'
-            setHighlightTitle(`${statusNote} · ${d.aiTitle || d.subject || ''}`)
-            setTimeout(() => setHighlightTitle(null), 6000)
-          } catch (e) { console.warn('[highlight] Firestore fetch failed:', e) }
-        })
-      })
-      return
-    }
-
-    // Work out which section the item lives in for the banner label
-    const score = item.aiImportanceScore ?? 0.5
-    const level = scoreToLevel(score)
-    const sectionLabel = item.status === 'awaiting_reply'
-      ? 'Section 2 · Awaiting a reply'
-      : level >= 4 ? 'Section 1 · Urgent'
-      : level === 3 ? 'Section 3 · High priority'
-      : 'Section 4 · On your radar'
-
-    setSelectedItem(item)
-    setHighlightedItemId(itemId)
-    setHighlightTitle(`${sectionLabel} — ${item.aiTitle || item.subject || item.senderName}`)
-
-    // Scroll using offsetTop — reliable regardless of viewport position
-    let attempts = 0
-    const tryScroll = () => {
-      const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
-      if (el && scrollRef.current) {
-        // Walk up the DOM tree to get offset relative to scrollRef
-        let offset = 0
-        let node: HTMLElement | null = el
-        while (node && node !== scrollRef.current) {
-          offset += node.offsetTop
-          node = node.offsetParent as HTMLElement | null
-        }
-        const centerOffset = offset - (scrollRef.current.clientHeight / 2) + (el.offsetHeight / 2)
-        scrollRef.current.scrollTo({ top: Math.max(0, centerOffset), behavior: 'smooth' })
-        setTimeout(() => { setHighlightedItemId(null); setHighlightTitle(null) }, 3000)
-      } else if (attempts < 15) {
-        attempts++
-        setTimeout(tryScroll, 200)
-      } else {
-        setTimeout(() => setHighlightTitle(null), 5000)
-      }
-    }
-    setTimeout(tryScroll, 500)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, allItems.length])
   const awaitingCal = signals
     .filter(s => {
       const item = allItems.find(i => i.itemId === s.itemId)
@@ -861,6 +772,7 @@ export function DashboardShell2() {
 
   const cardProps = {
     onItemClick:  (item: KeelItem) => setSelectedItem(item),
+        onResolved:   handleResolved,
     resolvedItems,
     signals,
     uid,
@@ -892,24 +804,6 @@ export function DashboardShell2() {
   }
 
   // ── Loading / scanning overlay — always rendered, above mobile + desktop ────
-  // Highlight ring + "Jumping to" banner for items navigated to from All Mail
-  const highlightStyle = highlightedItemId ? (
-    <style>{`[data-itemid="${highlightedItemId}"] { outline: 2px solid var(--color-accent) !important; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(184,150,78,0.15) !important; transition: outline 0.3s, box-shadow 0.3s; }`}</style>
-  ) : null
-
-  const highlightBanner = highlightTitle ? (
-    <div style={{
-      position: 'fixed', top: 56, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 998, background: 'var(--color-accent)', color: '#fff',
-      borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 500,
-      boxShadow: '0 2px 12px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
-      maxWidth: '60vw', overflow: 'hidden', textOverflow: 'ellipsis',
-      pointerEvents: 'none',
-    }}>
-      ↓ {highlightTitle}
-    </div>
-  ) : null
-
   const scanOverlay = showOverlay && (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 500,
@@ -966,9 +860,7 @@ export function DashboardShell2() {
         </div>
         <BottomNav onSettingsOpen={() => setSettingsOpen(true)} />
         {commonPanels}
-        {highlightStyle}
-      {highlightBanner}
-      {scanOverlay}
+        {scanOverlay}
       </div>
     )
   }
