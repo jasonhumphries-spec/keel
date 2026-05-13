@@ -635,6 +635,7 @@ export function DashboardShell2() {
   const [categoriseOpen, setCategoriseOpen] = useState(false)
   const [selectedItem,   setSelectedItem]   = useState<KeelItem | null>(null)
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
+  const [highlightTitle,    setHighlightTitle]    = useState<string | null>(null)
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
   const [triageDismissed, setTriageDismissed] = useState(false)
@@ -764,19 +765,52 @@ export function DashboardShell2() {
     const item = allItems.find(i => i.itemId === itemId)
     if (!item) return
 
-    // Open the expanded panel
-    setSelectedItem(item)
+    // Work out which section the item lives in for the banner label
+    const score = item.aiImportanceScore ?? 0.5
+    const level = scoreToLevel(score)
+    const sectionLabel = item.status === 'awaiting_reply'
+      ? 'Section 2 · Awaiting a reply'
+      : level >= 4 ? 'Section 1 · Urgent'
+      : level === 3 ? 'Section 3 · High priority'
+      : 'Section 4 · On your radar'
 
-    // Scroll to the card and flash it
+    // Open the expanded panel immediately
+    setSelectedItem(item)
     setHighlightedItemId(itemId)
-    setTimeout(() => {
+    setHighlightTitle(`${sectionLabel} — ${item.aiTitle || item.subject || item.senderName}`)
+
+    // Retry scroll: find element in DOM, scroll via scrollRef for reliability
+    let attempts = 0
+    const tryScroll = () => {
       const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
-      if (el) {
+      if (el && scrollRef.current) {
+        // Explicit scrollTop calculation — more reliable than scrollIntoView
+        // when nested scroll containers are involved
+        const containerRect = scrollRef.current.getBoundingClientRect()
+        const elRect        = el.getBoundingClientRect()
+        const offset        = elRect.top - containerRect.top + scrollRef.current.scrollTop
+        scrollRef.current.scrollTo({ top: offset - containerRect.height / 2 + elRect.height / 2, behavior: 'smooth' })
+        setTimeout(() => {
+          setHighlightedItemId(null)
+          setHighlightTitle(null)
+        }, 3000)
+      } else if (el) {
+        // scrollRef not available — fall back to scrollIntoView
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setTimeout(() => {
+          setHighlightedItemId(null)
+          setHighlightTitle(null)
+        }, 3000)
+      } else if (attempts < 12) {
+        attempts++
+        setTimeout(tryScroll, 200) // retry every 200ms, up to 2.4s
+      } else {
+        // Card not rendered — item may be snoozed or in a collapsed section
+        // Banner stays so user knows which section to look in
+        setTimeout(() => setHighlightTitle(null), 5000)
       }
-      // Remove highlight ring after 2s
-      setTimeout(() => setHighlightedItemId(null), 2000)
-    }, 400) // brief delay for items to render
+    }
+    setTimeout(tryScroll, 400)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, allItems.length])
   const awaitingCal = signals
@@ -829,9 +863,22 @@ export function DashboardShell2() {
   }
 
   // ── Loading / scanning overlay — always rendered, above mobile + desktop ────
-  // Highlight ring for items navigated to from All Mail
+  // Highlight ring + "Jumping to" banner for items navigated to from All Mail
   const highlightStyle = highlightedItemId ? (
-    <style>{`[data-itemid="${highlightedItemId}"] { outline: 2px solid var(--color-accent) !important; outline-offset: 2px; transition: outline 0.3s; }`}</style>
+    <style>{`[data-itemid="${highlightedItemId}"] { outline: 2px solid var(--color-accent) !important; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(184,150,78,0.15) !important; transition: outline 0.3s, box-shadow 0.3s; }`}</style>
+  ) : null
+
+  const highlightBanner = highlightTitle ? (
+    <div style={{
+      position: 'fixed', top: 56, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 998, background: 'var(--color-accent)', color: '#fff',
+      borderRadius: 20, padding: '5px 14px', fontSize: 12, fontWeight: 500,
+      boxShadow: '0 2px 12px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
+      maxWidth: '60vw', overflow: 'hidden', textOverflow: 'ellipsis',
+      pointerEvents: 'none',
+    }}>
+      ↓ {highlightTitle}
+    </div>
   ) : null
 
   const scanOverlay = showOverlay && (
@@ -891,6 +938,7 @@ export function DashboardShell2() {
         <BottomNav onSettingsOpen={() => setSettingsOpen(true)} />
         {commonPanels}
         {highlightStyle}
+      {highlightBanner}
       {scanOverlay}
       </div>
     )
