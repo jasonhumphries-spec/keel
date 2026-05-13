@@ -82,17 +82,20 @@ export function useBackgroundScanToast() {
         const updatedCount = (data.updatedItems as number) ?? 0
         if (newCount === 0 && updatedCount === 0) continue
 
-        // Fetch items updated in this scan window (scanAt ± 5s buffer)
+        // Fetch items created in this scan window.
+        // Use createdAt (server timestamp of write) not updatedAt (Gmail message date)
+        // — updatedAt reflects email age, not scan time, so would miss recent items.
+        // Window: 5 minutes back from scanAt to cover any clock skew or CF delays.
         const scanAt      = data.scanAt as Timestamp
-        const windowStart = Timestamp.fromMillis(scanAt.toMillis() - 5000)
+        const windowStart = Timestamp.fromMillis(scanAt.toMillis() - 5 * 60 * 1000)
 
         let items: ToastItem[] = []
         try {
           const itemsSnap = await getDocs(
             query(
               collection(db, `users/${user.uid}/items`),
-              where('updatedAt', '>=', windowStart),
-              orderBy('updatedAt', 'desc'),
+              where('createdAt', '>=', windowStart),
+              orderBy('createdAt', 'desc'),
               limit(6),
             )
           )

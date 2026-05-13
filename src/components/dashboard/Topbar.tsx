@@ -46,8 +46,6 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     manualPriority: d.manualPriority ?? false,
     manuallyIgnored: d.manuallyIgnored ?? false,
     userNote:          d.userNote ?? null,
-    preSnoozePriority: null,
-    isOutbound:        d.isOutbound ?? false,
     snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
     isRecurring: d.isRecurring ?? false, fromTrackedReply: false, trackedReplyId: null,
     createdAt: toDate(d.createdAt), updatedAt: toDate(d.updatedAt), resolvedAt: null,
@@ -142,11 +140,18 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 }
 
 export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarProps) {
-  const { scanProgress, triggerScan, lastScanned } = useAuth()
+  const { scanProgress, triggerScan, lastScanned, lastBackgroundScanned } = useAuth()
   const { items: uncategorised } = useUncategorised()
   const [showSearch, setShowSearch] = useState(false)
   const uncatCount   = uncategorised.length
-  const lastScanText = useRelativeTime(lastScanned)
+  // Use the most recent of manual scan or background scan for freshness display
+  const mostRecentScan = lastBackgroundScanned && lastScanned
+    ? (lastBackgroundScanned > lastScanned ? lastBackgroundScanned : lastScanned)
+    : (lastBackgroundScanned ?? lastScanned)
+  const lastScanText   = useRelativeTime(mostRecentScan)
+  const isBackgroundFresh = lastBackgroundScanned
+    ? (Date.now() - lastBackgroundScanned.getTime()) < 10 * 60 * 1000 // within 10 min
+    : false
   const isScanning   = scanProgress.status === 'scanning'
   const isDone       = scanProgress.status === 'done'
   const isError      = scanProgress.status === 'error'
@@ -168,7 +173,21 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
 
         <div>
           <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>{greeting}</div>
-          <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', marginTop: 1 }}>{date}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 1 }}>
+            <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{date}</span>
+            {mostRecentScan && !isScanning && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: isBackgroundFresh ? '#3D7A6B' : 'var(--color-text-muted)', background: isBackgroundFresh ? 'rgba(61,122,107,0.08)' : 'var(--color-surface-recessed)', border: `1px solid ${isBackgroundFresh ? 'rgba(61,122,107,0.25)' : 'var(--color-border)'}`, borderRadius: 10, padding: '1px 7px' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: isBackgroundFresh ? '#3D7A6B' : 'var(--color-border-strong)', flexShrink: 0 }} />
+                {isBackgroundFresh ? `Live · ${lastScanText}` : `Updated ${lastScanText}`}
+              </span>
+            )}
+            {isScanning && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-accent)', background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 10, padding: '1px 7px' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-accent)', animation: 'pulse 1s ease-in-out infinite' }} />
+                Scanning…
+              </span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

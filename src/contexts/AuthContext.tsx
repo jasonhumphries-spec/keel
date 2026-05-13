@@ -33,7 +33,8 @@ interface AuthContextType {
   loading:      boolean
   accessToken:  string | null
   scanProgress: ScanProgress
-  lastScanned:  Date | null
+  lastScanned:          Date | null
+  lastBackgroundScanned: Date | null
   needsReauth:  boolean
   signIn:       () => Promise<void>
   signOut:      () => Promise<void>
@@ -48,7 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading,      setLoading]      = useState(true)
   const [accessToken,  setAccessToken]  = useState<string | null>(null)
   const [scanProgress, setScanProgress] = useState<ScanProgress>(IDLE)
-  const [lastScanned,  setLastScanned]  = useState<Date | null>(null)
+  const [lastScanned,          setLastScanned]          = useState<Date | null>(null)
+  const [lastBackgroundScanned, setLastBackgroundScanned] = useState<Date | null>(null)
   const [needsReauth,  setNeedsReauth]  = useState(false)
 
   useEffect(() => {
@@ -86,6 +88,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [])
 
+  // Listen to root doc for lastBackgroundScanAt — updates whenever a background scan runs
+  useEffect(() => {
+    if (!user) return
+    import('firebase/firestore').then(({ doc, onSnapshot }) => {
+      import('@/lib/firebase').then(({ db }) => {
+        const unsub = onSnapshot(doc(db, `users/${user.uid}`), snap => {
+          const ts = snap.data()?.lastBackgroundScanAt
+          if (ts?.toDate) setLastBackgroundScanned(ts.toDate())
+        })
+        return unsub
+      })
+    })
+  }, [user?.uid])
+
   const saveTokenAndScan = async (firebaseUser: User, token: string, refreshToken?: string) => {
     const uid        = firebaseUser.uid
     const accountRef = doc(db, `users/${uid}/accounts`, 'account_primary')
@@ -94,16 +110,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isNewUser = !existing.exists()
     const createdAt = existing.data()?.createdAt ?? Timestamp.now()
     const scanCount = (existing.data()?.scanCount ?? 0) + 1
-
-    // Also write email to root users/{uid} doc so the CF can find the user
-    // by email address when a Gmail Pub/Sub notification arrives
-    const rootRef = doc(db, 'users', uid)
-    await setDoc(rootRef, {
-      uid,
-      email:          firebaseUser.email,
-      displayName:    firebaseUser.displayName,
-      updatedAt:      Timestamp.now(),
-    }, { merge: true })
 
     await setDoc(accountRef, {
       accountId:      'account_primary',
@@ -280,7 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, needsReauth, signIn, signOut, triggerScan }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, lastBackgroundScanned, needsReauth, signIn, signOut, triggerScan }}>
       {children}
     </AuthContext.Provider>
   )
