@@ -110,6 +110,7 @@ export function DashboardShell() {
 
   const gridProps = {
     onItemClick: (item: KeelItem) => setSelectedItem(item),
+    onResolved:   handleResolved,
     resolvedItems, signals, lastScanned, scanDaysBack, priorityFilter,
   }
 
