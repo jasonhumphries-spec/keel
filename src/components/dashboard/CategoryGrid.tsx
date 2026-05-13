@@ -524,6 +524,8 @@ export function CategoryCard({
                   cursor: 'pointer',
                   background: isResolved
                     ? '#f0f6f2'
+                    : isNewArrival(item)
+                    ? 'rgba(61,122,107,0.07)'
                     : hovered === item.itemId
                     ? getPriorityBg(item)
                     : getPriorityBg(item),
@@ -624,12 +626,13 @@ export function CategoryCard({
                   )}
                   {!isResolved && isNewArrival(item) && (
                     <span style={{
-                      fontFamily: 'var(--font-dm-mono)', fontSize: 8,
+                      fontFamily: 'var(--font-dm-mono)', fontSize: 9,
                       background: '#3D7A6B', color: '#fff',
-                      borderRadius: 4, padding: '1px 5px',
-                      letterSpacing: '0.06em', fontWeight: 700,
+                      borderRadius: 4, padding: '2px 7px',
+                      letterSpacing: '0.04em', fontWeight: 700,
                       flexShrink: 0,
-                    }}>NEW</span>
+                      boxShadow: '0 1px 4px rgba(61,122,107,0.35)',
+                    }}>Just in!</span>
                   )}
                   {!isResolved && <PriorityDot item={item} />}
                   {/* Snooze button — clock icon, expands to duration picker */}
