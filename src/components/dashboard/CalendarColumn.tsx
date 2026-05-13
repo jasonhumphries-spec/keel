@@ -248,7 +248,9 @@ export function CalendarColumn({
   const perItemMap = new Map<string, KeelSignal>() // key: `${itemId}:${dateKey}`
   for (const sig of visibleSignals) {
     if (!sig.detectedDate) continue
-    const dateKey  = sig.detectedDate.toISOString().split('T')[0]
+    // Use local date to avoid UTC offset splitting the same calendar day into two keys
+    const d = sig.detectedDate
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const key      = `${sig.itemId}:${dateKey}`
     const existing = perItemMap.get(key)
     if (!existing || (TYPE_RANK[sig.type] ?? 0) > (TYPE_RANK[existing.type] ?? 0)) {
@@ -274,7 +276,8 @@ export function CalendarColumn({
   // same date has a similar title. If so, keep the higher-importance item.
   const crossDedupEntries: { sig: KeelSignal; date: string; title: string; score: number }[] = []
   for (const sig of perItemMap.values()) {
-    const date  = sig.detectedDate!.toISOString().split('T')[0]
+    const dd = sig.detectedDate!
+    const date = `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`
     const item  = itemsMap.get(sig.itemId)
     const title = item?.aiTitle ?? ''
     const score = item?.aiImportanceScore ?? 0
