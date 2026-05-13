@@ -105,9 +105,11 @@ export async function classifyThread(
 
   const outboundNote = isOutbound
     ? '\nDIRECTION: This is a thread the account owner initiated — they sent the first message. ' +
-      'The recipient has not yet replied. If the message contains a genuine question, request, or ' +
-      'anything requiring a response, classify as awaiting_reply with an appropriate importance score (0.55+). ' +
-      'Only use quietly_logged if this is clearly automated, transactional, or requires no response at all.\n'
+      'If the sender and recipient email addresses are the same (self-email), treat it as a personal note or reminder — ' +
+      'classify as new or awaiting_action depending on whether it contains a task or reminder. ' +
+      'Otherwise, the recipient has not yet replied — if the message contains a question, request, or anything ' +
+      'requiring a response, classify as awaiting_reply (score 0.55+). ' +
+      'Only use quietly_logged if the content is clearly automated, transactional, or requires no response.\n'
     : ''
 
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.

@@ -259,8 +259,15 @@ export async function POST(req: NextRequest) {
 
         // ── S1: classifyThread — same function as manual scan ──────────────
         const isOutbound    = senderEmail.toLowerCase() === accountEmail
+        // isSelfEmail: user emailed themselves — treat as a note/reminder, always process
+        const isSelfEmail   = isOutbound && messages.length === 1 &&
+          (messages[0].payload?.headers ?? []).some((h: any) =>
+            h.name.toLowerCase() === 'to' && (h.value as string).toLowerCase().includes(accountEmail)
+          )
         const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound)
-        if (!classification || !classification.shouldProcess) { skippedItems++; continue }
+        // Self-emails and outbound threads are always worth storing — never skip them
+        // even if the AI returns shouldProcess=false
+        if (!classification || (!classification.shouldProcess && !isOutbound)) { skippedItems++; continue }
 
         totalInputTokens  += classification._usage?.inputTokens  ?? 0
         totalOutputTokens += classification._usage?.outputTokens ?? 0
