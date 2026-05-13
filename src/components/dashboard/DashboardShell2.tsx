@@ -497,6 +497,7 @@ function TriagePanel({
 function FyiSection({
   categoryData,
   onItemClick,
+  onResolved,
   resolvedItems,
   signals,
   uid,
@@ -505,6 +506,7 @@ function FyiSection({
 }: {
   categoryData:    CategoryWithItems[]
   onItemClick:     (item: KeelItem) => void
+  onResolved:      (item: KeelItem) => void
   resolvedItems:   Map<string, KeelItem>
   signals:         KeelSignal[]
   uid:             string
@@ -581,7 +583,7 @@ function FyiSection({
                 <CategoryCard
                   data={{ category, items }}
                   onItemClick={onItemClick}
-                  onResolved={handleResolved}
+                  onResolved={onResolved}
                   resolvedItems={resolvedItems}
                   signals={signals}
                   uid={uid}
@@ -1055,6 +1057,7 @@ export function DashboardShell2() {
               <FyiSection
                 categoryData={fyiData}
                 onItemClick={cardProps.onItemClick}
+                onResolved={handleResolved}
                 resolvedItems={resolvedItems}
                 signals={signals}
                 uid={uid}
