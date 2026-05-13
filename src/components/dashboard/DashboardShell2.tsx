@@ -634,6 +634,7 @@ export function DashboardShell2() {
   const [settingsOpen,   setSettingsOpen]   = useState(false)
   const [categoriseOpen, setCategoriseOpen] = useState(false)
   const [selectedItem,   setSelectedItem]   = useState<KeelItem | null>(null)
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
   const [resolvedItems,  setResolvedItems]  = useState<Map<string, KeelItem>>(new Map())
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
   const [triageDismissed, setTriageDismissed] = useState(false)
@@ -687,6 +688,31 @@ export function DashboardShell2() {
     check()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  // Handle ?highlight=itemId — navigate to and open the specified item
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const itemId = searchParams?.get('highlight')
+    if (!itemId || !allItems.length) return
+
+    const item = allItems.find(i => i.itemId === itemId)
+    if (!item) return
+
+    // Open the expanded panel
+    setSelectedItem(item)
+
+    // Scroll to the card and flash it
+    setHighlightedItemId(itemId)
+    setTimeout(() => {
+      const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      // Remove highlight ring after 2s
+      setTimeout(() => setHighlightedItemId(null), 2000)
+    }, 400) // brief delay for items to render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, allItems.length])
 
   // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
@@ -803,6 +829,11 @@ export function DashboardShell2() {
   }
 
   // ── Loading / scanning overlay — always rendered, above mobile + desktop ────
+  // Highlight ring for items navigated to from All Mail
+  const highlightStyle = highlightedItemId ? (
+    <style>{`[data-itemid="${highlightedItemId}"] { outline: 2px solid var(--color-accent) !important; outline-offset: 2px; transition: outline 0.3s; }`}</style>
+  ) : null
+
   const scanOverlay = showOverlay && (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 500,
@@ -859,7 +890,8 @@ export function DashboardShell2() {
         </div>
         <BottomNav onSettingsOpen={() => setSettingsOpen(true)} />
         {commonPanels}
-        {scanOverlay}
+        {highlightStyle}
+      {scanOverlay}
       </div>
     )
   }

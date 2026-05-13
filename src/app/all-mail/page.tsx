@@ -7,6 +7,7 @@ import { PageShell } from '@/components/layout/PageShell'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAllItems } from '@/lib/hooks'
+import Link from 'next/link'
 import type { KeelItem, ItemStatus } from '@/lib/types'
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
@@ -34,9 +35,6 @@ const STATUS_COLOUR: Record<ItemStatus, string> = {
 const SENT_BLUE = '#4A7FA5'
 
 function isSentByUser(item: KeelItem, userEmail: string): boolean {
-  // Use isOutbound if set (items scanned after the field was added)
-  // Fall back to senderEmail comparison for older items not yet rescanned
-  if ((item as any).isOutbound !== undefined) return (item as any).isOutbound === true
   return item.senderEmail.toLowerCase() === userEmail.toLowerCase()
 }
 
@@ -130,18 +128,38 @@ function MailItem({ item, uid, userEmail, onRestored }: {
               {item.categoryName}
             </span>
 
-            {/* Status badge — filled+bold for chase items */}
-            <span style={{
-              fontFamily: 'var(--font-dm-mono)', fontSize: 10,
-              color:      isChase ? '#fff' : (STATUS_COLOUR[status] ?? 'var(--color-text-muted)'),
-              background: isChase ? SENT_BLUE : 'transparent',
-              border:     `1px solid ${STATUS_COLOUR[status] ?? 'var(--color-border)'}`,
-              borderRadius: 4, padding: '0px 5px', flexShrink: 0,
-              fontWeight: isChase ? 600 : 400,
-              opacity: (!isChase && ['quietly_logged','archived','done','paid'].includes(status)) ? 0.5 : 1,
-            }}>
-              {isChase ? '↑ Chase?' : (STATUS_LABEL[status] ?? status)}
-            </span>
+            {/* Status badge — linked to dashboard for actionable statuses */}
+            {(['awaiting_reply', 'awaiting_action', 'new'].includes(status) || isChase) ? (
+              <Link
+                href={`/dashboard?highlight=${item.itemId}`}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  fontFamily: 'var(--font-dm-mono)', fontSize: 10,
+                  color:      isChase ? '#fff' : (STATUS_COLOUR[status] ?? 'var(--color-text-muted)'),
+                  background: isChase ? SENT_BLUE : 'transparent',
+                  border:     `1px solid ${STATUS_COLOUR[status] ?? 'var(--color-border)'}`,
+                  borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                }}>
+                {isChase ? '↑ Chase?' : (STATUS_LABEL[status] ?? status)}
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </Link>
+            ) : (
+              <span style={{
+                fontFamily: 'var(--font-dm-mono)', fontSize: 10,
+                color:      STATUS_COLOUR[status] ?? 'var(--color-text-muted)',
+                border:     `1px solid ${STATUS_COLOUR[status] ?? 'var(--color-border)'}`,
+                borderRadius: 4, padding: '0px 5px', flexShrink: 0,
+                opacity: ['quietly_logged','archived','done','paid'].includes(status) ? 0.5 : 1,
+              }}>
+                {STATUS_LABEL[status] ?? status}
+              </span>
+            )}
           </div>
 
           {expanded && item.aiSummary && (

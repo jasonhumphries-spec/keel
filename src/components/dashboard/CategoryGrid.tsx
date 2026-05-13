@@ -509,6 +509,7 @@ export function CategoryCard({
             return (
               <div
                 key={item.itemId}
+                data-itemid={item.itemId}
                 onClick={() => onItemClick(item)}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 9,
