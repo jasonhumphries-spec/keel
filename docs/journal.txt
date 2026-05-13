@@ -1,90 +1,203 @@
 === 2026-04-30 SESSION 2 (keel-personal-life-os-build continued) ===
 Transcript: /mnt/transcripts/2026-04-30-14-34-38-keel-personal-life-os-build.txt
+Session continued in same thread — very long, start new thread using this journal.
 
-ONBOARDING: Chevron SVG logo; KEEL brass sign-in; email-type step; 14-day→7-day default;
-SVG icons; live feed terminal; rotating tips; onSnapshot/duplicate fixes.
-SCAN: S1→Haiku ($0.80/$4.00/M); same-day transients→quietly_logged; lastScanCompletedAt;
-incremental fetch; live feed every 5 threads.
-AUTH: Auto-scan skip <30min; auth/cancelled-popup-request suppressed.
-CATEGORIES PAGE: "Keel already knows:" panel; smart placeholder hints; categoryDefaults.ts.
-ITEM EXPANDED PANEL: Priority→signal bars (4 levels); optimistic local state.
-ADMIN: Light theme; S1/S2 cost columns; 60s cache; parallelised reads; deleted/reset users.
-AI ABSTRACTION: aiComplete.ts provider wrapper; AdminSettingsPanel switcher; /api/ai-config.
-STATE: provider=haiku, ~$0.028/scan, ~22s, ~582 FB reads/scan.
+KEY CHANGES THIS SESSION:
+
+ONBOARDING:
+- Removed tagline from header, use Keel chevron SVG logo only (no wordmark)
+- "KEEL" all caps brass colour on sign-in page, tagline "Keeping it even"
+- "personal life" / "life categories" removed throughout
+- Added email-type step (Personal/Work/Both) — pre-selects category set
+- PERSONAL_CATEGORIES, WORK_CATEGORIES, BOTH_CATEGORIES defined
+- Category describe phase only shown for custom/non-default categories
+- 14-day default → 7-day default throughout (AuthContext, onboarding, settings)
+- All emoji icons replaced with SVG icons
+- "All done!" uses SVG checkmark circle, not emoji
+- Live feed terminal window during scan — reads meta/scanFeed in real time
+- Rotating tips every 6s, elapsed timer during scan
+- Last checklist item only ticks on isDone
+- onSnapshot fix, duplicate function fix, various crash fixes
+
+SCAN ROUTE:
+- S1: claude-haiku-4-5-20251001 at $0.80/$4.00 per M (was Sonnet $3/$15)
+- Same-day transient items → quietly_logged (delivery dispatch, calendar reminders etc)
+- lastScanCompletedAt written to account doc after each scan
+- Incremental fetch: existence query + recent query (reduces reads on repeat scans)
+- Live feed writes meta/scanFeed every 5 threads
+- BUILTIN_DESCRIPTIONS expanded with work category IDs
+
+AUTH CONTEXT:
+- Auto-scan skip if last scan < 30 min ago (prevents double-scan after onboarding)
+- auth/cancelled-popup-request silently suppressed
+
+CATEGORIES PAGE:
+- "Keel already knows:" panel for built-in categories
+- Smart placeholder hints per category
+- categoryDefaults.ts: DEFAULT_CATEGORY_DESCRIPTIONS, CATEGORY_DESCRIPTION_HINTS, WORK_CATEGORY_DESCRIPTIONS
+
+SIDEBAR:
+- Feedback button (brass, mailto:feedback@keel.app) + Privacy on same row
+
+ITEM EXPANDED PANEL:
+- Priority: coloured blocks → signal bars (4 levels: Low/Med/High/Urgent)
+- Local optimistic state for immediate visual feedback
+
+ADMIN CONSOLE:
+- Light daytime theme
+- AI S1 and S2 separate columns
+- All costs 3dp
+- Cost projection uses liveUsers only (scanCount > 0)
+- Deleted/reset users table below live users
+- 60s in-memory cache
+- Parallelised Firestore reads
+- "cached (60s)" indicator
+
+DEV TOOLS:
+- Archive meta/usage before wipe → meta/usage_archive_{timestamp}
+- Meta deletion skips usage_archive_* docs
+
+AI PROVIDER ABSTRACTION (built in separate chat):
+- src/lib/aiComplete.ts — provider-aware wrapper, reads /config/aiProvider cached 60s
+- AdminSettingsPanel.tsx — switch provider globally (Haiku/Sonnet/Gemini Flash/Pro)
+- /api/ai-config/route.ts — GET/POST provider
+- FIXED: gemini-1.5-flash → gemini-2.0-flash
+- FIXED: claude-haiku added as selectable option
+- NOTE: Gemini 2.0 Flash needs Google AI billing enabled (free tier quota = 0)
+
+CURRENT STATE (end of session 2):
+- Active provider: claude-haiku-4-5-20251001
+- Typical incremental scan: ~$0.028, ~22s, ~95% threads skipped
+- Firestore reads per incremental scan: ~582
 
 
-=== 2026-05-01 SESSION 3 (gemini + admin drill-down + scan-fix + UX) ===
-
-GEMINI: gemini-2.0→2.5-flash; thinking disabled (thinkingBudget:0); ~$0.0008–0.002/scan.
-ADMIN: Full light theme; per-user scan drill-down (50 runs); reclassify column; /api/scan-runs.
-SCAN ARCH REFACTOR: Removed client-side token passing; server reads OAuth token from Firestore.
-ROOT CAUSE FIX: onClick={triggerScan} was passing React event as job param → circular JSON.
-RECLASSIFY: "↺ Reclassify all" on categories page; uses stored aiTitle/aiSummary.
-CATEGORISE MODAL: Back/forward nav; "Do the rest later"; "Ignore"→quietly_logged+manuallyIgnored.
-IGNORED: "Quietly Logged"→"Ignored" in UI (Firestore status unchanged).
-STATE: provider=gemini-2.5-flash, ~$0.0008–0.002/scan, ~20s.
+=== 2026-05-01 SESSION 3 (gemini-testing + admin-drill-down + scan-fix + UX) ===
+[See previous journal entries for full session 3 and 4 notes]
 
 
-=== 2026-05-01 SESSION 4 (vercel deployment + typescript fixes) ===
-Transcript: /mnt/transcripts/2026-05-01-20-39-49-keel-deployment-typescript-fixes.txt
+=== 2026-05-13 SESSION 6 (background-scanning + dashboard UX + many fixes) ===
 
-VERCEL: keel→www.jaison.app; keel-admin→keel-admin.vercel.app. Framework=Next.js.
-TYPESCRIPT: manuallyIgnored:boolean; 'pending' in SignalCalendarStatus; thinking?:number optional.
-CLOUD FUNCTION: https://gmailscan-wel4wongwa-ew.a.run.app (europe-west1, 60min, 512MiB).
-IAM: allUsers → roles/run.invoker. Custom domain live. Google OAuth configured.
-STATE: www.jaison.app LIVE, provider=gemini-2.5-flash.
+BACKGROUND SCANNING — NOW WORKING:
+- Root cause found: email was only written to account_primary, not root users/{uid} doc
+  The CF queries users collection by email — so it never found any user
+  Fix: AuthContext.saveTokenAndScan now writes email+displayName to root users/{uid} doc
+  Confirmed working: lastBackgroundScanAt appeared in Firestore within minutes of deploy
 
+OAUTH / TOKEN:
+- New shared utility: src/lib/server/tokenUtils.ts — getValidAccessToken(db, uid)
+  Reads from account_primary, auto-refreshes if expired/expiring within 2 min
+  Used by: scan/route.ts, reanalyse/route.ts, inbox-watch/route.ts, background-scan/route.ts
+- background-scan/route.ts rewritten to use shared scanUtils + tokenUtils
+  (previously had wrong account path, inline prompt, wrong signals subcollection write)
 
-=== 2026-05-10 SESSION 6 (background scanning + calendar + UI improvements) ===
+SCAN ARCHITECTURE:
+- Scan routing fixed: CF for onboarding only, Vercel route for manual/auto
+  Previously NEXT_PUBLIC_SCAN_FUNCTION_URL was used for ALL jobs
+- CF fallback: if Cloud Function unreachable during onboarding, falls back to Vercel route
+- Gmail query: {in:inbox in:sent} — now scans sent folder to find user-initiated threads
+- Email scope settings: opt-in Promotions/Social/Spam scanning (Pro feature)
+  excludedLabels field on account_primary, dynamic query built from it
+- isOutbound field: written at scan time when first message sender = account email
+  Enables correct detection of user-initiated threads in All Mail
+- DIRECTION note added to AI prompt for outbound/self-email threads
 
-BACKGROUND SCANNING (Phase 2):
-- handleGmailNotification CF — Pub/Sub triggered; 90s debounce; calls /api/gmail/background-scan
-- renewGmailWatches CF — scheduled every 6 days
-- nightlyItemExpiry CF — 1am daily; past events → quietly_logged/overdue; 1-day grace
-- POST /api/inbox-watch — enable/disable watch, set+merge on root doc
-- POST /api/gmail/background-scan — History API thread discovery, S1 via scanUtils
-- BackgroundScanToggle in Settings (PRO badge); watch fields on root users/{uid} doc
-- job='background' in scanRuns; backgroundScan* counters in meta/usage
-- Pub/Sub topic gmail-inbox-notifications configured; ADMIN_SECRET as Firebase secret
-- Auto-scan on page load removed — background scanning handles new emails now
+AI PROMPT IMPROVEMENTS:
+- awaiting_reply vs awaiting_action sharpened:
+  "I asked them something, waiting for answer" = awaiting_reply
+  "I said I'd do something, I still need to do it" = awaiting_action
+- Event proximity scoring: within 7 days always 0.72-0.78 (High), never Medium
+- NEXT STEP bullet updated to correctly identify owner of action
 
-SCAN UTILS — PARITY:
-- src/lib/scanUtils.ts — classifyThread(), decodeBody(), buildThreadContext()
-- decodeBody() always extracts HTML structure (dates/times) even with plain text fallback
-- All scan routes import from scanUtils: scan, background-scan, reanalyse
-- Prompt improvements: conditional payments, primary amounts, event signals for
-  informational notices, proximity scoring for upcoming events
+NIGHTLY CLOUD FUNCTION (nightlyItemExpiry):
+- Step 1: proximity re-scoring — items with upcoming events bumped to High as date approaches
+  Bands: ≤1 day=0.78, ≤3 days=0.75, ≤7 days=0.72. Only bumps upward, respects manualPriority
+- Step 2: snooze wake-up — clears snoozedUntil, restores preSnoozePriority score
+- Step 3: event expiry — past-event items → quietly_logged or overdue
+- Batch fix: deleteCollection helper chunks to 400 (was hitting Firestore 500-op limit)
+- Watch renewal: every 5 days (was 6) — 2-day buffer before Gmail 7-day expiry
 
-CALENDAR MATCHING — 6 BUGS FIXED:
-1. Token expiry (no refresh in calendar/check route)
-2. Server lookup window 35→365 days
-3. Client useCalendarSignals hook 30→365 days
-4. Reader-access calendars excluded (shared/family cals like TJP Family)
-5. Sender domain fallback matching (senderMatchesCalTitle)
-6. checkAllCalendars toggle fires immediate re-check
+SNOOZE:
+- Snooze button on card — clock icon on hover, expands to 1d/3d/7d picker inline
+- Fields: snoozedUntil (Timestamp), preSnoozePriority (number) on KeelItem
+- Snoozed items: collapsed to single row in category section, grey, sorted to bottom
+- "Wake" button on collapsed card for immediate unsnooze
+- activeCount excludes snoozed; snoozed items hidden from step bands in DashboardShell2
+- Nightly wake-up when snoozedUntil elapsed
 
-CALENDAR ADD:
-- calendarUtils.ts — buildCalendarUrl() shared across CalendarColumn, ItemExpandedPanel, CategoryGrid
-- Time extraction: range/single/bare patterns; fallback = all-day
-- Description = aiDetailedSummary → aiSummary → signal description
-- Opens /calendar/r/eventedit (native Google Calendar editor)
+DASHBOARD (DashboardShell2 — active shell):
+- No scan on refresh when autoScanEnabled=true — reads from root users/{uid} doc
+  (was reading from account_primary where autoScanEnabled was never written)
+- ?highlight=itemId param: navigates to item, scrolls to card, brass outline ring 3s
+  Off-dashboard items (quietly_logged etc) fetched directly from Firestore and opened in panel
+  Banner shows which section: "Section 4 · On your radar — Item title"
+  Scroll uses offsetTop calculation (reliable vs getBoundingClientRect for off-screen elements)
+- Quick Done button: appears on card hover, writes status:done + resolvedAt immediately
+- Just in! badge: teal border + bg tint for lastProcessedBy=background items < 10 min old
+- Freshness indicator: "● Live · 2m ago" or "Updated 1h ago" next to date in topbar
+  Green when background scan < 10 min ago; reads lastBackgroundScanAt from root doc live
 
-UI:
-- CategoryFilterContext provider at dashboard2/page.tsx level
-- Category checkboxes in sidebar (select all/none/only); filters DashboardShell2 data
-- BackgroundScanToast — seenIds approach, bottom-right, 5s auto-dismiss
-- SessionBanner — expired token warning with re-auth button
-- needsReauth in AuthContextType
-- Sidebar: removed Dashboard 1.0, Awaiting Reply sub-item, priority filter sub-items
-- Privacy policy: corrected AI provider (Gemini), background scanning disclosed,
-  encryption section accurate, contact = privacy@jaison.app
-- Onboarding: background scanning mentioned, privacy reassurance added
+SEARCH (Topbar SearchOverlay):
+- Results now have two buttons: "→ View" (navigates to dashboard) + "Gmail" (new tab)
+- Clicking result row also navigates to dashboard via ?highlight=itemId
 
-KEY BUG: active dashboard is DashboardShell2 at /dashboard2 (not DashboardShell/dashboard1)
-KEY BUG: CategoryFilterProvider must be parent of component that consumes it
+ALL MAIL PAGE (new: /all-mail):
+- Shows all 300 most recent scanned items regardless of status
+- Filter pills: All / Active / Sent / Awaiting reply / Action needed / Ignored / Done / Archived
+- Sent filter: detects isOutbound field, falls back to senderEmail comparison for older items
+- Chase count badge on Sent pill — items you sent that are awaiting_reply
+- Actionable status badges (Action needed, Awaiting reply) are clickable links to dashboard
+- Context note updates when Sent filter active
+- Added to sidebar nav and mobile bottom nav
+
+BACKGROUND SCAN TOAST (BackgroundScanToast):
+- Now fetches actual items from scan window using createdAt (not updatedAt — email dates)
+  5-minute window around scanAt to catch any clock skew
+- Each item row shows: sender name, AI title, category pill, priority dot+level, status badge
+- Clicking any row navigates to dashboard ?highlight=itemId
+
+CATEGORISE MODAL:
+- Fixed stale closure bug — was looping back to already-assigned items
+  Now builds newAssigned Map synchronously before findIndex
+- Auto-classify similar items: when you assign item #2, similar unclassified items
+  (same senderEmail OR 3+ significant title words in common) are auto-assigned same category
+  Teal notification bar: "✓ Also classified 3 similar items as X" with Undo (6s timeout)
+
+ONBOARDING:
+- Inline description when adding custom category — description field expands immediately
+  No separate describe phase; "Add category" + "Skip description" buttons inline
+- Error + timeout handling: scan error → rust spinner + "Something went wrong" + redirect 3s
+  3-minute timeout → redirect to dashboard if CF never completes
+- Scan routing fixed: CF for onboarding, Vercel fallback if CF unreachable
+
+ADMIN CONSOLE (keel-admin):
+- Dev Ops dropdowns: both show "Name · email" (was name OR email)
+- Full account reset: chunked deletes handle >500 docs; root users/{uid} doc now cleared
+  (watch state, autoScanEnabled etc were surviving reset)
+- flush_items also uses chunked deletes
+
+CALENDAR COLUMN:
+- Dedup dateKey uses local date (getFullYear/Month/Date) not UTC ISO string
+  Fixes duplicate entries for items where DEADLINE + EVENT on same day but different stored times
+- Cross-item dedup: collapses signals from different emails about same real-world event
+  Matches by 2+ significant title words on same date, keeps higher-importance item
+
+BUGS FIXED:
+- privacy/page.tsx: missing Section opening tag (build failure)
+- CalendarColumn comment had \r escape causing parse error (two rounds)
+- BottomNav All Mail tab missing count field (TS error)
+- preSnoozePriority/isOutbound missing from all local docToItem copies (repeated TS errors)
+- onResolved prop threading through CategoryGrid → CategoryCard → FyiSection (3 rounds)
+- useRouter import missing in Topbar
+- highlight useEffect using allItems before declaration
+- isOutbound declaration after classifyThread call (used before declaration)
+- DashboardShell2 overlay starts false — no blur/spin on every page refresh
+- autoScanEnabled read from wrong doc (account_primary vs root users/{uid})
+- excludedLabels declared after use in fetchGmailMessages (CF scan TS error)
 
 CURRENT STATE (end of session 6):
-- Background scanning: LIVE, watch active (expiry May 17, renews automatically)
 - Active provider: gemini-2.5-flash
-- Cost: ~$0.0002/background scan, ~$0.0008–0.002/manual scan
-- Firestore security rules: confirmed tight (uid==userId enforced at DB level)
+- Background scanning: WORKING — confirmed via Firestore lastBackgroundScanAt
+- Gmail watch expiry: May 17 (renews automatically every 5 days)
+- All 4 Cloud Functions deployed and verified current
+- www.jaison.app: LIVE ✓
+- keel-admin.vercel.app: LIVE ✓

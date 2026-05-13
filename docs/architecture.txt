@@ -1,5 +1,5 @@
 KEEL — TECHNICAL ARCHITECTURE
-Last updated: 2026-05-10 Session 6
+Last updated: 2026-05-13 Session 6
 
 ═══════════════════════════════════════════════
 OVERVIEW
@@ -10,11 +10,11 @@ classifies threads by category using AI, and surfaces actionable signals
 (payments due, events, awaiting replies etc.) in a structured dashboard.
 
 Two separate Next.js apps:
-  keel       — user-facing app  → www.jaison.app / keel-icl6.vercel.app
+  keel       — user-facing app  → www.jaison.app
   keel-admin — internal admin   → keel-admin.vercel.app
 
-IMPORTANT: The active dashboard is DashboardShell2 at /dashboard2 (not /dashboard1).
-dashboard2/page.tsx wraps DashboardShell2 in CategoryFilterProvider.
+Active dashboard: DashboardShell2 / dashboard2 page (DashboardShell / dashboard1 retained
+but not active — TypeScript compiled, must stay error-free).
 
 ═══════════════════════════════════════════════
 INFRASTRUCTURE
@@ -23,19 +23,17 @@ INFRASTRUCTURE
 Hosting:          Vercel (Hobby plan, serverless, Node.js runtime)
 Database:         Firebase Firestore (eur3 region, EU data residency)
 Auth:             Firebase Auth + Google OAuth 2.0
-AI (all scans):   gemini-2.5-flash via Google AI SDK (switchable via admin)
+AI (all scans):   gemini-2.5-flash via Google AI SDK
 Background jobs:  Firebase Cloud Functions v2 (europe-west1, 60min timeout, 512MiB)
-Pub/Sub:          gmail-inbox-notifications topic in keel-6921a
-Domain:           GoDaddy (jaison.app) → www.jaison.app
-Repos:            GitHub jasonhumphries-spec/keel + keel-admin (private)
+Domain registrar: GoDaddy (jaison.app)
+Repo:             GitHub (jasonhumphries-spec/keel, jasonhumphries-spec/keel-admin) — private
 Firebase project: keel-6921a
-Security rules:   firestore.rules — users can only access users/{their uid}/**
 
 ═══════════════════════════════════════════════
 AI PROVIDERS & COSTS
 ═══════════════════════════════════════════════
 
-Active provider: gemini-2.5-flash (switchable via admin panel in 60s)
+Active provider: gemini-2.5-flash (switchable via admin panel)
 
 Provider            Model                        Input $/M   Output $/M
 ──────────────────  ───────────────────────────  ─────────   ──────────
@@ -44,159 +42,221 @@ Gemini Pro          gemini-2.5-pro               $1.25       $10.00
 Claude Haiku        claude-haiku-4-5-20251001    $0.80       $4.00
 Claude Sonnet       claude-sonnet-4-6            $3.00       $15.00
 
-Typical manual incremental scan:  ~$0.0008–0.002, ~20s
-Typical background scan (1 email): ~$0.0002, ~3s
-Typical onboarding scan (7 days):  ~$0.005–0.02
+Typical incremental scan (Gemini Flash): ~$0.0008–0.002, ~20s
+Typical onboarding scan (7 days):        ~$0.005–0.02
 
-Provider config: /config/aiProvider in Firestore (cached 60s in aiComplete.ts)
+Provider config: /config/aiProvider (cached 60s in aiComplete.ts)
+Switch via Admin Console → Settings panel.
 
 ═══════════════════════════════════════════════
 SCAN ARCHITECTURE
 ═══════════════════════════════════════════════
 
-THREE SCAN PATHS:
+THREE paths:
 
-1. MANUAL / AUTO (Vercel serverless, ~20s):
-   Client → triggerScan('manual') → POST /api/gmail/scan
-   → reads OAuth token from Firestore server-side
-   → Gmail API: existence + recent query (incremental fetch)
-   → classifyThread() from scanUtils.ts (S1)
-   → write items, scanRun doc, meta/usage
+ONBOARDING (Cloud Function, 60min timeout):
+  Client → triggerScan('onboarding') → POST Cloud Function URL
+  → same logic as manual scan but handles full 7–30 day window
+  → Cloud Function URL: https://gmailscan-wel4wongwa-ew.a.run.app
+  → If CF unreachable: falls back to Vercel route automatically
 
-2. ONBOARDING (Cloud Function, 60min timeout):
-   Client → triggerScan('onboarding') → POST https://gmailscan-wel4wongwa-ew.a.run.app
-   → same logic, handles full 7–30 day window without Vercel timeout
+INCREMENTAL / MANUAL (Vercel serverless, ~20s):
+  Client → triggerScan('manual'|'auto') → POST /api/gmail/scan
+  → reads OAuth token via getValidAccessToken() from account_primary (auto-refreshes)
+  → Gmail API: {in:inbox in:sent} newer_than:Nd (excludedLabels applied dynamically)
+  → S1: classify thread via scanUtils.classifyThread() — isOutbound flag passed
+  → signals written to users/{uid}/signals/ subcollection
+  → write items to Firestore, scanRun doc, meta/usage
 
-3. BACKGROUND (Pub/Sub triggered, ~3s per email):
-   New email arrives in Gmail
-   → Gmail pushes to Pub/Sub topic gmail-inbox-notifications
-   → handleGmailNotification CF fires
-   → checks autoScanEnabled + 90s debounce on lastBackgroundScanAt
-   → calls POST /api/gmail/background-scan on Vercel
-   → getChangedThreadIds() via Gmail History API
-   → classifyThread() from scanUtils.ts (same as manual)
-   → write items, scanRun (job='background'), meta/usage backgroundScan* fields
+BACKGROUND (Pub/Sub → Cloud Function → Vercel):
+  New email arrives in Gmail
+  → Gmail pushes notification to Google Pub/Sub topic: gmail-inbox-notifications
+  → handleGmailNotification CF receives message, debounces 90s per user
+  → CF calls POST /api/gmail/background-scan with {uid, newHistoryId, adminSecret}
+  → background-scan route: getValidAccessToken → Gmail History API → classifyThread()
+  → writes items + signals to Firestore, scanRun (job:'background'), updates watchHistoryId
 
-Watch renewal: renewGmailWatches CF runs every 6 days (watches expire at 7).
-Nightly expiry: nightlyItemExpiry CF runs at 1am — past event items → quietly_logged/overdue.
+Gmail watch lifecycle:
+  Enable: POST /api/inbox-watch {uid, action:'enable'} → Gmail watch() API
+  → stores watchHistoryId (cursor), watchExpiry, watchStatus:'active' on root users/{uid}
+  → watchHistoryId is the baseline cursor for History API diffs
+  Renewal: renewGmailWatches CF runs every 5 days (Gmail expiry is 7 days)
+  User toggle: Settings → Background scanning (BackgroundScanToggle component)
 
-SHARED CLASSIFICATION (src/lib/scanUtils.ts):
-All three scan paths import classifyThread() from scanUtils.ts.
-Improving the prompt improves all scan types simultaneously.
-Also exports: decodeBody(), buildThreadContext(), runInBatches()
-decodeBody() extracts structured HTML data (dates/times/locations) before tag-stripping —
-critical for invitation emails (Paperless Post, Eventbrite etc.)
+Key: autoScanEnabled + watchStatus + watchHistoryId live on ROOT users/{uid} doc.
+     OAuth tokens live on users/{uid}/accounts/account_primary.
+     email field must exist on BOTH docs (CF looks up user by email on root doc).
 
-Live feed: scan route writes meta/scanFeed every 5 threads during onboarding.
+═══════════════════════════════════════════════
+SHARED UTILITIES (server-side)
+═══════════════════════════════════════════════
 
-ScanRun logging: every scan writes to users/{uid}/scanRuns/{timestamp}
-Fields: scanAt, daysBack, threadsFound, threadsProcessed, newItems, updatedItems,
-        skipped, inputTokens, outputTokens, aiCostUsd, fbReads, fbWrites,
-        fbCostUsd, totalCostUsd, model, provider, job, durationMs
-job values: 'onboarding' | 'manual' | 'auto' | 'background' | 'reclassify'
+src/lib/server/tokenUtils.ts  — getValidAccessToken(db, uid)
+  Single source of truth for OAuth token management. Reads account_primary,
+  auto-refreshes if expired or expiring within 2 minutes, writes new token back.
+  Returns null on failure (caller should surface 401).
+  Used by: all four API routes that touch Gmail.
+
+src/lib/scanUtils.ts  — classifyThread(), buildThreadContext(), runInBatches(), decodeBody()
+  Shared classification logic used by scan/route.ts, background-scan/route.ts,
+  and functions/src/scan.ts. Single source of AI prompt — improvements apply everywhere.
+  classifyThread() accepts isOutbound:boolean — adds DIRECTION note to prompt for
+  user-initiated threads and self-emails.
+
+src/lib/server/calendarCheck.ts  — runCalendarCheck(db, uid, accessToken)
+  Matches item signals against Google Calendar entries.
 
 ═══════════════════════════════════════════════
 FIRESTORE DATA MODEL
 ═══════════════════════════════════════════════
 
-/users/{uid}                        ← root doc: email, autoScanEnabled, watchStatus,
-                                      watchProvider, watchExpiry, watchHistoryId,
-                                      lastBackgroundScanAt
-/users/{uid}/accounts/account_primary ← accessToken, refreshToken, tokenExpiresAt,
-                                         email, displayName, daysBack, categoryIds[],
-                                         categoryDescriptions{}, emailType,
-                                         checkAllCalendars, lastScanAt, scanCount
+/users/{uid}  ← ROOT DOC (watch state + identity)
+  { uid, email, displayName, autoScanEnabled, watchStatus, watchHistoryId,
+    watchExpiry, watchProvider, lastBackgroundScanAt, updatedAt }
+  NOTE: email MUST be here — CF looks up users by email field in this collection.
+
+/users/{uid}/accounts/account_primary  ← OAuth tokens + scan config
+  { accountId, uid, email, displayName, provider, accessToken, refreshToken,
+    tokenExpiresAt, tokenUpdatedAt, daysBack, lastScanCompletedAt, scanCount,
+    excludedLabels[], locale, emailType, checkAllCalendars, alphaVerified }
 
 /users/{uid}/items/{itemId}
   KeelItem: { itemId, threadId, messageId, accountId, senderEmail, senderName,
-              subject, receivedAt, categoryId, categoryName, status,
-              aiImportanceScore, manualPriority, manuallyIgnored, manualCategory,
-              mergedThreadIds[], aiTitle, aiSummary, aiDetailedSummary,
-              participants[], signals[], createdAt, updatedAt, resolvedAt,
-              snoozedUntil, isRecurring, lastProcessedBy, expiredBy,
-              lastMessageInternalDate, noteToSelf }
+    subject, receivedAt, categoryId, categoryName, status,
+    aiImportanceScore, manualPriority, manuallyIgnored, manualCategory,
+    isOutbound, snoozedUntil, preSnoozePriority,
+    mergedThreadIds[], aiTitle, aiSummary, aiDetailedSummary,
+    participants[], createdAt, updatedAt, resolvedAt,
+    lastProcessedBy, autoClassifiedFrom,
+    linkedOutboundId, linkedItemId, isRecurring, fromTrackedReply, trackedReplyId }
 
-/users/{uid}/scanRuns/{timestamp}   ← per-scan cost/token logging
-/users/{uid}/categories/{catId}     ← category definitions
-/users/{uid}/categoryHints/{id}     ← user correction hints for AI
-/users/{uid}/signals/{sigId}        ← extracted signals with calendarStatus
-/users/{uid}/payments/{id}          ← payment records
+/users/{uid}/signals/{signalId}
+  { signalId, itemId, accountId, type, detectedDate, detectedAmountPence,
+    currency, description, calendarStatus, calendarEventId, status,
+    createdAt, updatedAt }
 
-/meta/usage                         ← aggregated cost tracking (all users)
-  backgroundScanRuns, backgroundScanCostUsd, backgroundScanInputTokens, etc.
-/meta/scanFeed                      ← live scan progress (overwritten per scan)
-/meta/usage_archive_{timestamp}     ← archived before dev resets
+/users/{uid}/scanRuns/{timestamp}
+  { scanAt, job, daysBack, threadsFound, threadsProcessed, newItems, updatedItems,
+    skipped, inputTokens, outputTokens, aiCostUsd, fbReads, fbWrites,
+    fbCostUsd, totalCostUsd, model, provider, durationMs }
+  job values: 'onboarding' | 'manual' | 'auto' | 'background' | 'reclassify'
 
-/config/aiProvider                  ← active AI provider string
+/users/{uid}/categories/{categoryId}
+/users/{uid}/categoryHints/{hintId}
+/users/{uid}/payments/{paymentId}
+/users/{uid}/meta/usage  ← aggregated cost tracking
+/users/{uid}/meta/scanFeed  ← live onboarding scan feed
+/users/{uid}/meta/usage_archive_{timestamp}  ← archived before resets
+/config/aiProvider  ← active AI provider string
 
 Item status values:
-  new | awaiting_reply | awaiting_action | quietly_logged | archived | overdue
+  new | awaiting_reply | awaiting_action | quietly_logged |
+  archived | overdue | snoozed | done | paid
 
-Signal types: event | deadline | payment | rsvp | awaiting | info
 SignalCalendarStatus: 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | null
+
+═══════════════════════════════════════════════
+CLOUD FUNCTIONS
+═══════════════════════════════════════════════
+
+gmailScan (HTTP, 60min, 512MiB)
+  Onboarding + long scans. URL: https://gmailscan-wel4wongwa-ew.a.run.app
+  Mirrors /api/gmail/scan logic. Source: functions/src/scan.ts
+
+handleGmailNotification (Pub/Sub trigger)
+  Receives Gmail push notifications. Debounces 90s per user.
+  Looks up user by email on root users/{uid} doc.
+  Calls /api/gmail/background-scan on Vercel.
+  Source: functions/src/backgroundScan.ts
+
+renewGmailWatches (Scheduled: every 120 hours / 5 days)
+  Renews Gmail watch() subscriptions before 7-day expiry.
+  Calls /api/inbox-watch enable for each user with watchStatus:'active'.
+  Source: functions/src/backgroundScan.ts
+
+nightlyItemExpiry (Scheduled: 1:00 AM UTC daily)
+  Step 1: proximity re-score — bumps aiImportanceScore as event date approaches
+    ≤1 day=0.78, ≤3 days=0.75, ≤7 days=0.72. Only bumps upward. Skips manualPriority.
+  Step 2: snooze wake-up — clears snoozedUntil, restores preSnoozePriority
+  Step 3: event expiry — items with all signals in past:
+    status:new → quietly_logged
+    status:awaiting_action → overdue
+  All deletes/updates in chunks of 400 (Firestore 500-op batch limit).
+  Source: functions/src/backgroundScan.ts
 
 ═══════════════════════════════════════════════
 KEY SOURCE FILES (keel)
 ═══════════════════════════════════════════════
 
-src/lib/types.ts                    — KeelItem, KeelSignal, all shared types
-src/lib/aiComplete.ts               — provider-aware AI wrapper, PRICING table
-src/lib/scanUtils.ts                — classifyThread(), decodeBody(), buildThreadContext()
-src/lib/calendarUtils.ts            — buildCalendarUrl() — shared by all 3 "+ Add" locations
-src/lib/hooks.ts                    — useItems, useCounts, useCategories, useCalendarSignals
-src/lib/firebase.ts                 — Firebase client init, Google OAuth config
-src/lib/emailProviders/             — provider abstraction (gmail.ts, index.ts, types.ts)
-src/contexts/AuthContext.tsx        — auth state, triggerScan, token refresh, needsReauth
-src/contexts/ThemeContext.tsx       — theme/font size preferences
-src/contexts/CategoryFilterContext.tsx — sidebar category filter state
+src/lib/types.ts                         — KeelItem, KeelSignal, all shared types
+src/lib/aiComplete.ts                    — provider-aware AI wrapper, PRICING table
+src/lib/scanUtils.ts                     — classifyThread(), buildThreadContext(), runInBatches()
+src/lib/hooks.ts                         — useItems, useCounts, useCategories, useAllItems etc.
+src/lib/firebase.ts                      — Firebase client init, Google OAuth config
+src/lib/calendarUtils.ts                 — buildCalendarUrl() — shared by all Add-to-calendar paths
+src/lib/server/tokenUtils.ts             — getValidAccessToken() — shared OAuth refresh
+src/lib/server/calendarCheck.ts          — runCalendarCheck()
+src/contexts/AuthContext.tsx             — auth state, triggerScan, lastScanned, lastBackgroundScanned
+src/contexts/ThemeContext.tsx            — theme/font size preferences
+src/contexts/CategoryFilterContext.tsx   — category filter state
 
-src/app/api/gmail/scan/route.ts           — manual scan (Vercel serverless)
+src/app/api/gmail/scan/route.ts          — manual/auto scan (Vercel serverless)
 src/app/api/gmail/background-scan/route.ts — background scan (called by CF)
-src/app/api/gmail/reclassify/route.ts     — reclassify all items
-src/app/api/gmail/reanalyse/route.ts      — re-analyse single item
-src/app/api/gmail/merge/route.ts          — merge duplicate threads
-src/app/api/inbox-watch/route.ts          — enable/disable Gmail Pub/Sub watch
-src/app/api/calendar/add/route.ts         — add event to Google Calendar (unused by client)
-src/app/api/calendar/check/route.ts       — check calendar status for signals
-src/app/api/auth/refresh/route.ts         — OAuth token refresh
+src/app/api/gmail/reclassify/route.ts    — reclassify all items
+src/app/api/gmail/reanalyse/route.ts     — single item re-analyse
+src/app/api/gmail/merge/route.ts         — merge duplicate threads
+src/app/api/inbox-watch/route.ts         — enable/disable Gmail Pub/Sub watch
+src/app/api/calendar/add/route.ts        — add event to Google Calendar
+src/app/api/calendar/check/route.ts      — check signals against calendar
+src/app/api/auth/refresh/route.ts        — OAuth token refresh
+src/app/api/ai-config/route.ts           — GET/POST active AI provider
 
-src/app/dashboard2/page.tsx         — ACTIVE dashboard page (wraps in CategoryFilterProvider)
-src/app/onboarding/page.tsx         — onboarding flow
-src/app/categories/page.tsx         — category management + reclassify
-src/app/privacy/page.tsx            — privacy policy (updated May 2026)
+src/app/onboarding/page.tsx              — onboarding (email type → categories → scan)
+src/app/dashboard2/page.tsx              — ACTIVE dashboard page (uses DashboardShell2)
+src/app/dashboard1/page.tsx              — legacy (kept for TS compilation)
+src/app/categories/page.tsx              — category management + reclassify
+src/app/all-mail/page.tsx                — all scanned emails, filters, Sent view
+src/app/quietly-logged/page.tsx          — ignored items
+src/app/awaiting-reply/page.tsx          — awaiting reply view
+src/app/payments/page.tsx                — payments view
+src/app/payment-history/page.tsx         — payment history
 
 src/components/dashboard/
-  DashboardShell2.tsx               — ACTIVE dashboard shell (not DashboardShell.tsx)
-  Sidebar.tsx                       — category filter checkboxes, nav links
-  ItemExpandedPanel.tsx             — item detail drawer
-  CategoryGrid.tsx                  — category card view (uses calendarUtils)
-  CalendarColumn.tsx                — calendar signals column (uses calendarUtils)
-  CategoriseModal.tsx               — uncategorised items modal
+  DashboardShell2.tsx     — ACTIVE shell: step bands, highlight param, freshness, overlay
+  DashboardShell.tsx      — legacy shell (must compile cleanly)
+  Topbar.tsx              — search (View+Gmail buttons), scan button, freshness pill
+  Sidebar.tsx             — nav, category list, filter views
+  BottomNav.tsx           — mobile nav
+  ItemExpandedPanel.tsx   — item detail drawer
+  CategoryGrid.tsx        — category cards, quick Done, snooze, Just in! badge
+  CalendarColumn.tsx      — calendar signals, dedup (per-item + cross-item, local dateKey)
+  CategoriseModal.tsx     — categorise modal, auto-classify similar items
+src/components/settings/
+  SettingsPanel.tsx        — themes, scan window, email scope, background scan toggle
+  BackgroundScanToggle.tsx — enable/disable Gmail watch
 src/components/layout/
-  SessionBanner.tsx                 — expired token warning banner
-  BackgroundScanToast.tsx           — toast on new background scan
-src/components/settings/SettingsPanel.tsx — includes BackgroundScanToggle
-src/components/dev/DevTools.tsx     — dev-only wipe/reset tools
+  BackgroundScanToast.tsx  — new email toast with sender/title/priority/status
+  SessionBanner.tsx        — needsReauth banner
+  PageShell.tsx
+src/components/dev/DevTools.tsx
 
-src/lib/server/calendarCheck.ts     — runCalendarCheck(); 365-day window;
-                                      titlesMatch() with high-entropy word rule;
-                                      senderMatchesCalTitle() sender domain fallback;
-                                      reader-access calendars included
+src/lib/categoryDefaults.ts   — DEFAULT_CATEGORY_DESCRIPTIONS, HINTS
+src/lib/signalUtils.ts        — signal processing helpers
+src/lib/emailProviders/       — Gmail provider abstraction (gmail.ts, types.ts, index.ts)
 
-functions/src/scan.ts               — Cloud Function: handleGmailScan (HTTP)
-functions/src/backgroundScan.ts     — Cloud Function: handleGmailNotification (Pub/Sub),
-                                      renewGmailWatches (scheduled 6d),
-                                      nightlyItemExpiry (scheduled 1am)
-functions/src/index.ts              — exports all CF functions
+functions/src/scan.ts          — Cloud Function gmailScan (mirrors API route)
+functions/src/backgroundScan.ts — handleGmailNotification, renewGmailWatches, nightlyItemExpiry
+functions/src/index.ts         — Cloud Function exports
 
 ═══════════════════════════════════════════════
 KEY SOURCE FILES (keel-admin)
 ═══════════════════════════════════════════════
 
-src/app/page.tsx                    — main admin dashboard
-src/app/api/stats/route.ts          — aggregate usage stats (incl. backgroundScan* fields)
-src/app/api/scan-runs/route.ts      — per-user scan run history
-src/app/api/ai-config/route.ts      — GET/POST active AI provider
+src/app/page.tsx                         — main admin dashboard
+src/app/api/stats/route.ts               — aggregate usage stats
+src/app/api/scan-runs/route.ts           — per-user scan run history
+src/app/api/ai-config/route.ts           — GET/POST active AI provider
+src/app/api/dev-ops/route.ts             — admin operations (reset, flush, reanalyse, scan, cal-check)
 src/components/admin/AdminSettingsPanel.tsx — provider switcher
 
 ═══════════════════════════════════════════════
@@ -206,12 +266,12 @@ ENVIRONMENT VARIABLES
 keel (Vercel):
   NEXT_PUBLIC_FIREBASE_* (×6)
   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
-  ANTHROPIC_API_KEY (kept for fallback)
-  GOOGLE_AI_API_KEY
+  ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY
   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
   NEXT_PUBLIC_SCAN_FUNCTION_URL=https://gmailscan-wel4wongwa-ew.a.run.app
-  ADMIN_SECRET=(see secure notes)
-  NEXT_PUBLIC_APP_VERSION (set from package.json in next.config.js)
+  NEXT_PUBLIC_APP_VERSION (set via next.config.js from npm_package_version)
+  ADMIN_SECRET
+  ALPHA_CODE (= HELM3X — alpha gate code)
 
 keel-admin (Vercel):
   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
@@ -219,8 +279,7 @@ keel-admin (Vercel):
   KEEL_APP_URL=https://www.jaison.app
 
 Cloud Functions (Firebase Secrets):
-  ADMIN_SECRET  ← firebase functions:secrets:set ADMIN_SECRET
-  GOOGLE_AI_API_KEY  ← firebase functions:secrets:set GOOGLE_AI_API_KEY
+  ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY, ADMIN_SECRET
 
 ═══════════════════════════════════════════════
 DEPLOYMENT
@@ -234,14 +293,23 @@ Local dev:
   keel:       npm run dev  (port 3000)
   keel-admin: npm run dev  (port 3001)
 
+Fresh source tar (run from ~/projects):
+  tar -czf ~/Downloads/keel-session7-src.tar.gz \
+    --exclude='*/node_modules' --exclude='*/.git' --exclude='*/.next' \
+    --exclude='*/.DS_Store' --exclude='*/._*' --exclude='*/out' \
+    --exclude='*/functions/node_modules' --exclude='*/functions/lib' \
+    keel keel-admin
+
 ═══════════════════════════════════════════════
 KNOWN LIMITATIONS / WATCH POINTS
 ═══════════════════════════════════════════════
 
-- Vercel 5min timeout: onboarding uses Cloud Function. Incremental ~20s is fine.
-- Google OAuth unverified: max 100 test users until verification submitted.
-- Gemini billing must be enabled for production scale (free tier quota = 0).
-- Background scan cost hardcoded as 'gemini-flash' in route — should read aiComplete.
-- GCal API maxResults=2500 (hard limit) — paginate if users have very busy calendars.
-- dashboard1/DashboardShell.tsx still exists but is unused — can be deleted.
-- No field-level encryption: PII in Firestore encrypted at rest by GCP only (V2 roadmap).
+- Vercel 5min timeout: onboarding uses Cloud Function. Fallback to Vercel route if CF fails.
+- Google OAuth app unverified: max 100 test users until verification submitted.
+- Gemini free tier quota = 0: billing must be enabled for production scale.
+- Firestore eur3: data stays in EU.
+- No field-level encryption: PII encrypted at-rest by GCP only.
+- Background scanning: INBOX-only for Pub/Sub push. Promotions/Social only in manual scans.
+- docToItem: multiple local copies in page files — centralise to src/lib/docToItem.ts (TODO).
+- Gmail watch expiry: May 17 2026 — auto-renews every 5 days via renewGmailWatches CF.
+- Firestore indexes needed: scanRuns:scanAt desc, items:(status,receivedAt), items:createdAt desc.
