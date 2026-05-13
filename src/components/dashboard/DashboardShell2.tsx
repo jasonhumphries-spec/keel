@@ -689,31 +689,6 @@ export function DashboardShell2() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  // Handle ?highlight=itemId — navigate to and open the specified item
-  const searchParams = useSearchParams()
-  useEffect(() => {
-    const itemId = searchParams?.get('highlight')
-    if (!itemId || !allItems.length) return
-
-    const item = allItems.find(i => i.itemId === itemId)
-    if (!item) return
-
-    // Open the expanded panel
-    setSelectedItem(item)
-
-    // Scroll to the card and flash it
-    setHighlightedItemId(itemId)
-    setTimeout(() => {
-      const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-      // Remove highlight ring after 2s
-      setTimeout(() => setHighlightedItemId(null), 2000)
-    }, 400) // brief delay for items to render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, allItems.length])
-
   // When triage is dismissed: scroll to top so section 2 comes into view
   const handleTriageDone = useCallback(() => {
     setTriageDismissed(true)
@@ -779,6 +754,31 @@ export function DashboardShell2() {
   // ── Calendar signals per band ───────────────────────────────────────────────
   const urgentCal   = calSignalsForBand(filteredCategoryData, signals, 4, 4)
   const allItems    = filteredCategoryData.flatMap(d => d.items)
+
+  // Handle ?highlight=itemId — navigate to and open the specified item
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const itemId = searchParams?.get('highlight')
+    if (!itemId || !allItems.length) return
+
+    const item = allItems.find(i => i.itemId === itemId)
+    if (!item) return
+
+    // Open the expanded panel
+    setSelectedItem(item)
+
+    // Scroll to the card and flash it
+    setHighlightedItemId(itemId)
+    setTimeout(() => {
+      const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      // Remove highlight ring after 2s
+      setTimeout(() => setHighlightedItemId(null), 2000)
+    }, 400) // brief delay for items to render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, allItems.length])
   const awaitingCal = signals
     .filter(s => {
       const item = allItems.find(i => i.itemId === s.itemId)
