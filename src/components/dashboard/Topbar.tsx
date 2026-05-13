@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext'
 import { useUncategorised } from '@/lib/hooks'
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { collection, query, where, onSnapshot, DocumentData } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import type { KeelItem } from '@/lib/types'
