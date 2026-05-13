@@ -28,6 +28,8 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const [saving,       setSaving]       = useState(false)
   const [ignored,      setIgnored]      = useState<Set<string>>(new Set())
   const [creating,     setCreating]     = useState(false)
+  const [autoCount,    setAutoCount]    = useState(0)  // how many were auto-classified last action
+  const [autoUndo,     setAutoUndo]     = useState<{ itemIds: string[]; categoryId: string; categoryName: string } | null>(null)
   const [newName,      setNewName]      = useState('')
   const [newDesc,      setNewDesc]      = useState('')
   const [creatingError,setCreatingError]= useState('')
@@ -47,6 +49,16 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const isIgnored   = item ? ignored.has(item.itemId) : false
   const allDone     = (doneCount + ignored.size) === items.length
 
+  // Similarity: same sender OR 3+ significant title words in common
+  function isSimilar(a: KeelItem, b: KeelItem): boolean {
+    if (a.senderEmail && a.senderEmail === b.senderEmail) return true
+    const stopWords = new Set(['the','and','for','with','from','your','this','that','about','have','been'])
+    const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(w => w.length > 3 && !stopWords.has(w))
+    const wa = new Set(words(a.aiTitle || a.subject || ''))
+    const wb = words(b.aiTitle || b.subject || '')
+    return wb.filter(w => wa.has(w)).length >= 3
+  }
+
   const assign = useCallback(async (categoryId: string, categoryName: string) => {
     if (!user || !item || saving) return
     setSaving(true)
@@ -56,6 +68,35 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       })
       // Build the new assigned map synchronously so findIndex uses up-to-date state
       const newAssigned = new Map(assigned).set(item.itemId, { categoryId, categoryName })
+
+      // Auto-classify similar unassigned items
+      const similarItems = items.filter(it =>
+        it.itemId !== item.itemId &&
+        !newAssigned.has(it.itemId) &&
+        !ignored.has(it.itemId) &&
+        isSimilar(item, it)
+      )
+      const autoIds: string[] = []
+      if (similarItems.length > 0 && user) {
+        await Promise.all(similarItems.map(async (it) => {
+          try {
+            await updateDoc(doc(db, `users/${user.uid}/items`, it.itemId), {
+              categoryId, categoryName, manualCategory: false,
+              autoClassifiedFrom: item.itemId,
+              updatedAt: Timestamp.now(),
+            })
+            newAssigned.set(it.itemId, { categoryId, categoryName })
+            markItemClassified(it.itemId)
+            autoIds.push(it.itemId)
+          } catch (e) { console.warn('[auto-classify] failed for', it.itemId, e) }
+        }))
+      }
+      if (autoIds.length > 0) {
+        setAutoCount(autoIds.length)
+        setAutoUndo({ itemIds: autoIds, categoryId, categoryName })
+        setTimeout(() => setAutoUndo(null), 6000)
+      }
+
       setAssigned(newAssigned)
       markItemClassified(item.itemId)  // immediately drops from topbar count
       // Auto-advance to next item not yet assigned or ignored
@@ -70,6 +111,25 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
     } catch (e) { console.error('[assign] Write failed:', e) }
     finally { setSaving(false) }
   }, [user, item, saving, currentIndex, items, assigned, canGoNext])
+
+  const undoAutoClassify = async () => {
+    if (!user || !autoUndo) return
+    const batch = await import('firebase/firestore').then(m => m.writeBatch(db))
+    for (const itemId of autoUndo.itemIds) {
+      batch.update(doc(db, `users/${user.uid}/items`, itemId), {
+        categoryId: 'cat_other', categoryName: 'Other',
+        autoClassifiedFrom: null, updatedAt: Timestamp.now(),
+      })
+    }
+    await batch.commit()
+    setAssigned(prev => {
+      const n = new Map(prev)
+      autoUndo.itemIds.forEach(id => n.delete(id))
+      return n
+    })
+    setAutoUndo(null)
+    setAutoCount(0)
+  }
 
   const ignoreItem = async () => {
     if (!user || !item || saving) return
@@ -145,6 +205,15 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Auto-classify notification */}
+              {autoUndo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(61,122,107,0.08)', border: '1px solid rgba(61,122,107,0.2)', borderRadius: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#3D7A6B', flex: 1 }}>
+                    {'✓ Also classified ' + autoUndo.itemIds.length + ' similar item' + (autoUndo.itemIds.length > 1 ? 's' : '') + ' as ' + autoUndo.categoryName}
+                  </span>
+                  <button onClick={undoAutoClassify} style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, background: 'none', border: '1px solid rgba(61,122,107,0.3)', borderRadius: 4, padding: '2px 7px', color: '#3D7A6B', cursor: 'pointer' }}>Undo</button>
+                </div>
+              )}
             {!creating && !allDone && remaining > 0 && (
               <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 12, padding: '4px 10px', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' as const }}>
                 Do the rest later

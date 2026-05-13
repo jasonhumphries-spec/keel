@@ -256,17 +256,26 @@ function HowItWorksStep({ onNext, onBack }: { onNext: () => void; onBack: () => 
 
 function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATEGORIES) => void; onBack: () => void }) {
   const [cats, setCats]         = useState(DEFAULT_CATEGORIES)
-  const [newCat, setNewCat]     = useState('')
+  const [newCat, setNewCat]       = useState('')
+  const [showDescInput, setShowDescInput] = useState(false)
+  const [pendingDesc, setPendingDesc]     = useState('')
   const [phase, setPhase]       = useState<'pick' | 'describe'>('pick')
   const [descIndex, setDescIndex] = useState(0)
   const [descriptions, setDescriptions] = useState<Record<string, string>>({})
 
   const toggle = (id: string) => setCats(prev => prev.map(c => c.id === id ? { ...c, selected: !c.selected } : c))
 
-  const addCustom = () => {
+  const startAddCustom = () => {
     if (!newCat.trim()) return
-    setCats(prev => [...prev, { id: `cat_${Date.now()}`, name: newCat.trim(), selected: true, description: '' }])
+    setShowDescInput(true)
+  }
+
+  const confirmAddCustom = (desc: string) => {
+    if (!newCat.trim()) return
+    setCats(prev => [...prev, { id: `cat_${Date.now()}`, name: newCat.trim(), selected: true, description: desc }])
     setNewCat('')
+    setPendingDesc('')
+    setShowDescInput(false)
   }
 
   // IDs of the built-in defaults — these have descriptions baked into the AI prompt
@@ -281,12 +290,8 @@ function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATE
   const needsDesc    = customCats.length > 0
 
   const goToDescribe = () => {
-    if (!needsDesc) {
-      onNext(cats as typeof DEFAULT_CATEGORIES)
-      return
-    }
-    setDescIndex(0)
-    setPhase('describe')
+    // Descriptions are now captured inline when adding — skip the describe phase entirely
+    onNext(cats as typeof DEFAULT_CATEGORIES)
   }
 
   const nextDesc = () => {
@@ -419,18 +424,45 @@ function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATE
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <input
-          value={newCat}
-          onChange={e => setNewCat(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addCustom()}
-          placeholder="Add a custom category..."
-          style={{ flex: 1, background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', outline: 'none' }}
-        />
-        <button onClick={addCustom} disabled={!newCat.trim()} style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', cursor: newCat.trim() ? 'pointer' : 'not-allowed', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-dm-sans)' }}>
-          + Add
-        </button>
-      </div>
+      {!showDescInput ? (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <input
+            value={newCat}
+            onChange={e => setNewCat(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && startAddCustom()}
+            placeholder="Add a custom category..."
+            style={{ flex: 1, background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', outline: 'none' }}
+          />
+          <button onClick={startAddCustom} disabled={!newCat.trim()} style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', cursor: newCat.trim() ? 'pointer' : 'not-allowed', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-dm-sans)' }}>
+            + Add
+          </button>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-md)', padding: '12px', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-accent)', marginBottom: 8 }}>
+            Adding: {newCat}
+          </div>
+          <textarea
+            autoFocus
+            value={pendingDesc}
+            onChange={e => setPendingDesc(e.target.value)}
+            placeholder={`Optional: who sends emails here, what they're about, any key phrases. Helps Keel classify automatically.`}
+            rows={2}
+            style={{ width: '100%', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', fontSize: 12, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={() => confirmAddCustom(pendingDesc)} style={{ flex: 1, background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+              Add category
+            </button>
+            <button onClick={() => confirmAddCustom('')} style={{ background: 'transparent', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '7px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+              Skip description
+            </button>
+            <button onClick={() => { setShowDescInput(false); setPendingDesc('') }} style={{ background: 'transparent', color: 'var(--color-text-muted)', border: 'none', borderRadius: 6, padding: '7px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 16, textAlign: 'center' as const }}>
         {selected.length} categor{selected.length === 1 ? 'y' : 'ies'} selected
@@ -439,7 +471,7 @@ function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATE
       <div style={{ display: 'flex', gap: 10 }}>
         <button onClick={onBack} style={ghostBtn}>← Back</button>
         <button onClick={goToDescribe} disabled={selected.length === 0} style={{ ...primaryBtn, flex: 1, opacity: selected.length === 0 ? 0.5 : 1 }}>
-          {needsDesc ? 'Continue →' : 'Start scanning →'}
+          Start scanning →
         </button>
       </div>
     </div>
@@ -546,24 +578,17 @@ function ScanStep({ categories }: { categories: typeof DEFAULT_CATEGORIES }) {
     return () => unsub()
   }, [user])
 
-  // Elapsed timer, tip rotation, and timeout escape
+  // Elapsed timer and tip rotation
   useEffect(() => {
     if (scanProgress.status !== 'scanning') return
     const timer    = setInterval(() => setElapsed(e => e + 1), 1000)
     const tipTimer = setInterval(() => setTipIndex(i => (i + 1) % tips.length), 6000)
-    // After 3 minutes with no completion, show a manual escape option
-    const timeout  = setTimeout(() => router.push('/dashboard?scan_timeout=1'), 3 * 60 * 1000)
-    return () => { clearInterval(timer); clearInterval(tipTimer); clearTimeout(timeout) }
+    return () => { clearInterval(timer); clearInterval(tipTimer) }
   }, [scanProgress.status])
 
   useEffect(() => {
     if (scanProgress.status === 'done') {
       setTimeout(() => router.push('/dashboard'), 2000)
-    }
-    if (scanProgress.status === 'error') {
-      // Scan failed — redirect to dashboard after a short pause
-      // User can trigger a manual scan from there
-      setTimeout(() => router.push('/dashboard?scan_failed=1'), 3000)
     }
   }, [scanProgress.status])
 
@@ -611,14 +636,12 @@ function ScanStep({ categories }: { categories: typeof DEFAULT_CATEGORIES }) {
           </>
         ) : (
           <>
-            <div style={{ width: 48, height: 48, border: `3px solid ${scanProgress.status === 'error' ? '#9C5E2B' : 'var(--color-accent)'}`, borderTopColor: 'transparent', borderRadius: '50%', animation: scanProgress.status === 'error' ? 'none' : 'spin 0.8s linear infinite', margin: '0 auto 16px', opacity: scanProgress.status === 'error' ? 0.5 : 1 }} />
+            <div style={{ width: 48, height: 48, border: '3px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
             <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>
-              {scanProgress.status === 'error' ? 'Something went wrong' : 'Setting up your dashboard'}
+              Setting up your dashboard
             </h2>
-            <p style={{ fontSize: 13, color: scanProgress.status === 'error' ? '#9C5E2B' : 'var(--color-accent)', fontWeight: 500, marginBottom: 2 }}>
-              {scanProgress.status === 'error'
-                ? 'Redirecting to your dashboard — you can scan manually from there'
-                : (scanProgress.message || 'Starting…')}
+            <p style={{ fontSize: 13, color: 'var(--color-accent)', fontWeight: 500, marginBottom: 2 }}>
+              {scanProgress.message || 'Starting…'}
             </p>
             {elapsed > 0 && (
               <p style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>
