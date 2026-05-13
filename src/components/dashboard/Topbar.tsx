@@ -61,6 +61,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
 
 function SearchOverlay({ onClose }: { onClose: () => void }) {
   const { user } = useAuth()
+  const router              = useRouter()
   const [q, setQ]           = useState('')
   const [allItems, setAll]  = useState<KeelItem[]>([])
   const inputRef            = useRef<HTMLInputElement>(null)
@@ -115,19 +116,38 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
             {results.map((item, i) => (
               <div
                 key={item.itemId}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 16px', borderBottom: i < results.length - 1 ? '1px solid var(--color-border)' : 'none', cursor: 'pointer', transition: 'background 0.1s' }}
-                onClick={() => { window.open(`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`, '_blank'); onClose() }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 16px', borderBottom: i < results.length - 1 ? '1px solid var(--color-border)' : 'none', transition: 'background 0.1s' }}
                 onMouseOver={e => (e.currentTarget.style.background = 'var(--color-surface-raised)')}
                 onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Main content — clicking opens in dashboard */}
+                <div
+                  style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  onClick={() => { router.push(`/dashboard?highlight=${item.itemId}`); onClose() }}
+                >
                   <div style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>{item.aiTitle || item.subject}</div>
                   <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{item.senderName} · {item.categoryName}</div>
                   {item.aiSummary && (
                     <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{item.aiSummary}</div>
                   )}
                 </div>
-                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', flexShrink: 0, marginTop: 2 }}>Gmail</div>
+                {/* Action buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, marginTop: 1 }}>
+                  <button
+                    onClick={() => { router.push(`/dashboard?highlight=${item.itemId}`); onClose() }}
+                    title="Jump to dashboard"
+                    style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '3px 7px', borderRadius: 4, border: '1px solid var(--color-accent)', background: 'var(--color-accent-sub)', color: 'var(--color-accent)', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
+                  >
+                    → View
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); window.open(`https://mail.google.com/mail/u/0/#all/${item.threadId}`, '_blank') }}
+                    title="Open in Gmail"
+                    style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '3px 7px', borderRadius: 4, border: '1px solid var(--color-border-strong)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Gmail
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -175,17 +195,17 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
 
         <div>
           <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>{greeting}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
             <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{date}</span>
             {mostRecentScan && !isScanning && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: isBackgroundFresh ? '#3D7A6B' : 'var(--color-text-muted)', background: isBackgroundFresh ? 'rgba(61,122,107,0.08)' : 'var(--color-surface-recessed)', border: `1px solid ${isBackgroundFresh ? 'rgba(61,122,107,0.25)' : 'var(--color-border)'}`, borderRadius: 10, padding: '1px 7px' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: isBackgroundFresh ? '#3D7A6B' : 'var(--color-border-strong)', flexShrink: 0 }} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: isBackgroundFresh ? '#3D7A6B' : 'var(--color-text-muted)', background: isBackgroundFresh ? 'rgba(61,122,107,0.08)' : 'transparent', borderRadius: 6, padding: '1px 0', letterSpacing: '0.02em' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: isBackgroundFresh ? '#3D7A6B' : 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
                 {isBackgroundFresh ? `Live · ${lastScanText}` : `Updated ${lastScanText}`}
               </span>
             )}
             {isScanning && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-accent)', background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 10, padding: '1px 7px' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-accent)', animation: 'pulse 1s ease-in-out infinite' }} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-accent)', letterSpacing: '0.02em' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-accent)', display: 'inline-block' }} />
                 Scanning…
               </span>
             )}
@@ -236,9 +256,7 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
               </svg>
               {isScanning ? 'Checking...' : 'Check for updates'}
             </div>
-            {lastScanText && !isScanning && (
-              <div style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-dm-mono)', color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>{lastScanText}</div>
-            )}
+
           </button>
 
           {/* Settings */}
