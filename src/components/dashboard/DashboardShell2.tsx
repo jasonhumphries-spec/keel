@@ -581,6 +581,7 @@ function FyiSection({
                 <CategoryCard
                   data={{ category, items }}
                   onItemClick={onItemClick}
+                  onResolved={handleResolved}
                   resolvedItems={resolvedItems}
                   signals={signals}
                   uid={uid}
