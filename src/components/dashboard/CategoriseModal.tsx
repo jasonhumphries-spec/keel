@@ -54,12 +54,19 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         categoryId, categoryName, manualCategory: true, updatedAt: Timestamp.now(),
       })
-      setAssigned(prev => new Map(prev).set(item.itemId, { categoryId, categoryName }))
+      // Build the new assigned map synchronously so findIndex uses up-to-date state
+      const newAssigned = new Map(assigned).set(item.itemId, { categoryId, categoryName })
+      setAssigned(newAssigned)
       markItemClassified(item.itemId)  // immediately drops from topbar count
-      // Auto-advance to next unassigned item
-      const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && it.itemId !== item.itemId)
+      // Auto-advance to next item not yet assigned or ignored
+      const next = items.findIndex((it, i) => i > currentIndex && !newAssigned.has(it.itemId) && !ignored.has(it.itemId))
       if (next !== -1) setCurrentIndex(next)
-      else if (canGoNext) setCurrentIndex(i => i + 1)
+      // If nothing ahead, check behind (user may have skipped earlier items)
+      else {
+        const prev = items.findIndex((it, i) => i < currentIndex && !newAssigned.has(it.itemId) && !ignored.has(it.itemId))
+        if (prev !== -1) setCurrentIndex(prev)
+        // else all done — allDone will be true and the modal shows the completion state
+      }
     } catch (e) { console.error('[assign] Write failed:', e) }
     finally { setSaving(false) }
   }, [user, item, saving, currentIndex, items, assigned, canGoNext])
@@ -71,11 +78,15 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         status: 'quietly_logged', updatedAt: Timestamp.now(),
       })
-      setIgnored(prev => new Set([...prev, item.itemId]))
+      const newIgnored = new Set([...ignored, item.itemId])
+      setIgnored(newIgnored)
       markItemClassified(item.itemId)
-      const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && !ignored.has(it.itemId) && it.itemId !== item.itemId)
+      const next = items.findIndex((it, i) => i > currentIndex && !assigned.has(it.itemId) && !newIgnored.has(it.itemId))
       if (next !== -1) setCurrentIndex(next)
-      else if (canGoNext) setCurrentIndex(i => i + 1)
+      else {
+        const prev = items.findIndex((it, i) => i < currentIndex && !assigned.has(it.itemId) && !newIgnored.has(it.itemId))
+        if (prev !== -1) setCurrentIndex(prev)
+      }
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }
