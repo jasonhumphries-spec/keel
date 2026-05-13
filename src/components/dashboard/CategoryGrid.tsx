@@ -14,6 +14,14 @@ import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 const PRIORITY_BANDS = [0.10, 0.25, 0.50, 0.70, 0.85, 0.95]
 
 // Signal strength priority indicator — exported for use in Dashboard 2.0
+const NEW_ARRIVAL_MS = 10 * 60 * 1000 // 10 minutes
+
+function isNewArrival(item: KeelItem): boolean {
+  if (!item.createdAt) return false
+  const age = Date.now() - item.createdAt.getTime()
+  return age < NEW_ARRIVAL_MS && (item as any).lastProcessedBy === 'background'
+}
+
 export function scoreToLevel(score: number): 1 | 2 | 3 | 4 {
   if (score >= 0.85) return 4
   if (score >= 0.70) return 3
@@ -509,7 +517,6 @@ export function CategoryCard({
             return (
               <div
                 key={item.itemId}
-                data-itemid={item.itemId}
                 onClick={() => onItemClick(item)}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 9,
@@ -523,7 +530,7 @@ export function CategoryCard({
                   borderTop: '1px solid transparent',
                   borderRight: '1px solid transparent',
                   borderBottom: '1px solid transparent',
-                  borderLeft: isResolved ? '3px solid #2e6848' : `3px solid ${getPriorityColour(item)}`,
+                  borderLeft: isResolved ? '3px solid #2e6848' : isNewArrival(item) ? '3px solid #3D7A6B' : `3px solid ${getPriorityColour(item)}`,
                   opacity: isResolved ? 0.65 : 1,
                   transition: 'background 0.1s, opacity 0.2s',
                 }}
@@ -614,6 +621,15 @@ export function CategoryCard({
                     <Tag label="Pay" style={{ borderColor: 'var(--color-status-warning)', color: 'var(--color-status-warning)' }} />
                   ) : (
                     <Tag label={display.tag} style={display.tagStyle} />
+                  )}
+                  {!isResolved && isNewArrival(item) && (
+                    <span style={{
+                      fontFamily: 'var(--font-dm-mono)', fontSize: 8,
+                      background: '#3D7A6B', color: '#fff',
+                      borderRadius: 4, padding: '1px 5px',
+                      letterSpacing: '0.06em', fontWeight: 700,
+                      flexShrink: 0,
+                    }}>NEW</span>
                   )}
                   {!isResolved && <PriorityDot item={item} />}
                   {/* Snooze button — clock icon, expands to duration picker */}

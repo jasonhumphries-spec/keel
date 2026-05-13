@@ -760,10 +760,49 @@ export function DashboardShell2() {
   const searchParams = useSearchParams()
   useEffect(() => {
     const itemId = searchParams?.get('highlight')
-    if (!itemId || !allItems.length) return
+    if (!itemId) return
+    // Wait for items to load before attempting
+    if (!allItems.length) return
 
     const item = allItems.find(i => i.itemId === itemId)
-    if (!item) return
+
+    if (!item) {
+      // Item not in active dashboard items — may be quietly_logged or archived.
+      // Fetch directly from Firestore so we can still open the expanded panel.
+      if (!user) return
+      import('firebase/firestore').then(({ doc, getDoc }) => {
+        import('@/lib/firebase').then(async ({ db }) => {
+          try {
+            const snap = await getDoc(doc(db, `users/${user.uid}/items`, itemId))
+            if (!snap.exists()) return
+            // Build a minimal KeelItem from the doc
+            const d = snap.data()
+            const toDate = (ts: any) => ts?.toDate ? ts.toDate() : new Date()
+            const fetchedItem = {
+              ...d,
+              itemId:            snap.id,
+              receivedAt:        toDate(d.receivedAt),
+              createdAt:         toDate(d.createdAt),
+              updatedAt:         toDate(d.updatedAt),
+              resolvedAt:        d.resolvedAt ? toDate(d.resolvedAt) : null,
+              snoozedUntil:      d.snoozedUntil ? toDate(d.snoozedUntil) : null,
+              preSnoozePriority: d.preSnoozePriority ?? null,
+              isOutbound:        d.isOutbound ?? false,
+              signals:           d.signals ?? [],
+              mergedThreadIds:   d.mergedThreadIds ?? [],
+            } as any
+            setSelectedItem(fetchedItem)
+            // Banner explains why it's not on the dashboard
+            const statusNote = d.status === 'quietly_logged' ? 'Ignored — not shown on dashboard'
+              : d.status === 'archived' ? 'Archived — not shown on dashboard'
+              : 'Not on dashboard'
+            setHighlightTitle(`${statusNote} · ${d.aiTitle || d.subject || ''}`)
+            setTimeout(() => setHighlightTitle(null), 6000)
+          } catch (e) { console.warn('[highlight] Firestore fetch failed:', e) }
+        })
+      })
+      return
+    }
 
     // Work out which section the item lives in for the banner label
     const score = item.aiImportanceScore ?? 0.5
@@ -774,43 +813,33 @@ export function DashboardShell2() {
       : level === 3 ? 'Section 3 · High priority'
       : 'Section 4 · On your radar'
 
-    // Open the expanded panel immediately
     setSelectedItem(item)
     setHighlightedItemId(itemId)
     setHighlightTitle(`${sectionLabel} — ${item.aiTitle || item.subject || item.senderName}`)
 
-    // Retry scroll: find element in DOM, scroll via scrollRef for reliability
+    // Scroll using offsetTop — reliable regardless of viewport position
     let attempts = 0
     const tryScroll = () => {
       const el = document.querySelector(`[data-itemid="${itemId}"]`) as HTMLElement | null
       if (el && scrollRef.current) {
-        // Explicit scrollTop calculation — more reliable than scrollIntoView
-        // when nested scroll containers are involved
-        const containerRect = scrollRef.current.getBoundingClientRect()
-        const elRect        = el.getBoundingClientRect()
-        const offset        = elRect.top - containerRect.top + scrollRef.current.scrollTop
-        scrollRef.current.scrollTo({ top: offset - containerRect.height / 2 + elRect.height / 2, behavior: 'smooth' })
-        setTimeout(() => {
-          setHighlightedItemId(null)
-          setHighlightTitle(null)
-        }, 3000)
-      } else if (el) {
-        // scrollRef not available — fall back to scrollIntoView
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setTimeout(() => {
-          setHighlightedItemId(null)
-          setHighlightTitle(null)
-        }, 3000)
-      } else if (attempts < 12) {
+        // Walk up the DOM tree to get offset relative to scrollRef
+        let offset = 0
+        let node: HTMLElement | null = el
+        while (node && node !== scrollRef.current) {
+          offset += node.offsetTop
+          node = node.offsetParent as HTMLElement | null
+        }
+        const centerOffset = offset - (scrollRef.current.clientHeight / 2) + (el.offsetHeight / 2)
+        scrollRef.current.scrollTo({ top: Math.max(0, centerOffset), behavior: 'smooth' })
+        setTimeout(() => { setHighlightedItemId(null); setHighlightTitle(null) }, 3000)
+      } else if (attempts < 15) {
         attempts++
-        setTimeout(tryScroll, 200) // retry every 200ms, up to 2.4s
+        setTimeout(tryScroll, 200)
       } else {
-        // Card not rendered — item may be snoozed or in a collapsed section
-        // Banner stays so user knows which section to look in
         setTimeout(() => setHighlightTitle(null), 5000)
       }
     }
-    setTimeout(tryScroll, 400)
+    setTimeout(tryScroll, 500)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, allItems.length])
   const awaitingCal = signals
