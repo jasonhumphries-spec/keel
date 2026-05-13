@@ -203,12 +203,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 5000)
 
     try {
-      const SCAN_URL = process.env.NEXT_PUBLIC_SCAN_FUNCTION_URL ?? '/api/gmail/scan'
-      const res = await fetch(SCAN_URL, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ uid, daysBack, job }),
-      })
+      // Onboarding uses the Cloud Function (60-min timeout) to handle large initial scans.
+      // All other jobs use the Vercel route directly — faster, simpler, no cold-start risk.
+      const CF_URL     = process.env.NEXT_PUBLIC_SCAN_FUNCTION_URL
+      const VERCEL_URL = '/api/gmail/scan'
+      const SCAN_URL   = (job === 'onboarding' && CF_URL) ? CF_URL : VERCEL_URL
+
+      let res: Response
+      try {
+        res = await fetch(SCAN_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ uid, daysBack, job }),
+        })
+      } catch (fetchErr) {
+        // Cloud Function unreachable (cold start timeout, network error, etc.)
+        // Fall back to Vercel route for onboarding — slower but reliable
+        if (SCAN_URL !== VERCEL_URL) {
+          console.warn('[Keel] CF unreachable, falling back to Vercel route:', fetchErr)
+          setScanProgress(prev => ({ ...prev, message: 'Using fallback scan — may take longer…' }))
+          res = await fetch(VERCEL_URL, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ uid, daysBack, job }),
+          })
+        } else {
+          throw fetchErr
+        }
+      }
 
       clearInterval(messageTimer)
       if (res.status === 401) {
