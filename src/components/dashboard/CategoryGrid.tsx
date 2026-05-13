@@ -360,6 +360,7 @@ function CalendarBadge({
 export function CategoryCard({
   data,
   onItemClick,
+  onResolved,
   resolvedItems,
   signals,
   uid,
