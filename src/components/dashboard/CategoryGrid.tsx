@@ -849,11 +849,11 @@ function ItemRow({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center',
-        padding: '0 16px 0 20px',
+        display: 'flex', alignItems: 'flex-start',
+        padding: '0 14px 0 20px',
         cursor: isResolved ? 'default' : 'pointer',
         position: 'relative',
-        minHeight: 44,
+        minHeight: 42,
         background: isResolved
           ? 'rgba(46,104,72,0.04)'
           : hovered ? 'rgba(255,255,255,0.75)' : 'transparent',
@@ -872,7 +872,7 @@ function ItemRow({
       }} />
 
       {/* Text body */}
-      <div style={{ flex: 1, minWidth: 0, padding: '9px 0' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '8px 0' }}>
         {/* Title — opacity varies by priority level at rest */}
         <div style={{
           fontSize: 13, fontWeight: hovered ? 500 : 400,
@@ -883,19 +883,25 @@ function ItemRow({
         }}>
           {item.aiTitle || item.senderName}
         </div>
-        {/* Subtitle — sender + summary snippet, hover only */}
+        {/* Subtitle — sender name + summary, 2 lines allowed, hover only */}
         <div style={{
           fontSize: 10.5, color: 'var(--color-text-muted)',
-          opacity: hovered ? 0.7 : 0,
-          marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          opacity: hovered ? 0.72 : 0,
+          marginTop: 3,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          lineHeight: 1.45,
           transition: 'opacity 0.13s',
-        }}>
-          {item.senderName}{item.aiSummary ? ` · ${item.aiSummary.slice(0, 90)}` : ''}
+        } as React.CSSProperties}>
+          <span style={{ fontWeight: 500 }}>{item.senderName}</span>
+          {item.aiSummary ? ` · ${item.aiSummary}` : ''}
         </div>
       </div>
 
       {/* Right section — fixed-width slot so the column layout stays tidy */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexShrink: 0, minWidth: 0, paddingTop: 10 }}>
 
         {/* Resting signal — visible at rest for High/Urgent */}
         {restSig && (
@@ -998,7 +1004,7 @@ function useItemListColumns(): number {
   useEffect(() => {
     const update = () => {
       const w = window.innerWidth
-      if (w >= 1300) setCols(3)
+      if (w >= 1600) setCols(3)
       else if (w >= 900) setCols(2)
       else setCols(1)
     }
@@ -1056,7 +1062,7 @@ export function ItemList({
         <div
           key={colIdx}
           style={{
-            flex: 1, minWidth: 0,
+            flex: 1, minWidth: 280,
             borderLeft: colIdx > 0 ? '1px solid var(--color-border)' : 'none',
           }}
         >
