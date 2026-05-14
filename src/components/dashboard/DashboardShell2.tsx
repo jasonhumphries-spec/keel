@@ -78,6 +78,29 @@ function calSignalsForBand(
 
 // ─── Calendar band event row ──────────────────────────────────────────────────
 
+// Small calendar action button — outline at rest, fills on hover
+function CalBtn({ label, onClick, colour }: { label: string; onClick: (e: MouseEvent) => void; colour: string }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered ? colour : 'transparent',
+        color: hovered ? '#fff' : colour,
+        border: `1px solid ${colour}`,
+        borderRadius: 4, padding: '2px 8px',
+        fontSize: 'var(--fs-xs)', fontWeight: 600,
+        cursor: 'pointer', fontFamily: 'var(--font-dm-sans)',
+        transition: 'background 0.12s ease, color 0.12s ease',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 function CalBandEvent({
   signal,
   item,
@@ -178,17 +201,7 @@ function CalBandEvent({
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-          <button
-            onClick={handleAdd}
-            style={{
-              background: bandColour, color: '#fff', border: 'none',
-              borderRadius: 4, padding: '2px 8px',
-              fontSize: 'var(--fs-xs)', fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'var(--font-dm-sans)',
-            }}
-          >
-            + Add
-          </button>
+          <CalBtn label="+ Add" onClick={handleAdd} colour={bandColour} />
           <button
             onClick={handleIgnore}
             disabled={acting}
@@ -329,9 +342,9 @@ function StepRow({
         background: '#ffffff',
         borderRadius: 16,
         overflow: 'hidden',
-        boxShadow: '0 1px 6px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(0,0,0,0.05)',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05), 0 0 0 0.5px rgba(0,0,0,0.04)',
         margin: '0 16px',
-        borderTop: accent ? `3px solid ${accent}` : '3px solid transparent',
+        borderTop: accent ? `2px solid ${accent}` : '2px solid transparent',
       }}>
         <div style={{ flex: 1, minWidth: 0, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {children}
