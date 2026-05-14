@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme, Theme, DarkMode } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { getPillStyle, setPillStyle, type PillStyle } from '@/lib/pillStyle'
+import { BackgroundScanToggle } from '@/components/settings/BackgroundScanToggle'
 
 interface SettingsPanelProps {
   open:    boolean
@@ -75,6 +76,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
   const [calCheckRunning, setCalCheckRunning] = useState(false)
+  const [bgAccountData, setBgAccountData] = useState<{
+    autoScanEnabled?: boolean
+    watchStatus?: 'active' | 'inactive' | 'pending' | 'error'
+    watchExpiry?: { toDate: () => Date }
+    lastBackgroundScanAt?: { toDate: () => Date }
+    backgroundScanCostUsd?: number
+    backgroundScanRuns?: number
+  }>({})
   // Excluded Gmail labels (defaults: promotions + social excluded, not scanned)
   const DEFAULT_EXCLUDED = ['promotions', 'social']
   const [excludedLabels, setExcludedLabels] = useState<string[]>(DEFAULT_EXCLUDED)
@@ -94,6 +103,15 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
             const stored = snap.data()?.excludedLabels
             setExcludedLabels(stored ?? DEFAULT_EXCLUDED)
+            // Load background scan fields for the toggle
+            setBgAccountData({
+              autoScanEnabled:      snap.data()?.autoScanEnabled,
+              watchStatus:          snap.data()?.watchStatus,
+              watchExpiry:          snap.data()?.watchExpiry,
+              lastBackgroundScanAt: snap.data()?.lastBackgroundScanAt,
+              backgroundScanCostUsd: snap.data()?.backgroundScanCostUsd,
+              backgroundScanRuns:   snap.data()?.backgroundScanRuns,
+            })
           })
         })
       })
@@ -327,6 +345,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 This is the earliest date fully examined during your initial scan.
               </div>
             </div>
+
+            {/* Background scanning toggle */}
+            {user && (
+              <BackgroundScanToggle uid={user.uid} accountData={bgAccountData} />
+            )}
 
             {/* Historical scan — premium placeholder */}
             <div style={{ padding: '10px 0' }}>
