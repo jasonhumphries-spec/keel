@@ -897,19 +897,20 @@ function ItemRow({
           {/* Date — always shown, right-pinned */}
           <span style={{
             fontSize: 10.5, color: 'var(--color-text-muted)',
-            opacity: hovered ? 0.85 : 0.60,
+            opacity: hovered ? 1 : 0.85,
             whiteSpace: 'nowrap', flexShrink: 0,
             fontVariantNumeric: 'tabular-nums' as const,
             transition: 'opacity 0.13s',
+            color: 'var(--color-text-secondary)',
           }}>{dateStr}</span>
         </div>
 
         {/* Subtitle — expands below title on hover, 2-line clamp, no horizontal squeeze */}
         <div style={{
-          fontSize: 10.5, color: 'var(--color-text-muted)',
+          fontSize: 10.5, color: 'var(--color-text-secondary)',
           lineHeight: 1.45,
           maxHeight: hovered ? 36 : 0,
-          opacity: hovered ? 0.72 : 0,
+          opacity: hovered ? 1 : 0,
           overflow: 'hidden',
           marginTop: hovered ? 3 : 0,
           display: '-webkit-box',
@@ -1069,7 +1070,7 @@ export function ItemList({
                 padding: '10px 20px 3px',
                 fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
                 textTransform: 'uppercase' as const,
-                color: 'var(--color-text-muted)', opacity: 0.7,
+                color: 'var(--color-text-secondary)', opacity: 1,
               }}>
                 {category.name}
               </div>
