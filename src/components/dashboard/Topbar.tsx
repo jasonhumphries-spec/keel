@@ -192,31 +192,38 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
 
   return (
     <>
-      <div style={{ background: 'var(--color-topbar-bg)', borderBottom: '1px solid var(--color-border)', padding: '0 20px', height: 'var(--topbar-height)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ background: 'var(--color-bg)', padding: '0 20px', height: 'var(--topbar-height)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
 
         <div>
           <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>{greeting}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-            <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{date}</span>
-            {/* Monitoring / scan status indicator */}
+            <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)' }}>{date}</span>
+            {/* Monitoring / scan status — with inline refresh icon */}
             {isScanning ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-accent)', letterSpacing: '0.02em' }}>
                 <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-accent)', display: 'inline-block', animation: 'pulse-dot 1s ease-in-out infinite' }} />
                 Scanning…
               </span>
-            ) : lastBackgroundScanned ? (
-              /* Background scanning is active — show continuous monitoring message */
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: '#3D7A6B', letterSpacing: '0.02em' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3D7A6B', flexShrink: 0, display: 'inline-block', animation: 'pulse-dot 2.5s ease-in-out infinite' }} />
-                Monitoring inbox · {lastScanText}
+            ) : (
+              <span
+                onClick={() => triggerScan('manual')}
+                title="Check for updates"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, letterSpacing: '0.02em', cursor: 'pointer', borderRadius: 5, padding: '2px 5px', transition: 'background 0.12s', color: lastBackgroundScanned ? '#3D7A6B' : 'var(--color-text-secondary)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(44,40,36,0.07)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
+                {lastBackgroundScanned
+                  ? <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3D7A6B', flexShrink: 0, display: 'inline-block', animation: 'pulse-dot 2.5s ease-in-out infinite' }} />
+                  : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
+                }
+                {lastBackgroundScanned ? `Monitoring · ${lastScanText}` : mostRecentScan ? `Updated ${lastScanText}` : 'Check for updates'}
+                {/* Refresh icon — appears always, brightens on hover via parent */}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                </svg>
               </span>
-            ) : mostRecentScan ? (
-              /* Manual scan only — just show last updated */
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.02em' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
-                Updated {lastScanText}
-              </span>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -225,7 +232,7 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
           {/* Search button — outline at rest, fill on hover */}
           <button
             onClick={() => setShowSearch(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '6px 12px', width: 180, fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)', cursor: 'pointer', transition: 'background 0.12s, border-color 0.12s' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '6px 12px', width: 180, fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-dm-mono)', cursor: 'pointer', transition: 'background 0.12s, border-color 0.12s' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-recessed)'; e.currentTarget.style.borderColor = 'var(--color-border-strong)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
           >
@@ -256,19 +263,6 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
               {uncatCount} to categorise
             </button>
           )}
-
-          {/* Check for updates — outline at rest, fill on hover */}
-          <button onClick={() => triggerScan('manual')} disabled={isScanning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '6px 12px', fontSize: 'var(--fs-sm)', fontWeight: 500, color: isScanning ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', cursor: isScanning ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-dm-mono)', opacity: isScanning ? 0.6 : 1, transition: 'background 0.12s, border-color 0.12s' }}
-            onMouseEnter={e => { if (!isScanning) { e.currentTarget.style.background = 'var(--color-surface-recessed)'; e.currentTarget.style.borderColor = 'var(--color-border-strong)' } }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ animation: isScanning ? 'spin 1s linear infinite' : 'none', flexShrink: 0 }}>
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-            </svg>
-            {isScanning ? 'Checking...' : 'Check for updates'}
-          </button>
 
           {/* Settings — outline at rest, fill on hover */}
           <button onClick={onSettingsOpen}

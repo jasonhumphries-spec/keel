@@ -9,8 +9,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 
-// Logo header always dark navy. Nav body uses the warm content background.
-const HEADER_BG = '#1e3a4a'
+// Sidebar uses the same warm background as the dashboard throughout
 
 function KeelLogo() {
   return (
@@ -39,7 +38,7 @@ function NavBadge({ count, variant = 'dark' }: { count: number; variant?: 'dark'
   const styles: Record<string, React.CSSProperties> = {
     dark: { background: '#B8964E', color: '#fff' },
     warn: { background: '#c45048', color: 'white' },
-    mute: { background: 'rgba(44,40,36,0.07)', color: 'rgba(44,40,36,0.5)', border: '1px solid rgba(44,40,36,0.12)' },
+    mute: { background: 'rgba(44,40,36,0.10)', color: 'rgba(44,40,36,0.68)', border: '1px solid rgba(44,40,36,0.20)' },
   }
   return (
     <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', padding: '2px 7px', borderRadius: 10, minWidth: 20, textAlign: 'center', ...styles[variant] }}>
@@ -50,13 +49,13 @@ function NavBadge({ count, variant = 'dark' }: { count: number; variant?: 'dark'
 
 const sectionLabel: React.CSSProperties = {
   fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)',
-  color: 'rgba(44,40,36,0.40)', letterSpacing: '0.12em',
+  color: 'rgba(44,40,36,0.58)', letterSpacing: '0.12em',
   textTransform: 'uppercase', padding: '0 8px', marginBottom: 4,
 }
 
 const catSectionLabel: React.CSSProperties = {
   fontFamily: 'var(--font-dm-mono)', fontSize: 10, letterSpacing: '0.08em',
-  textTransform: 'uppercase' as const, color: 'rgba(44,40,36,0.40)',
+  textTransform: 'uppercase' as const, color: 'rgba(44,40,36,0.58)',
   padding: '6px 8px 4px', flexShrink: 0,
 }
 
@@ -75,12 +74,12 @@ function CategoryFilterHeader({ categories }: { categories: { categoryId: string
           </button>
         ) : (
           <button onClick={() => selectNone(allIds)} title="Deselect all categories"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.38)', padding: 0, letterSpacing: '0.04em' }}>
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.55)', padding: 0, letterSpacing: '0.04em' }}>
             none
           </button>
         )}
         <Link href="/categories"
-          style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.38)', textDecoration: 'none', letterSpacing: '0.06em' }}
+          style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.55)', textDecoration: 'none', letterSpacing: '0.06em' }}
           title="Edit categories and AI descriptions">
           edit →
         </Link>
@@ -104,19 +103,19 @@ function CategoryFilterItem({ cat, allIds, count }: {
       onMouseOut={e => e.currentTarget.style.background = 'transparent'}
       onClick={() => toggle(cat.categoryId, allIds)}
     >
-      <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(44,40,36,0.28)'}`, background: checked ? 'var(--color-accent)' : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', pointerEvents: 'none' }}>
+      <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${checked ? 'var(--color-accent)' : 'rgba(44,40,36,0.45)'}`, background: checked ? 'var(--color-accent)' : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', pointerEvents: 'none' }}>
         {checked && (
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         )}
       </div>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 'var(--fs-md)', color: checked ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.60)', transition: 'color 0.15s', pointerEvents: 'none' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 'var(--fs-md)', color: checked ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.72)', transition: 'color 0.15s', pointerEvents: 'none' }}>
         {cat.name}
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         {count > 0 && (
-          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.40)', minWidth: 18, textAlign: 'right' as const, pointerEvents: 'none' }}>
+          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'rgba(44,40,36,0.58)', minWidth: 18, textAlign: 'right' as const, pointerEvents: 'none' }}>
             {count}
           </span>
         )}
@@ -124,9 +123,9 @@ function CategoryFilterItem({ cat, allIds, count }: {
           <button
             onClick={e => { e.stopPropagation(); selectOnly(cat.categoryId) }}
             title="Show only this category"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(44,40,36,0.30)', fontSize: 10, padding: '1px 4px', lineHeight: 1, fontFamily: 'var(--font-dm-mono)', borderRadius: 3, pointerEvents: 'auto' }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(44,40,36,0.50)', fontSize: 10, padding: '1px 4px', lineHeight: 1, fontFamily: 'var(--font-dm-mono)', borderRadius: 3, pointerEvents: 'auto' }}
             onMouseOver={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--color-accent)'; e.currentTarget.style.background = 'rgba(184,150,78,0.12)' }}
-            onMouseOut={e => { e.currentTarget.style.color = 'rgba(44,40,36,0.30)'; e.currentTarget.style.background = 'transparent' }}
+            onMouseOut={e => { e.currentTarget.style.color = 'rgba(44,40,36,0.50)'; e.currentTarget.style.background = 'transparent' }}
           >
             only
           </button>
@@ -172,7 +171,7 @@ function SidebarInner() {
     cursor: 'pointer', fontSize: 'var(--fs-md)',
     fontFamily: 'var(--font-dm-sans)',
     textDecoration: 'none',
-    color: active ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.60)',
+    color: active ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.72)',
     fontWeight: active ? 600 : 400,
     background: active ? 'rgba(184,150,78,0.09)' : 'transparent',
     borderLeft: active ? '2px solid var(--color-accent)' : '2px solid transparent',
@@ -182,19 +181,19 @@ function SidebarInner() {
   return (
     <div style={{ width: 'var(--sidebar-width)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── Dark navy header ── */}
-      <div style={{ background: HEADER_BG, flexShrink: 0 }}>
+      {/* ── Logo — same warm bg, brass rule below (Option B) ── */}
+      <div style={{ background: 'var(--color-bg)', flexShrink: 0 }}>
         <div style={{ padding: '18px 16px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <KeelLogo />
-          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: '#B8964E', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-dm-mono)' }}>
+          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--color-text-primary)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-dm-mono)' }}>
             Keel
           </div>
         </div>
-        {/* Brass gradient rule bridges dark header to light body */}
-        <div style={{ height: 2, background: 'linear-gradient(90deg, #B8964E 0%, rgba(184,150,78,0.12) 100%)' }} />
+        {/* Brass rule — structural accent replaces the dark header */}
+        <div style={{ height: 3, background: '#B8964E' }} />
       </div>
 
-      {/* ── Light nav body ── */}
+      {/* ── Nav body — same warm bg as dashboard ── */}
       <div style={{ background: 'var(--color-bg)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* Views */}
@@ -204,7 +203,7 @@ function SidebarInner() {
             onMouseOver={e => { if (!isActive('/dashboard2') && !isActive('/dashboard')) e.currentTarget.style.background = 'rgba(44,40,36,0.04)' }}
             onMouseOut={e => { if (!isActive('/dashboard2') && !isActive('/dashboard')) e.currentTarget.style.background = 'transparent' }}
           >
-            <span style={{ color: 'rgba(44,40,36,0.35)', flexShrink: 0 }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
+            <span style={{ color: 'rgba(44,40,36,0.52)', flexShrink: 0 }}><Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></span>
             Dashboard
             <NavBadge count={counts.dashboard} variant="dark" />
           </Link>
@@ -222,7 +221,7 @@ function SidebarInner() {
               onMouseOver={e => e.currentTarget.style.background = 'rgba(44,40,36,0.04)'}
               onMouseOut={e => e.currentTarget.style.background = 'transparent'}
             >
-              <span style={{ color: 'rgba(44,40,36,0.35)', flexShrink: 0 }}><Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></span>
+              <span style={{ color: 'rgba(44,40,36,0.52)', flexShrink: 0 }}><Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></span>
               To categorise
               <NavBadge count={counts.uncategorised} variant="warn" />
             </button>
@@ -236,7 +235,7 @@ function SidebarInner() {
               onMouseOver={e => { if (!isActive(item.href)) e.currentTarget.style.background = 'rgba(44,40,36,0.04)' }}
               onMouseOut={e => { if (!isActive(item.href)) e.currentTarget.style.background = 'transparent' }}
             >
-              <span style={{ color: 'rgba(44,40,36,0.35)', flexShrink: 0 }}><Icon d={item.icon} /></span>
+              <span style={{ color: 'rgba(44,40,36,0.52)', flexShrink: 0 }}><Icon d={item.icon} /></span>
               {item.label}
               <NavBadge count={item.count} variant={item.v} />
             </Link>
@@ -276,7 +275,7 @@ function SidebarInner() {
               </div>
               <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginTop: 1 }}>Sign out</div>
             </div>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(44,40,36,0.28)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(44,40,36,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
             </svg>
           </button>
@@ -295,15 +294,15 @@ function SidebarInner() {
               Feedback
             </a>
             <Link href="/privacy"
-              style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(44,40,36,0.40)', textDecoration: 'none', padding: '4px 4px', letterSpacing: '0.04em', transition: 'color 0.15s' }}
+              style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(44,40,36,0.58)', textDecoration: 'none', padding: '4px 4px', letterSpacing: '0.04em', transition: 'color 0.15s' }}
               onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'var(--color-text-secondary)'}
-              onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(44,40,36,0.40)'}
+              onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.color = 'rgba(44,40,36,0.58)'}
             >
               Privacy
             </Link>
           </div>
 
-          <div style={{ padding: '4px 8px 0', fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(44,40,36,0.26)', letterSpacing: '0.04em', userSelect: 'none' }}>
+          <div style={{ padding: '4px 8px 0', fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'rgba(44,40,36,0.58)', letterSpacing: '0.04em', userSelect: 'none' }}>
             Keel · Alpha · v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.x.x'}
           </div>
         </div>
