@@ -747,7 +747,7 @@ function getRestingSignal(item: KeelItem, itemSigs: KeelSignal[]): string | null
 }
 
 // Resting opacity for the title by priority level
-const ROW_RESTING_OPACITY: Record<1|2|3|4, number> = { 4: 0.92, 3: 0.80, 2: 0.65, 1: 0.50 }
+const ROW_RESTING_OPACITY: Record<1|2|3|4, number> = { 4: 1.0, 3: 0.88, 2: 0.75, 1: 0.62 }
 
 function ItemRow({
   item,
@@ -889,7 +889,7 @@ function ItemRow({
           {restSig && !hovered && (
             <span style={{
               fontSize: 11, fontWeight: 500, color: pc,
-              opacity: level === 4 ? 0.82 : 0.65,
+              opacity: level === 4 ? 0.95 : 0.80,
               whiteSpace: 'nowrap', flexShrink: 0,
               pointerEvents: 'none',
             }}>{restSig}</span>
@@ -897,7 +897,7 @@ function ItemRow({
           {/* Date — always shown, right-pinned */}
           <span style={{
             fontSize: 10.5, color: 'var(--color-text-muted)',
-            opacity: hovered ? 0.7 : 0.45,
+            opacity: hovered ? 0.85 : 0.60,
             whiteSpace: 'nowrap', flexShrink: 0,
             fontVariantNumeric: 'tabular-nums' as const,
             transition: 'opacity 0.13s',
@@ -1069,7 +1069,7 @@ export function ItemList({
                 padding: '10px 20px 3px',
                 fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
                 textTransform: 'uppercase' as const,
-                color: 'var(--color-text-muted)', opacity: 0.5,
+                color: 'var(--color-text-muted)', opacity: 0.7,
               }}>
                 {category.name}
               </div>

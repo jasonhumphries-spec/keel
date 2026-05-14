@@ -963,11 +963,6 @@ export function DashboardShell2() {
                   onResolved={handleResolved}
                   resolvedItems={resolvedItems}
                 />
-                {filteredCategoryData.length - urgentData.length > 0 && (
-                  <SectNote>
-                    Only categories with urgent items — {filteredCategoryData.length - urgentData.length} others have nothing at this level.
-                  </SectNote>
-                )}
               </>
             )}
           </StepRow>
