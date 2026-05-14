@@ -896,12 +896,11 @@ function ItemRow({
           )}
           {/* Date — always shown, right-pinned */}
           <span style={{
-            fontSize: 10.5, color: 'var(--color-text-muted)',
+            fontSize: 10.5, color: 'var(--color-text-secondary)',
             opacity: hovered ? 1 : 0.85,
             whiteSpace: 'nowrap', flexShrink: 0,
             fontVariantNumeric: 'tabular-nums' as const,
             transition: 'opacity 0.13s',
-            color: 'var(--color-text-secondary)',
           }}>{dateStr}</span>
         </div>
 
