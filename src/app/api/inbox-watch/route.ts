@@ -149,9 +149,9 @@ export async function POST(req: NextRequest) {
       if (!watchRes.ok) {
         const err = await watchRes.text()
         console.error('[inbox-watch] Gmail watch() failed:', err)
-        await rootRef.update({ watchStatus: 'error' })
+        await rootRef.update({ watchStatus: 'error', autoScanEnabled: false })
         return NextResponse.json(
-          { error: `Gmail watch() failed: ${watchRes.status}. Check OAuth scopes and Pub/Sub setup.` },
+          { error: `Gmail watch() failed (${watchRes.status}): ${err}` },
           { status: 500 }
         )
       }

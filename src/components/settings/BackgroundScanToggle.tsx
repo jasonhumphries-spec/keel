@@ -160,7 +160,17 @@ export function BackgroundScanToggle({ uid, accountData }: Props) {
       )}
 
       {/* Error */}
-      {error && <p style={styles.error}>{error}</p>}
+      {error && (
+        <div style={{
+          background: 'rgba(156,94,43,0.08)',
+          border: '1px solid rgba(156,94,43,0.3)',
+          borderRadius: 6,
+          padding: '8px 10px',
+        }}>
+          <p style={{ ...styles.error, fontWeight: 600, marginBottom: 3 }}>Setup failed</p>
+          <p style={{ ...styles.error, fontSize: 11, opacity: 0.85 }}>{error}</p>
+        </div>
+      )}
 
       {/* Pro note */}
       <p style={styles.proNote}>
