@@ -127,6 +127,7 @@ export default function CategoriesPage() {
   }
 
   const dirtyCount = items.filter(i => i.dirty).length
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   if (authLoading || !user) return null
 
@@ -137,8 +138,8 @@ export default function CategoriesPage() {
         {/* Topbar */}
         <div style={{ background: 'var(--color-topbar-bg)', borderBottom: '1px solid var(--color-border)', padding: '0 24px', height: 'var(--topbar-height)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>Life categories</div>
-            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>Categories</div>
+            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 1 }}>
               {loading ? 'Loading...' : `${categories.length} categories`}
             </div>
           </div>
@@ -190,95 +191,151 @@ export default function CategoriesPage() {
           </div>
         )}
 
-        {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-          {/* Column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 12, padding: '0 0 8px', borderBottom: '1px solid var(--color-border)', marginBottom: 4 }}>
-            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Category name</div>
-            <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              AI description
-              <span style={{ marginLeft: 8, fontSize: 9, color: 'var(--color-accent)', background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 3, padding: '1px 5px' }}>guides classification</span>
-            </div>
-            <div style={{ width: 80 }} />
-          </div>
-
-          {/* Example row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--color-border)', marginBottom: 4, opacity: 0.5 }}>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontStyle: 'italic', fontFamily: 'var(--font-dm-mono)', paddingTop: 4 }}>e.g. Bath Rental Property</div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontStyle: 'italic', lineHeight: 1.5, paddingTop: 4 }}>
-              "Emails from letting agents (Savills, Fox &amp; Sons), tenants, and tradespeople about our Bath flat. Includes rent, repairs, gas safety certs, and council tax."
-            </div>
-            <div style={{ width: 80 }} />
-          </div>
-
-          {loading ? (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)', fontSize: 12 }}>Loading...</div>
-          ) : (
-            items.map(cat => (
-              <div
-                key={cat.categoryId}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--color-border)', alignItems: 'start' }}
-              >
-                {/* Name */}
-                <div>
-                  <input
-                    value={cat.nameEdited}
-                    onChange={e => update(cat.categoryId, 'nameEdited', e.target.value)}
-                    style={{ width: '100%', background: 'var(--color-surface-recessed)', border: `1px solid ${cat.dirty ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '7px 10px', fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    {cat.itemCount} active item{cat.itemCount !== 1 ? 's' : ''}
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {/* Show what Keel already knows for built-in categories */}
-                  {DEFAULT_CATEGORY_DESCRIPTIONS[cat.categoryId] && (
-                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', padding: '6px 10px', background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderLeft: '3px solid var(--color-accent)', borderRadius: 'var(--radius-md)', lineHeight: 1.5 }}>
-                      <span style={{ fontWeight: 600, color: 'var(--color-accent)', display: 'block', marginBottom: 2 }}>Keel already knows:</span>
-                      {DEFAULT_CATEGORY_DESCRIPTIONS[cat.categoryId]}
+        {/* Content — responsive card grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: 10,
+          }}>
+            {loading ? (
+              <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-dm-mono)', fontSize: 12, gridColumn: '1/-1' }}>Loading…</div>
+            ) : (
+              items.map(cat => {
+                const isExpanded = hoveredId === cat.categoryId || cat.dirty
+                return (
+                  <div
+                    key={cat.categoryId}
+                    onMouseEnter={() => setHoveredId(cat.categoryId)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    style={{
+                      background: isExpanded ? 'var(--color-topbar-bg, #fff)' : 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      borderLeft: `3px solid ${isExpanded ? 'var(--color-accent)' : 'transparent'}`,
+                      borderRadius: 'var(--radius-lg)',
+                      padding: '12px 14px',
+                      transition: 'background 0.13s ease, border-left-color 0.13s ease',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Header row — always visible */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        value={cat.nameEdited}
+                        onChange={e => update(cat.categoryId, 'nameEdited', e.target.value)}
+                        onFocus={() => setHoveredId(cat.categoryId)}
+                        style={{
+                          flex: 1, minWidth: 0,
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: `1px solid ${cat.dirty ? 'var(--color-accent)' : isExpanded ? 'var(--color-border)' : 'transparent'}`,
+                          fontSize: 14, fontWeight: 600,
+                          color: 'var(--color-text-primary)',
+                          fontFamily: 'var(--font-dm-sans)',
+                          padding: '2px 2px 5px',
+                          outline: 'none',
+                          transition: 'border-color 0.13s',
+                        }}
+                      />
+                      <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-secondary)', flexShrink: 0 }}>
+                        {cat.itemCount} item{cat.itemCount !== 1 ? 's' : ''}
+                      </span>
+                      {cat.dirty && (
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)', flexShrink: 0 }} title="Unsaved changes" />
+                      )}
                     </div>
-                  )}
-                  <textarea
-                    value={cat.descEdited}
-                    onChange={e => update(cat.categoryId, 'descEdited', e.target.value)}
-                    placeholder={
-                      CATEGORY_DESCRIPTION_HINTS[cat.categoryId]
-                        ?? 'Describe what emails belong here — who sends them, what they\'re about, any key names...'
-                    }
-                    rows={2}
-                    style={{ width: '100%', background: 'var(--color-surface-recessed)', border: `1px solid ${cat.dirty ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '7px 10px', fontSize: 12, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' as const }}
-                  />
-                </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 80 }}>
-                  {cat.dirty && (
-                    <button
-                      onClick={() => save(cat)}
-                      disabled={saving.has(cat.categoryId)}
-                      style={{ padding: '6px 8px', background: 'var(--color-accent)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)', textAlign: 'center' }}
-                    >
-                      {saving.has(cat.categoryId) ? '...' : saved.has(cat.categoryId) ? '✓ Saved' : 'Save'}
-                    </button>
-                  )}
-                  {saved.has(cat.categoryId) && !cat.dirty && (
-                    <div style={{ padding: '6px 8px', color: 'var(--color-status-positive)', fontSize: 11, fontWeight: 600, textAlign: 'center', fontFamily: 'var(--font-dm-mono)' }}>✓ Saved</div>
-                  )}
-                  {cat.itemCount === 0 && (
-                    <button
-                      onClick={() => deleteCategory(cat)}
-                      style={{ padding: '5px 8px', background: 'transparent', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)', textAlign: 'center' }}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
+                    {/* Expanded content — slides in on hover or when dirty */}
+                    <div style={{
+                      maxHeight: isExpanded ? 320 : 0,
+                      opacity: isExpanded ? 1 : 0,
+                      overflow: 'hidden',
+                      marginTop: isExpanded ? 10 : 0,
+                      transition: 'max-height 0.18s ease, opacity 0.15s, margin-top 0.12s',
+                    }}>
+                      {/* Keel already knows panel */}
+                      {DEFAULT_CATEGORY_DESCRIPTIONS[cat.categoryId] && (
+                        <div style={{
+                          fontSize: 11, color: 'var(--color-text-secondary)',
+                          padding: '6px 10px', marginBottom: 8,
+                          background: 'var(--color-surface-recessed)',
+                          border: '1px solid var(--color-border)',
+                          borderLeft: '3px solid var(--color-accent)',
+                          borderRadius: 'var(--radius-md)',
+                          lineHeight: 1.5,
+                        }}>
+                          <span style={{ fontWeight: 600, color: 'var(--color-accent)', display: 'block', marginBottom: 2 }}>Keel already knows:</span>
+                          {DEFAULT_CATEGORY_DESCRIPTIONS[cat.categoryId]}
+                        </div>
+                      )}
+
+                      {/* User description */}
+                      <textarea
+                        value={cat.descEdited}
+                        onChange={e => update(cat.categoryId, 'descEdited', e.target.value)}
+                        onFocus={() => setHoveredId(cat.categoryId)}
+                        placeholder={
+                          CATEGORY_DESCRIPTION_HINTS[cat.categoryId]
+                            ?? "Describe what emails belong here — who sends them, what they're about, any key names…"
+                        }
+                        rows={3}
+                        style={{
+                          width: '100%', boxSizing: 'border-box' as const,
+                          background: 'var(--color-surface-recessed)',
+                          border: `1px solid ${cat.dirty ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                          borderRadius: 'var(--radius-md)',
+                          padding: '7px 10px',
+                          fontSize: 12, fontFamily: 'var(--font-dm-sans)',
+                          color: 'var(--color-text-primary)',
+                          resize: 'vertical' as const, lineHeight: 1.5, outline: 'none',
+                          transition: 'border-color 0.15s',
+                        }}
+                        onFocus={e => { e.target.style.borderColor = 'var(--color-accent)' }}
+                        onBlurCapture={e => { e.target.style.borderColor = cat.dirty ? 'var(--color-accent)' : 'var(--color-border)' }}
+                      />
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {saved.has(cat.categoryId) && !cat.dirty && (
+                          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: '#3D7A6B' }}>✓ Saved</span>
+                        )}
+                        {cat.dirty && (
+                          <button
+                            onClick={() => save(cat)}
+                            disabled={saving.has(cat.categoryId)}
+                            style={{
+                              padding: '5px 14px', background: 'var(--color-accent)', color: 'white',
+                              border: 'none', borderRadius: 'var(--radius-md)',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              fontFamily: 'var(--font-dm-sans)',
+                              opacity: saving.has(cat.categoryId) ? 0.6 : 1,
+                            }}
+                          >
+                            {saving.has(cat.categoryId) ? '…' : 'Save'}
+                          </button>
+                        )}
+                        {cat.itemCount === 0 && (
+                          <button
+                            onClick={() => deleteCategory(cat)}
+                            style={{
+                              padding: '5px 10px', background: 'transparent',
+                              color: 'var(--color-text-secondary)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: 11, cursor: 'pointer',
+                              fontFamily: 'var(--font-dm-sans)',
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
 
           {/* Add new category */}
           <div style={{ paddingTop: 16 }}>
