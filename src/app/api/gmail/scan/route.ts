@@ -20,6 +20,61 @@ function getAdminDb() {
 }
 
 // ---- Gmail API helpers ----
+
+// Returns a valid (non-expired) access token for the user.
+// If the stored token is within 5 minutes of expiry (or already expired),
+// exchanges the refresh token for a new one and writes it back to Firestore.
+async function getValidAccessToken(db: FirebaseFirestore.Firestore, uid: string): Promise<string> {
+  const accountRef  = db.doc(`users/${uid}/accounts/account_primary`)
+  const accountSnap = await accountRef.get()
+  if (!accountSnap.exists) throw new Error('Account not found')
+
+  const data          = accountSnap.data()!
+  const accessToken   = data.accessToken as string | undefined
+  const refreshToken  = data.refreshToken as string | undefined
+  const expiresAt     = data.tokenExpiresAt?.toMillis?.() as number | undefined
+
+  // Still valid with >5 min headroom — use as-is
+  const hasHeadroom = expiresAt && expiresAt - Date.now() > 5 * 60 * 1000
+  if (accessToken && hasHeadroom) {
+    return accessToken
+  }
+
+  // Token missing or about to expire — refresh
+  if (!refreshToken) throw new Error('No refresh token — user must sign in again')
+
+  console.log(`[Keel] Refreshing access token for uid=${uid.slice(0, 8)}…`)
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    new URLSearchParams({
+      client_id:     process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!tokenRes.ok) {
+    const err = await tokenRes.text()
+    console.error('[Keel] Token refresh failed:', err)
+    throw new Error('Token refresh failed — please sign in again')
+  }
+
+  const tokenData    = await tokenRes.json()
+  const newToken     = tokenData.access_token as string
+  const expiresIn    = tokenData.expires_in as number // seconds
+
+  await accountRef.update({
+    accessToken:    newToken,
+    tokenUpdatedAt: Timestamp.now(),
+    tokenExpiresAt: Timestamp.fromMillis(Date.now() + expiresIn * 1000),
+  })
+
+  console.log(`[Keel] Token refreshed, valid for ${expiresIn}s`)
+  return newToken
+}
+
 async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social']) {
   const messages: { id: string; threadId: string }[] = []
   let pageToken: string | undefined
@@ -142,16 +197,19 @@ export async function POST(req: NextRequest) {
 
     const scanStartedAt = Date.now()
 
-    // Read access token from Firestore server-side — avoids stale/wrong client tokens
-    const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
-    if (!accountSnap.exists) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+    // Get a valid (auto-refreshed if needed) access token
+    let accessToken: string
+    try {
+      accessToken = await getValidAccessToken(db, uid)
+    } catch (e: any) {
+      console.error('[Keel] Token error:', e.message)
+      const isAuthErr = e.message?.includes('sign in') || e.message?.includes('refresh')
+      return NextResponse.json(
+        { error: e.message },
+        { status: isAuthErr ? 401 : 500 },
+      )
     }
-    const accessToken = accountSnap.data()?.accessToken as string
-    if (!accessToken) {
-      return NextResponse.json({ error: 'No access token — please sign in again' }, { status: 401 })
-    }
-    console.log(`[Keel] Using stored token: ${accessToken.slice(0,10)}...`)
+    console.log(`[Keel] Using token: ${accessToken.slice(0, 10)}…`)
 
     // Firestore operation counters for cost tracking
     let fbReads   = 0
