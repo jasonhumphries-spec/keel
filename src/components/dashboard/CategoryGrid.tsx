@@ -747,7 +747,7 @@ function getRestingSignal(item: KeelItem, itemSigs: KeelSignal[]): string | null
 }
 
 // Resting opacity for the title by priority level
-const ROW_RESTING_OPACITY: Record<1|2|3|4, number> = { 4: 0.78, 3: 0.60, 2: 0.45, 1: 0.30 }
+const ROW_RESTING_OPACITY: Record<1|2|3|4, number> = { 4: 0.92, 3: 0.80, 2: 0.65, 1: 0.50 }
 
 function ItemRow({
   item,
@@ -852,6 +852,7 @@ function ItemRow({
         display: 'flex', alignItems: 'center',
         padding: '0 16px 0 20px',
         cursor: isResolved ? 'default' : 'pointer',
+        position: 'relative',
         minHeight: 44,
         background: isResolved
           ? 'rgba(46,104,72,0.04)'
@@ -878,7 +879,7 @@ function ItemRow({
           color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
           opacity: titleOp,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          maxWidth: 480, transition: 'opacity 0.13s',
+          transition: 'opacity 0.13s',
         }}>
           {item.aiTitle || item.senderName}
         </div>
@@ -893,110 +894,106 @@ function ItemRow({
         </div>
       </div>
 
-      {/* Category tag — visible at rest, fades on hover as signals take over */}
-      <span style={{
-        fontSize: 10, fontWeight: 500, color: 'var(--color-text-muted)',
-        opacity: hovered ? 0 : 0.38,
-        marginRight: 10, flexShrink: 0, whiteSpace: 'nowrap',
-        transition: 'opacity 0.13s',
-      }}>{item.categoryName}</span>
+      {/* Right section — fixed-width slot so the column layout stays tidy */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, minWidth: 0 }}>
 
-      {/* Resting signal — the critical fact for High/Urgent (amount/date).
-          Fades out when hover signals take its place. */}
-      {restSig && (
-        <span style={{
-          fontSize: 11, fontWeight: 500, color: pc,
-          opacity: hovered ? 0 : (level === 4 ? 0.72 : 0.55),
-          marginRight: 10, flexShrink: 0, whiteSpace: 'nowrap',
-          transition: 'opacity 0.13s', pointerEvents: 'none',
-        }}>{restSig}</span>
-      )}
+        {/* Resting signal — visible at rest for High/Urgent */}
+        {restSig && (
+          <span style={{
+            fontSize: 11, fontWeight: 500, color: pc,
+            opacity: hovered ? 0 : (level === 4 ? 0.82 : 0.65),
+            whiteSpace: 'nowrap', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis',
+            transition: 'opacity 0.13s', pointerEvents: 'none',
+          }}>{restSig}</span>
+        )}
 
-      {/* Hover: full signal pills slide in */}
-      <div style={{
-        display: 'flex', gap: 4, alignItems: 'center',
-        marginRight: 8, flexShrink: 0,
-        opacity: hovered ? 1 : 0,
-        transform: hovered ? 'translateX(0)' : 'translateX(8px)',
-        transition: 'opacity 0.15s, transform 0.15s',
-        pointerEvents: hovered ? 'auto' : 'none',
-      }}>
-        {itemSigs.slice(0, 2).map(sig => (
-          <MiniPill key={sig.signalId} signal={sig} />
-        ))}
-      </div>
-
-      {/* Hover: action buttons slide in */}
-      {!isResolved ? (
+        {/* Hover: full signal pills slide in (overlays resting signal slot) */}
         <div style={{
           display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0,
           opacity: hovered ? 1 : 0,
-          transform: hovered ? 'translateX(0)' : 'translateX(6px)',
-          transition: 'opacity 0.18s 0.02s, transform 0.18s 0.02s',
+          transform: hovered ? 'translateX(0)' : 'translateX(8px)',
+          transition: 'opacity 0.15s, transform 0.15s',
           pointerEvents: hovered ? 'auto' : 'none',
-        }} onClick={e => e.stopPropagation()}>
-          <button onClick={handleDone} style={{
-            fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
-            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-            background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
-          }}>✓ Done</button>
-          <button onClick={() => onItemClick(item)} style={{
-            fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
-            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-            background: 'rgba(184,150,78,0.09)', color: '#A07C3A', border: '1px solid rgba(184,150,78,0.18)',
-          }}>Open</button>
-          {snoozingId === item.itemId ? (
-            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-              {([{l:'1d',d:1},{l:'3d',d:3},{l:'7d',d:7}] as const).map(o => (
-                <button key={o.d} onClick={() => handleSnooze(o.d)} style={{
-                  fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 5px',
-                  borderRadius: 3, border: '1px solid var(--color-accent)',
-                  background: 'var(--color-accent-sub)', color: 'var(--color-accent)',
-                  cursor: 'pointer', fontWeight: 600,
-                }}>{o.l}</button>
-              ))}
-              <button onClick={() => setSnoozingId(null)} style={{
-                fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 4px',
-                borderRadius: 3, border: '1px solid var(--color-border)',
-                background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
-              }}>×</button>
-            </div>
-          ) : (
-            <button onClick={() => setSnoozingId(item.itemId)} title="Snooze" style={{
-              background: 'transparent', border: '1px solid var(--color-border)',
-              borderRadius: 5, padding: '3px 5px', cursor: 'pointer',
-              color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center',
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </button>
-          )}
+        }}>
+          {itemSigs.slice(0, 2).map(sig => (
+            <MiniPill key={sig.signalId} signal={sig} />
+          ))}
         </div>
-      ) : (
-        <span style={{
-          fontFamily: 'var(--font-dm-mono)', fontSize: 10, padding: '2px 7px', flexShrink: 0,
-          borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848', color: '#2e6848', whiteSpace: 'nowrap',
-        }}>✓ Done</span>
-      )}
 
-      {/* Date — always present, low-contrast at rest */}
-      <div style={{
-        fontSize: 10, color: 'var(--color-text-muted)',
-        flexShrink: 0, marginLeft: 8,
-        opacity: hovered ? 0.6 : (level === 4 ? 0.45 : level === 3 ? 0.35 : 0.22),
-        fontVariantNumeric: 'tabular-nums' as const,
-        minWidth: 32, textAlign: 'right' as const,
-        transition: 'opacity 0.13s',
-      }}>{dateStr}</div>
+        {/* Hover: action buttons */}
+        {!isResolved ? (
+          <div style={{
+            display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0,
+            opacity: hovered ? 1 : 0,
+            transform: hovered ? 'translateX(0)' : 'translateX(6px)',
+            transition: 'opacity 0.18s 0.02s, transform 0.18s 0.02s',
+            pointerEvents: hovered ? 'auto' : 'none',
+          }} onClick={e => e.stopPropagation()}>
+            <button onClick={handleDone} style={{
+              fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+              padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
+            }}>✓ Done</button>
+            <button onClick={() => onItemClick(item)} style={{
+              fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+              padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: 'rgba(184,150,78,0.09)', color: '#A07C3A', border: '1px solid rgba(184,150,78,0.18)',
+            }}>Open</button>
+            {snoozingId === item.itemId ? (
+              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                {([{l:'1d',d:1},{l:'3d',d:3},{l:'7d',d:7}] as const).map(o => (
+                  <button key={o.d} onClick={() => handleSnooze(o.d)} style={{
+                    fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 5px',
+                    borderRadius: 3, border: '1px solid var(--color-accent)',
+                    background: 'var(--color-accent-sub)', color: 'var(--color-accent)',
+                    cursor: 'pointer', fontWeight: 600,
+                  }}>{o.l}</button>
+                ))}
+                <button onClick={() => setSnoozingId(null)} style={{
+                  fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 4px',
+                  borderRadius: 3, border: '1px solid var(--color-border)',
+                  background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
+                }}>×</button>
+              </div>
+            ) : (
+              <button onClick={() => setSnoozingId(item.itemId)} title="Snooze" style={{
+                background: 'transparent', border: '1px solid var(--color-border)',
+                borderRadius: 5, padding: '3px 5px', cursor: 'pointer',
+                color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center',
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        ) : (
+          <span style={{
+            fontFamily: 'var(--font-dm-mono)', fontSize: 10, padding: '2px 7px', flexShrink: 0,
+            borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848', color: '#2e6848', whiteSpace: 'nowrap',
+          }}>✓ Done</span>
+        )}
+
+        {/* Date — always present, subtle at rest, right-pinned */}
+        <div style={{
+          fontSize: 10.5, color: 'var(--color-text-muted)',
+          flexShrink: 0,
+          opacity: hovered ? 0.7 : 0.45,
+          fontVariantNumeric: 'tabular-nums' as const,
+          minWidth: 36, textAlign: 'right' as const,
+          transition: 'opacity 0.13s',
+        }}>{dateStr}</div>
+
+      </div>
     </div>
   )
 }
 
 /**
  * Flat hover-reveal list for Urgent, Awaiting reply, and High priority step bands.
- * Groups items by category with a quiet label, then renders an ItemRow for each.
+ * Renders as 2 balanced columns (split by total item count).
+ * Each column groups items under quiet category labels.
  * FYI section and mobile continue to use CategoryCard.
  */
 export function ItemList({
@@ -1016,16 +1013,26 @@ export function ItemList({
 }) {
   const [snoozingId, setSnoozingId] = useState<string | null>(null)
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', margin: '0 -16px' }}>
-      {categoryData.map(({ category, items }) => (
+  // Split categories into two columns balanced by item count
+  const total  = categoryData.reduce((n, c) => n + c.items.length, 0)
+  let leftCount = 0
+  let splitIdx  = categoryData.length // default: all in left if 0 items
+  for (let i = 0; i < categoryData.length; i++) {
+    leftCount += categoryData[i].items.length
+    if (leftCount >= Math.ceil(total / 2)) { splitIdx = i + 1; break }
+  }
+  const leftCols  = categoryData.slice(0, splitIdx)
+  const rightCols = categoryData.slice(splitIdx)
+
+  const renderGroup = (groups: CategoryWithItems[]) => (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {groups.map(({ category, items }) => (
         <div key={category.categoryId}>
-          {/* Quiet category anchor label — contextual without being heavy */}
           <div style={{
-            padding: '8px 20px 2px',
+            padding: '10px 20px 3px',
             fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
             textTransform: 'uppercase' as const,
-            color: 'var(--color-text-muted)', opacity: 0.45,
+            color: 'var(--color-text-muted)', opacity: 0.5,
           }}>
             {category.name}
           </div>
@@ -1044,6 +1051,18 @@ export function ItemList({
           ))}
         </div>
       ))}
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', margin: '0 -16px' }}>
+      {renderGroup(leftCols)}
+      {rightCols.length > 0 && (
+        <>
+          <div style={{ width: 1, background: 'var(--color-border)', flexShrink: 0, opacity: 0.6 }} />
+          {renderGroup(rightCols)}
+        </>
+      )}
     </div>
   )
 }
