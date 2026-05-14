@@ -990,10 +990,45 @@ function ItemRow({
   )
 }
 
+// ── Responsive column count for ItemList ─────────────────────────────────────
+// Watches viewport width and returns the ideal column count.
+// Mobile uses CategoryCard anyway, but this also handles narrow desktop/tablet.
+function useItemListColumns(): number {
+  const [cols, setCols] = useState(2)
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth
+      if (w >= 1300) setCols(3)
+      else if (w >= 900) setCols(2)
+      else setCols(1)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return cols
+}
+
+// Greedy distribution: assigns each category to the least-loaded column
+// so item counts balance across columns rather than just splitting by count.
+function distributeColumns(cats: CategoryWithItems[], n: number): CategoryWithItems[][] {
+  const cols: CategoryWithItems[][] = Array.from({ length: n }, () => [])
+  if (n === 1) { cols[0] = cats; return cols }
+  const counts = new Array<number>(n).fill(0)
+  for (const cat of cats) {
+    const minIdx = counts.indexOf(Math.min(...counts))
+    cols[minIdx].push(cat)
+    counts[minIdx] += cat.items.length
+  }
+  return cols
+}
+
 /**
- * Flat hover-reveal list for Urgent, Awaiting reply, and High priority step bands.
- * Renders as 2 balanced columns (split by total item count).
- * Each column groups items under quiet category labels.
+ * Responsive hover-reveal list for Urgent, Awaiting reply, and High priority bands.
+ * Column count adapts to viewport width (3 / 2 / 1). Categories are distributed
+ * greedily by item count so columns stay balanced.
+ * Empty columns always render to maintain the grid — a single item stays in col 1
+ * rather than stretching full-width.
  * FYI section and mobile continue to use CategoryCard.
  */
 export function ItemList({
@@ -1012,57 +1047,46 @@ export function ItemList({
   resolvedItems: Map<string, KeelItem>
 }) {
   const [snoozingId, setSnoozingId] = useState<string | null>(null)
-
-  // Split categories into two columns balanced by item count
-  const total  = categoryData.reduce((n, c) => n + c.items.length, 0)
-  let leftCount = 0
-  let splitIdx  = categoryData.length // default: all in left if 0 items
-  for (let i = 0; i < categoryData.length; i++) {
-    leftCount += categoryData[i].items.length
-    if (leftCount >= Math.ceil(total / 2)) { splitIdx = i + 1; break }
-  }
-  const leftCols  = categoryData.slice(0, splitIdx)
-  const rightCols = categoryData.slice(splitIdx)
-
-  const renderGroup = (groups: CategoryWithItems[]) => (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      {groups.map(({ category, items }) => (
-        <div key={category.categoryId}>
-          <div style={{
-            padding: '10px 20px 3px',
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
-            textTransform: 'uppercase' as const,
-            color: 'var(--color-text-muted)', opacity: 0.5,
-          }}>
-            {category.name}
-          </div>
-          {items.map(item => (
-            <ItemRow
-              key={item.itemId}
-              item={item}
-              isResolved={resolvedItems.has(item.itemId)}
-              signals={signals}
-              uid={uid}
-              onItemClick={onItemClick}
-              onResolved={onResolved}
-              snoozingId={snoozingId}
-              setSnoozingId={setSnoozingId}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
-  )
+  const numCols = useItemListColumns()
+  const columns = distributeColumns(categoryData, numCols)
 
   return (
     <div style={{ display: 'flex', margin: '0 -16px' }}>
-      {renderGroup(leftCols)}
-      {rightCols.length > 0 && (
-        <>
-          <div style={{ width: 1, background: 'var(--color-border)', flexShrink: 0, opacity: 0.6 }} />
-          {renderGroup(rightCols)}
-        </>
-      )}
+      {columns.map((colCats, colIdx) => (
+        <div
+          key={colIdx}
+          style={{
+            flex: 1, minWidth: 0,
+            borderLeft: colIdx > 0 ? '1px solid var(--color-border)' : 'none',
+          }}
+        >
+          {colCats.map(({ category, items }) => (
+            <div key={category.categoryId}>
+              <div style={{
+                padding: '10px 20px 3px',
+                fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
+                textTransform: 'uppercase' as const,
+                color: 'var(--color-text-muted)', opacity: 0.5,
+              }}>
+                {category.name}
+              </div>
+              {items.map(item => (
+                <ItemRow
+                  key={item.itemId}
+                  item={item}
+                  isResolved={resolvedItems.has(item.itemId)}
+                  signals={signals}
+                  uid={uid}
+                  onItemClick={onItemClick}
+                  onResolved={onResolved}
+                  snoozingId={snoozingId}
+                  setSnoozingId={setSnoozingId}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }
