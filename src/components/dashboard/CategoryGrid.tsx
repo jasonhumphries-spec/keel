@@ -768,7 +768,18 @@ function ItemRow({
   snoozingId:    string | null
   setSnoozingId: (id: string | null) => void
 }) {
-  const [hovered, setHovered] = useState(false)
+  const [hovered, setHovered]         = useState(false)
+  const [calHighlighted, setCalHigh]  = useState(false)
+
+  // Listen for calendar hover broadcasts
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { itemId: hovId } = (e as CustomEvent<{ itemId: string | null }>).detail
+      setCalHigh(hovId === item.itemId)
+    }
+    window.addEventListener('keel:cal-hover', handler)
+    return () => window.removeEventListener('keel:cal-hover', handler)
+  }, [item.itemId])
 
   const isSnoozed = item.status === 'snoozed'
   const itemSigs  = signals.filter(s => s.itemId === item.itemId && s.status === 'active')
@@ -855,31 +866,41 @@ function ItemRow({
         position: 'relative',
         background: isResolved
           ? 'rgba(46,104,72,0.04)'
-          : hovered ? 'rgba(255,255,255,0.75)' : 'transparent',
-        borderLeft: `3px solid ${isResolved ? '#2e6848' : hovered ? pc : 'transparent'}`,
+          : (hovered || calHighlighted) ? 'rgba(255,255,255,0.75)' : 'transparent',
+        borderLeft: `3px solid ${isResolved ? '#2e6848' : (hovered || calHighlighted) ? pc : 'transparent'}`,
         transition: 'background 0.13s ease, border-left-color 0.13s ease',
       }}
     >
+      {/* Calendar-highlight bullet — slides in from left when cal row is hovered */}
+      {calHighlighted && !isResolved && (
+        <div style={{
+          position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)',
+          width: 7, height: 7, borderRadius: '50%',
+          background: pc,
+          boxShadow: `0 0 0 2px white, 0 0 0 3.5px ${pc}`,
+          animation: 'cal-bullet-in 0.15s ease forwards',
+        }} />
+      )}
       {/* Priority dot — pops in on hover, top-aligned */}
       <div style={{
         width: 7, height: 7, borderRadius: '50%',
         background: isResolved ? '#2e6848' : pc,
         flexShrink: 0, marginRight: 10, marginTop: 4,
-        opacity: hovered || isResolved ? 1 : 0,
-        transform: hovered || isResolved ? 'scale(1)' : 'scale(0.3)',
+        opacity: hovered || isResolved || calHighlighted ? 1 : 0,
+        transform: hovered || isResolved || calHighlighted ? 'scale(1)' : 'scale(0.3)',
         transition: 'opacity 0.13s, transform 0.13s',
       }} />
 
       {/* Content — expands downward on hover so title always gets full width */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, transform: calHighlighted && !hovered ? 'translateX(4px)' : 'translateX(0)', transition: 'transform 0.15s ease' }}>
 
         {/* Title row — always visible, title + resting signal + date all on one line */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
           <div style={{
             flex: 1, minWidth: 0,
-            fontSize: 13, fontWeight: hovered ? 500 : 400,
+            fontSize: 13, fontWeight: hovered || calHighlighted ? 500 : 400,
             color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
-            opacity: titleOp,
+            opacity: calHighlighted && !hovered ? 1 : titleOp,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'opacity 0.13s',
           }}>

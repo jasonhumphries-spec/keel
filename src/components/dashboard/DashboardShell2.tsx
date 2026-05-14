@@ -151,7 +151,10 @@ function CalBandEvent({
   if (status === 'ignored') return null
 
   return (
-    <div style={{
+    <div
+      onMouseEnter={() => window.dispatchEvent(new CustomEvent('keel:cal-hover', { detail: { itemId: item.itemId } }))}
+      onMouseLeave={() => window.dispatchEvent(new CustomEvent('keel:cal-hover', { detail: { itemId: null } }))}
+      style={{
       padding: '7px 10px',
       borderBottom: '0.5px solid var(--color-border)',
       display: 'flex',
@@ -805,7 +808,7 @@ export function DashboardShell2() {
       />
       {categoriseOpen && <CategoriseModal items={uncatItems} onClose={() => { setCategoriseOpen(false); handleTriageDone() }} />}
       <DevTools />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes cal-bullet-in { from { transform: translateY(-50%) scale(0.2); opacity: 0; } to { transform: translateY(-50%) scale(1); opacity: 1; } }`}</style>
     </>
   )
 
