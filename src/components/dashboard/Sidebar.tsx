@@ -181,16 +181,14 @@ function SidebarInner() {
   return (
     <div style={{ width: 'var(--sidebar-width)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── Logo — same warm bg, brass rule below (Option B) ── */}
+      {/* ── Logo — same warm bg, KEEL in brass ── */}
       <div style={{ background: 'var(--color-bg)', flexShrink: 0 }}>
-        <div style={{ padding: '18px 16px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '18px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <KeelLogo />
-          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--color-text-primary)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-dm-mono)' }}>
+          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: '#B8964E', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-dm-mono)' }}>
             Keel
           </div>
         </div>
-        {/* Brass rule — structural accent replaces the dark header */}
-        <div style={{ height: 3, background: '#B8964E' }} />
       </div>
 
       {/* ── Nav body — same warm bg as dashboard ── */}

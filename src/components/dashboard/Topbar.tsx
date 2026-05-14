@@ -163,7 +163,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 }
 
 export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarProps) {
-  const { scanProgress, triggerScan, lastScanned, lastBackgroundScanned } = useAuth()
+  const { scanProgress, triggerScan, lastScanned, lastBackgroundScanned, isMonitoring } = useAuth()
   const { items: uncategorised } = useUncategorised()
   const [showSearch, setShowSearch] = useState(false)
   const uncatCount   = uncategorised.length
@@ -208,17 +208,23 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
               <span
                 onClick={() => triggerScan('manual')}
                 title="Check for updates"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, letterSpacing: '0.02em', cursor: 'pointer', borderRadius: 5, padding: '2px 5px', transition: 'background 0.12s', color: lastBackgroundScanned ? '#3D7A6B' : 'var(--color-text-secondary)' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, letterSpacing: '0.02em', cursor: 'pointer', borderRadius: 5, padding: '2px 5px', transition: 'background 0.12s', color: isMonitoring ? '#3D7A6B' : 'var(--color-text-secondary)' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(44,40,36,0.07)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
               >
-                {lastBackgroundScanned
+                {isMonitoring
                   ? <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3D7A6B', flexShrink: 0, display: 'inline-block', animation: 'pulse-dot 2.5s ease-in-out infinite' }} />
                   : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
                 }
-                {lastBackgroundScanned ? `Monitoring · ${lastScanText}` : mostRecentScan ? `Updated ${lastScanText}` : 'Check for updates'}
-                {/* Refresh icon — appears always, brightens on hover via parent */}
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
+                {isMonitoring
+                  ? lastBackgroundScanned
+                    ? `Monitoring · ${lastScanText}`
+                    : 'Monitoring inbox'
+                  : mostRecentScan
+                    ? `Updated ${lastScanText}`
+                    : 'Check for updates'
+                }
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.45, flexShrink: 0 }}>
                   <polyline points="23 4 23 10 17 10"/>
                   <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
                 </svg>

@@ -35,6 +35,7 @@ interface AuthContextType {
   scanProgress: ScanProgress
   lastScanned:          Date | null
   lastBackgroundScanned: Date | null
+  isMonitoring: boolean
   needsReauth:  boolean
   signIn:       () => Promise<void>
   signOut:      () => Promise<void>
@@ -49,8 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading,      setLoading]      = useState(true)
   const [accessToken,  setAccessToken]  = useState<string | null>(null)
   const [scanProgress, setScanProgress] = useState<ScanProgress>(IDLE)
-  const [lastScanned,          setLastScanned]          = useState<Date | null>(null)
+  const [lastScanned,           setLastScanned]           = useState<Date | null>(null)
   const [lastBackgroundScanned, setLastBackgroundScanned] = useState<Date | null>(null)
+  const [isMonitoring,          setIsMonitoring]          = useState(false)
   const [needsReauth,  setNeedsReauth]  = useState(false)
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const unsub = onSnapshot(doc(db, `users/${user.uid}`), snap => {
           const ts = snap.data()?.lastBackgroundScanAt
           if (ts?.toDate) setLastBackgroundScanned(ts.toDate())
+          setIsMonitoring(snap.data()?.autoScanEnabled === true)
         })
         return unsub
       })
@@ -308,7 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, lastBackgroundScanned, needsReauth, signIn, signOut, triggerScan }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, lastBackgroundScanned, isMonitoring, needsReauth, signIn, signOut, triggerScan }}>
       {children}
     </AuthContext.Provider>
   )
