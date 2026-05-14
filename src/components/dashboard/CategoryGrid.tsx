@@ -850,10 +850,9 @@ function ItemRow({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'flex-start',
-        padding: '0 14px 0 20px',
+        padding: '9px 14px 9px 20px',
         cursor: isResolved ? 'default' : 'pointer',
         position: 'relative',
-        minHeight: 42,
         background: isResolved
           ? 'rgba(46,104,72,0.04)'
           : hovered ? 'rgba(255,255,255,0.75)' : 'transparent',
@@ -861,135 +860,133 @@ function ItemRow({
         transition: 'background 0.13s ease, border-left-color 0.13s ease',
       }}
     >
-      {/* Priority dot — invisible at rest, pops in on hover */}
+      {/* Priority dot — pops in on hover, top-aligned */}
       <div style={{
         width: 7, height: 7, borderRadius: '50%',
         background: isResolved ? '#2e6848' : pc,
-        flexShrink: 0, marginRight: 10,
+        flexShrink: 0, marginRight: 10, marginTop: 4,
         opacity: hovered || isResolved ? 1 : 0,
         transform: hovered || isResolved ? 'scale(1)' : 'scale(0.3)',
         transition: 'opacity 0.13s, transform 0.13s',
       }} />
 
-      {/* Text body */}
-      <div style={{ flex: 1, minWidth: 0, padding: '8px 0' }}>
-        {/* Title — opacity varies by priority level at rest */}
-        <div style={{
-          fontSize: 13, fontWeight: hovered ? 500 : 400,
-          color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
-          opacity: titleOp,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          transition: 'opacity 0.13s',
-        }}>
-          {item.aiTitle || item.senderName}
+      {/* Content — expands downward on hover so title always gets full width */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+
+        {/* Title row — always visible, title + resting signal + date all on one line */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <div style={{
+            flex: 1, minWidth: 0,
+            fontSize: 13, fontWeight: hovered ? 500 : 400,
+            color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
+            opacity: titleOp,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            transition: 'opacity 0.13s',
+          }}>
+            {item.aiTitle || item.senderName}
+          </div>
+          {/* Resting signal — fades out on hover as action row takes over */}
+          {restSig && !hovered && (
+            <span style={{
+              fontSize: 11, fontWeight: 500, color: pc,
+              opacity: level === 4 ? 0.82 : 0.65,
+              whiteSpace: 'nowrap', flexShrink: 0,
+              pointerEvents: 'none',
+            }}>{restSig}</span>
+          )}
+          {/* Date — always shown, right-pinned */}
+          <span style={{
+            fontSize: 10.5, color: 'var(--color-text-muted)',
+            opacity: hovered ? 0.7 : 0.45,
+            whiteSpace: 'nowrap', flexShrink: 0,
+            fontVariantNumeric: 'tabular-nums' as const,
+            transition: 'opacity 0.13s',
+          }}>{dateStr}</span>
         </div>
-        {/* Subtitle — sender name + summary, 2 lines allowed, hover only */}
+
+        {/* Subtitle — expands below title on hover, 2-line clamp, no horizontal squeeze */}
         <div style={{
           fontSize: 10.5, color: 'var(--color-text-muted)',
+          lineHeight: 1.45,
+          maxHeight: hovered ? 36 : 0,
           opacity: hovered ? 0.72 : 0,
-          marginTop: 3,
+          overflow: 'hidden',
+          marginTop: hovered ? 3 : 0,
           display: '-webkit-box',
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          lineHeight: 1.45,
-          transition: 'opacity 0.13s',
+          transition: 'max-height 0.16s ease, opacity 0.13s, margin-top 0.12s',
         } as React.CSSProperties}>
           <span style={{ fontWeight: 500 }}>{item.senderName}</span>
           {item.aiSummary ? ` · ${item.aiSummary}` : ''}
         </div>
-      </div>
 
-      {/* Right section — fixed-width slot so the column layout stays tidy */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexShrink: 0, minWidth: 0, paddingTop: 10 }}>
-
-        {/* Resting signal — visible at rest for High/Urgent */}
-        {restSig && (
-          <span style={{
-            fontSize: 11, fontWeight: 500, color: pc,
-            opacity: hovered ? 0 : (level === 4 ? 0.82 : 0.65),
-            whiteSpace: 'nowrap', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis',
-            transition: 'opacity 0.13s', pointerEvents: 'none',
-          }}>{restSig}</span>
-        )}
-
-        {/* Hover: full signal pills slide in (overlays resting signal slot) */}
-        <div style={{
-          display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0,
-          opacity: hovered ? 1 : 0,
-          transform: hovered ? 'translateX(0)' : 'translateX(8px)',
-          transition: 'opacity 0.15s, transform 0.15s',
-          pointerEvents: hovered ? 'auto' : 'none',
-        }}>
+        {/* Action row — slides in below subtitle on hover */}
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
+            maxHeight: hovered ? 30 : 0,
+            opacity: hovered ? 1 : 0,
+            overflow: 'hidden',
+            marginTop: hovered ? 6 : 0,
+            transition: 'max-height 0.16s ease 0.04s, opacity 0.15s 0.05s, margin-top 0.12s',
+          }}
+        >
+          {/* Signal pills */}
           {itemSigs.slice(0, 2).map(sig => (
             <MiniPill key={sig.signalId} signal={sig} />
           ))}
+
+          {!isResolved ? (
+            <>
+              <button onClick={handleDone} style={{
+                fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+                padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+                background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
+              }}>✓ Done</button>
+              <button onClick={() => onItemClick(item)} style={{
+                fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+                padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+                background: 'rgba(184,150,78,0.09)', color: '#A07C3A', border: '1px solid rgba(184,150,78,0.18)',
+              }}>Open</button>
+              {snoozingId === item.itemId ? (
+                <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                  {([{l:'1d',d:1},{l:'3d',d:3},{l:'7d',d:7}] as const).map(o => (
+                    <button key={o.d} onClick={() => handleSnooze(o.d)} style={{
+                      fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 5px',
+                      borderRadius: 3, border: '1px solid var(--color-accent)',
+                      background: 'var(--color-accent-sub)', color: 'var(--color-accent)',
+                      cursor: 'pointer', fontWeight: 600,
+                    }}>{o.l}</button>
+                  ))}
+                  <button onClick={() => setSnoozingId(null)} style={{
+                    fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 4px',
+                    borderRadius: 3, border: '1px solid var(--color-border)',
+                    background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
+                  }}>×</button>
+                </div>
+              ) : (
+                <button onClick={() => setSnoozingId(item.itemId)} title="Snooze" style={{
+                  background: 'transparent', border: '1px solid var(--color-border)',
+                  borderRadius: 5, padding: '3px 5px', cursor: 'pointer',
+                  color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center',
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </button>
+              )}
+            </>
+          ) : (
+            <span style={{
+              fontFamily: 'var(--font-dm-mono)', fontSize: 10, padding: '2px 7px',
+              borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848',
+              color: '#2e6848', whiteSpace: 'nowrap',
+            }}>✓ Done</span>
+          )}
         </div>
-
-        {/* Hover: action buttons */}
-        {!isResolved ? (
-          <div style={{
-            display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0,
-            opacity: hovered ? 1 : 0,
-            transform: hovered ? 'translateX(0)' : 'translateX(6px)',
-            transition: 'opacity 0.18s 0.02s, transform 0.18s 0.02s',
-            pointerEvents: hovered ? 'auto' : 'none',
-          }} onClick={e => e.stopPropagation()}>
-            <button onClick={handleDone} style={{
-              fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
-              padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-              background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
-            }}>✓ Done</button>
-            <button onClick={() => onItemClick(item)} style={{
-              fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
-              padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-              background: 'rgba(184,150,78,0.09)', color: '#A07C3A', border: '1px solid rgba(184,150,78,0.18)',
-            }}>Open</button>
-            {snoozingId === item.itemId ? (
-              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                {([{l:'1d',d:1},{l:'3d',d:3},{l:'7d',d:7}] as const).map(o => (
-                  <button key={o.d} onClick={() => handleSnooze(o.d)} style={{
-                    fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 5px',
-                    borderRadius: 3, border: '1px solid var(--color-accent)',
-                    background: 'var(--color-accent-sub)', color: 'var(--color-accent)',
-                    cursor: 'pointer', fontWeight: 600,
-                  }}>{o.l}</button>
-                ))}
-                <button onClick={() => setSnoozingId(null)} style={{
-                  fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 4px',
-                  borderRadius: 3, border: '1px solid var(--color-border)',
-                  background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
-                }}>×</button>
-              </div>
-            ) : (
-              <button onClick={() => setSnoozingId(item.itemId)} title="Snooze" style={{
-                background: 'transparent', border: '1px solid var(--color-border)',
-                borderRadius: 5, padding: '3px 5px', cursor: 'pointer',
-                color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center',
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-              </button>
-            )}
-          </div>
-        ) : (
-          <span style={{
-            fontFamily: 'var(--font-dm-mono)', fontSize: 10, padding: '2px 7px', flexShrink: 0,
-            borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848', color: '#2e6848', whiteSpace: 'nowrap',
-          }}>✓ Done</span>
-        )}
-
-        {/* Date — always present, subtle at rest, right-pinned */}
-        <div style={{
-          fontSize: 10.5, color: 'var(--color-text-muted)',
-          flexShrink: 0,
-          opacity: hovered ? 0.7 : 0.45,
-          fontVariantNumeric: 'tabular-nums' as const,
-          minWidth: 36, textAlign: 'right' as const,
-          transition: 'opacity 0.13s',
-        }}>{dateStr}</div>
 
       </div>
     </div>
