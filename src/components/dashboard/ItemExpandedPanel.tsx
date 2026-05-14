@@ -162,14 +162,35 @@ function MarkAsPaidPanel({ item, signals, onClose, onPaid }: { item: KeelItem; s
 }
 
 function ActBtn({ label, onClick, variant = 'ghost' }: { label: string; onClick: () => void; variant?: 'primary' | 'confirm' | 'accent' | 'ghost' }) {
-  const styles: Record<string, React.CSSProperties> = {
-    primary: { background: '#B8964E', color: '#fff',                          border: '1px solid #B8964E',                fontWeight: 600 },
-    confirm: { background: '#3D7A6B', color: '#fff',                          border: '1px solid #3D7A6B',                fontWeight: 600 },
-    accent:  { background: 'var(--color-accent-sub)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' },
-    ghost:   { background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' },
+  const [hovered, setHovered] = useState(false)
+
+  const rest: Record<string, React.CSSProperties> = {
+    primary: { background: 'transparent',              color: '#B8964E',                    border: '1px solid #B8964E',                fontWeight: 600 },
+    confirm: { background: 'transparent',              color: '#3D7A6B',                    border: '1px solid #3D7A6B',                fontWeight: 600 },
+    accent:  { background: 'transparent',              color: 'var(--color-accent)',        border: '1px solid var(--color-accent)' },
+    ghost:   { background: 'transparent',              color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' },
   }
+  const hover: Record<string, React.CSSProperties> = {
+    primary: { background: '#B8964E',                  color: '#fff',                       border: '1px solid #B8964E',                fontWeight: 600 },
+    confirm: { background: '#3D7A6B',                  color: '#fff',                       border: '1px solid #3D7A6B',                fontWeight: 600 },
+    accent:  { background: 'var(--color-accent-sub)',  color: 'var(--color-accent)',        border: '1px solid var(--color-accent)' },
+    ghost:   { background: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' },
+  }
+
   return (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 13px', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-base)', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap', ...styles[variant] }}>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 5, padding: '7px 13px', borderRadius: 'var(--radius-md)',
+        fontSize: 'var(--fs-base)', fontWeight: 500, cursor: 'pointer',
+        fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap',
+        transition: 'background 0.13s ease, color 0.13s ease, border-color 0.13s ease',
+        ...(hovered ? hover[variant] : rest[variant]),
+      }}
+    >
       {label}
     </button>
   )
