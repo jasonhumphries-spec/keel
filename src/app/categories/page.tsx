@@ -35,7 +35,12 @@ export default function CategoriesPage() {
   const [newName, setNewName]   = useState('')
   const [adding,  setAdding]    = useState(false)
   const [reclassifying, setReclassifying] = useState(false)
-  const [reclassifyResult, setReclassifyResult] = useState<{ examined: number; reclassified: number; message: string } | null>(null)
+  const [reclassifyResult, setReclassifyResult] = useState<{
+    examined:     number
+    reclassified: number
+    message:      string
+    changes:      { itemId: string; from: string; to: string }[]
+  } | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/')
@@ -66,12 +71,15 @@ export default function CategoriesPage() {
         body:    JSON.stringify({ uid: user.uid, daysBack }),
       })
       const data = await res.json()
-      setReclassifyResult({ examined: data.examined ?? 0, reclassified: data.reclassified ?? 0, message: data.message ?? '' })
-      // Auto-clear after 8 seconds
-      setTimeout(() => setReclassifyResult(null), 8000)
+      setReclassifyResult({
+        examined:     data.examined     ?? 0,
+        reclassified: data.reclassified ?? 0,
+        message:      data.message      ?? '',
+        changes:      data.changes      ?? [],
+      })
     } catch (e) {
       console.error('Reclassify failed:', e)
-      setReclassifyResult({ examined: 0, reclassified: 0, message: 'Reclassification failed — please try again' })
+      setReclassifyResult({ examined: 0, reclassified: 0, message: 'Reclassification failed — please try again', changes: [] })
     } finally {
       setReclassifying(false)
     }
@@ -173,23 +181,14 @@ export default function CategoriesPage() {
           </div>
         </div>
 
-        {/* Explainer */}
-        <div style={{ background: 'var(--color-accent-sub)', borderBottom: '1px solid var(--color-border)', padding: '10px 24px', flexShrink: 0 }}>
-          <div style={{ fontSize: 12, color: 'var(--color-accent)', lineHeight: 1.6, maxWidth: 720 }}>
-            <strong>AI descriptions guide automatic classification.</strong> The more specific you are, the better Keel gets at placing new emails without asking. Include: who sends these emails, what topics they cover, and any key names, companies, or terms. You don't need to fill these in — but they make a real difference.
-          </div>
+        {/* Explainer — clean prose, no box */}
+        <div style={{ padding: '12px 24px 11px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 700 }}>
+            <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>AI descriptions guide automatic classification.</strong>{' '}
+            The more specific you are, the better Keel gets at placing new emails without asking.
+            Include who sends these emails, what topics they cover, and any key names, companies, or terms. You don't need to fill these in — but they make a real difference.
+          </p>
         </div>
-
-        {/* Reclassify result banner */}
-        {reclassifyResult && (
-          <div style={{ padding: '10px 24px', background: reclassifyResult.reclassified > 0 ? 'var(--color-accent-sub)' : 'var(--color-surface-recessed)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: 12, color: reclassifyResult.reclassified > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
-              <strong>{reclassifyResult.reclassified > 0 ? '✓' : '—'}</strong> {reclassifyResult.message}
-              <span style={{ marginLeft: 8, opacity: 0.6 }}>{reclassifyResult.examined} items examined</span>
-            </div>
-            <button onClick={() => setReclassifyResult(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 16, lineHeight: 1, padding: 4 }}>×</button>
-          </div>
-        )}
 
         {/* Content — responsive card grid */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
@@ -366,6 +365,138 @@ export default function CategoriesPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Reclassify overlay ─────────────────────────────────────────────
+          Blocks the page while running so the user can't navigate away.
+          Transitions to a results panel when done — user dismisses manually.  */}
+      {(reclassifying || reclassifyResult) && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 500,
+          backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+          background: 'rgba(244,240,234,0.88)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {reclassifying ? (
+            /* ── Running state ── */
+            <div style={{
+              background: '#fff', borderRadius: 16, padding: '44px 48px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
+              maxWidth: 380, textAlign: 'center' as const,
+            }}>
+              <div style={{
+                width: 40, height: 40,
+                border: '2.5px solid var(--color-border)',
+                borderTopColor: 'var(--color-accent)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8, fontFamily: 'var(--font-dm-sans)' }}>
+                  Reviewing your emails…
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, fontFamily: 'var(--font-dm-sans)' }}>
+                  Keel is checking each item against your current categories. This usually takes 20–40 seconds. You'll see exactly what moved when it's done.
+                </div>
+              </div>
+            </div>
+          ) : reclassifyResult && (
+            /* ── Results state ── */
+            <div style={{
+              background: '#fff', borderRadius: 16, padding: '36px 40px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)',
+              width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 0,
+            }}>
+              {/* Header */}
+              <div style={{ textAlign: 'center' as const, marginBottom: 24 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%', margin: '0 auto 14px',
+                  background: reclassifyResult.reclassified > 0 ? 'rgba(61,122,107,0.1)' : 'var(--color-surface-recessed)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                    stroke={reclassifyResult.reclassified > 0 ? '#3D7A6B' : 'var(--color-text-muted)'}
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {reclassifyResult.reclassified > 0
+                      ? <><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>
+                      : <><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></>
+                    }
+                  </svg>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4, fontFamily: 'var(--font-dm-sans)' }}>
+                  {reclassifyResult.reclassified > 0
+                    ? `${reclassifyResult.reclassified} item${reclassifyResult.reclassified !== 1 ? 's' : ''} moved`
+                    : 'All items already in the right place'}
+                </div>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                  {reclassifyResult.examined} item{reclassifyResult.examined !== 1 ? 's' : ''} reviewed
+                </div>
+              </div>
+
+              {/* Changes grouped by destination category */}
+              {reclassifyResult.changes.length > 0 && (() => {
+                const byDest: Record<string, string[]> = {}
+                for (const c of reclassifyResult.changes) {
+                  if (!byDest[c.to]) byDest[c.to] = []
+                  byDest[c.to].push(c.from)
+                }
+                return (
+                  <div style={{ overflowY: 'auto', maxHeight: 260, display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 24 }}>
+                    {Object.entries(byDest).map(([dest, sources]) => {
+                      const fromOther = sources.filter(s => s !== dest)
+                      const uniqueSources = [...new Set(fromOther)]
+                      return (
+                        <div key={dest} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '9px 12px',
+                          background: 'var(--color-surface-recessed)',
+                          border: '1px solid var(--color-border)',
+                          borderLeft: '3px solid var(--color-accent)',
+                          borderRadius: 'var(--radius-md)',
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
+                              {dest}
+                            </div>
+                            {uniqueSources.length > 0 && (
+                              <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                                from {uniqueSources.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{
+                            fontFamily: 'var(--font-dm-mono)', fontSize: 11, fontWeight: 600,
+                            color: 'var(--color-accent)',
+                            background: 'var(--color-accent-sub)',
+                            border: '1px solid var(--color-accent)',
+                            borderRadius: 20, padding: '2px 8px', flexShrink: 0,
+                          }}>
+                            {sources.length}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {/* Dismiss */}
+              <button
+                onClick={() => setReclassifyResult(null)}
+                style={{
+                  padding: '11px', background: reclassifyResult.reclassified > 0 ? '#3D7A6B' : 'var(--color-accent)',
+                  color: '#fff', border: 'none', borderRadius: 'var(--radius-md)',
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  fontFamily: 'var(--font-dm-sans)',
+                }}
+              >
+                {reclassifyResult.reclassified > 0 ? 'Great, got it' : 'Done'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
     </PageShell>
   )
 }
