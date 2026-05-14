@@ -914,7 +914,7 @@ export function DashboardShell2() {
 
         {/* Single scroll container — padding-top centres section 1 on load */}
         <div ref={scrollRef} style={{
-          flex: 1, overflowY: 'auto', background: '#eeeef0',
+          flex: 1, overflowY: 'auto', background: 'var(--color-bg)',
           paddingTop: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 20,
           paddingBottom: uncatItems.length > 0 && !triageDismissed ? 'calc(25vh)' : 40,
           transition: 'padding-top 0.4s ease',

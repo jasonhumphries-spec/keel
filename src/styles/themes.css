@@ -98,14 +98,14 @@
 
 /* ---- HARBOUR ---- */
 [data-theme="harbour"] {
-  --n0: #f6f9fb;
-  --n1: #edf2f6;
-  --n2: #dce6ee;
-  --n3: #c0cfd8;
-  --n4: #90a4b2;
-  --n5: #5e7a8a;
-  --n6: #28404e;
-  --n7: #101c24;
+  --n0: #f7f5f2;
+  --n1: #edeae5;
+  --n2: #dedad3;
+  --n3: #c4bfb6;
+  --n4: #96908a;
+  --n5: #62594f;
+  --n6: #2e2820;
+  --n7: #12100c;
   --accent:     #9e8040;
   --accent-sub: #e8dfc8;
   --pos:        #2e6048;
