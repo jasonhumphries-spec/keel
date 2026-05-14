@@ -84,6 +84,30 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     backgroundScanCostUsd?: number
     backgroundScanRuns?: number
   }>({})
+
+  // Live listener on root users/{uid} for background scan state
+  // (inbox-watch route writes autoScanEnabled/watchStatus to the root doc, not account_primary)
+  useEffect(() => {
+    if (!user) return
+    let unsub: (() => void) | undefined
+    import('firebase/firestore').then(({ doc, onSnapshot }) => {
+      import('@/lib/firebase').then(({ db }) => {
+        unsub = onSnapshot(doc(db, `users/${user.uid}`), snap => {
+          if (!snap.exists()) return
+          const d = snap.data()
+          setBgAccountData({
+            autoScanEnabled:       d.autoScanEnabled,
+            watchStatus:           d.watchStatus,
+            watchExpiry:           d.watchExpiry,
+            lastBackgroundScanAt:  d.lastBackgroundScanAt,
+            backgroundScanCostUsd: d.backgroundScanCostUsd,
+            backgroundScanRuns:    d.backgroundScanRuns,
+          })
+        })
+      })
+    })
+    return () => unsub?.()
+  }, [user])
   // Excluded Gmail labels (defaults: promotions + social excluded, not scanned)
   const DEFAULT_EXCLUDED = ['promotions', 'social']
   const [excludedLabels, setExcludedLabels] = useState<string[]>(DEFAULT_EXCLUDED)
@@ -103,15 +127,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
             const stored = snap.data()?.excludedLabels
             setExcludedLabels(stored ?? DEFAULT_EXCLUDED)
-            // Load background scan fields for the toggle
-            setBgAccountData({
-              autoScanEnabled:      snap.data()?.autoScanEnabled,
-              watchStatus:          snap.data()?.watchStatus,
-              watchExpiry:          snap.data()?.watchExpiry,
-              lastBackgroundScanAt: snap.data()?.lastBackgroundScanAt,
-              backgroundScanCostUsd: snap.data()?.backgroundScanCostUsd,
-              backgroundScanRuns:   snap.data()?.backgroundScanRuns,
-            })
           })
         })
       })
