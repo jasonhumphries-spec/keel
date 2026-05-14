@@ -161,9 +161,10 @@ function MarkAsPaidPanel({ item, signals, onClose, onPaid }: { item: KeelItem; s
   )
 }
 
-function ActBtn({ label, onClick, variant = 'ghost' }: { label: string; onClick: () => void; variant?: 'primary' | 'accent' | 'ghost' }) {
+function ActBtn({ label, onClick, variant = 'ghost' }: { label: string; onClick: () => void; variant?: 'primary' | 'confirm' | 'accent' | 'ghost' }) {
   const styles: Record<string, React.CSSProperties> = {
-    primary: { background: 'var(--color-action-primary)', color: 'var(--color-action-text)', border: '1px solid var(--color-action-primary)', fontWeight: 600 },
+    primary: { background: '#B8964E', color: '#fff',                          border: '1px solid #B8964E',                fontWeight: 600 },
+    confirm: { background: '#3D7A6B', color: '#fff',                          border: '1px solid #3D7A6B',                fontWeight: 600 },
     accent:  { background: 'var(--color-accent-sub)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' },
     ghost:   { background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' },
   }
@@ -446,7 +447,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             {/* Header */}
             <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryName}</div>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryName}</div>
                 <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 2 }}>{item.aiTitle || item.senderName}</div>
                 <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {item.participants && item.participants.length > 1
@@ -455,7 +456,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>{formatDate(item.receivedAt)}</div>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)' }}>{formatDate(item.receivedAt)}</div>
                 <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', padding: 2 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -465,15 +466,19 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             {/* Status row */}
             <div style={{ padding: '8px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               {isResolved ? (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', fontWeight: 500, padding: '3px 8px', borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848', color: '#2e6848' }}>
-                  ✓ Done this session
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 500, color: '#2e6848' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#2e6848', flexShrink: 0 }} />
+                  Done this session
                 </div>
               ) : (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', fontWeight: 500, padding: '3px 8px', borderRadius: 4, background: item.status === 'new' ? '#f0f3f8' : '#f8f4ec', border: `1px solid ${item.status === 'new' ? '#284e78' : '#8a6020'}`, color: item.status === 'new' ? '#284e78' : '#8a6020' }}>
-                  {item.status === 'new' ? '● New' : item.status === 'awaiting_reply' ? '→ Awaiting reply' : '● Needs action'}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 500,
+                  color: item.status === 'awaiting_reply' ? '#4A7FA5' : item.status === 'new' ? 'var(--color-text-secondary)' : '#B8964E' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: item.status === 'awaiting_reply' ? '#4A7FA5' : item.status === 'new' ? 'var(--color-text-muted)' : '#B8964E' }} />
+                  {item.status === 'new' ? 'New' : item.status === 'awaiting_reply' ? 'Awaiting reply' : 'Needs action'}
                 </div>
               )}
-              <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', marginLeft: 'auto' }}>{relativeTime(item.receivedAt)}</div>
+              <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginLeft: 'auto' }}>{relativeTime(item.receivedAt)}</div>
             </div>
 
             {/* Scrollable body */}
@@ -529,7 +534,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
               {/* AI Summary */}
               <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-raised)' }}>
-                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M5 3l.75 2.25L8 6l-2.25.75L5 9l-.75-2.25L2 6l2.25-.75z"/></svg>
                   AI summary
                 </div>
@@ -565,7 +570,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
               {/* Note to self */}
               <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-border)' }}>
-                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>Note to self</span>
                   {noteSaved && <span style={{ fontSize: 10, color: '#3D7A6B', fontFamily: 'var(--font-dm-sans)' }}>Saved ✓</span>}
                 </div>
@@ -607,7 +612,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                     { label: 'Account',  value: 'Personal Gmail' },
                   ].map(row => (
                     <div key={row.label}>
-                      <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 2 }}>{row.label}</div>
+                      <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>{row.label}</div>
                       <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.value}</div>
                     </div>
                   ))}
@@ -615,7 +620,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
                 {/* Priority control — dot + label, consistent with card view */}
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
-                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     Priority
                     {(localManual ?? item.manualPriority) && (
                       <span style={{ color: 'var(--color-accent)', fontSize: 'var(--fs-xs)' }}>· manually set</span>
@@ -759,7 +764,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 {hasPaymentSignal && !showPaidPanel && (
                   <ActBtn label="Mark as Paid" onClick={() => { setShowPaidPanel(true); setShowMoreMenu(false) }} variant="accent" />
                 )}
-                <ActBtn label="Mark done" onClick={markDone} variant="ghost" />
+                <ActBtn label="Mark done" onClick={markDone} variant="confirm" />
                 <ActBtn label="Move to…" onClick={() => { setShowMoveTo(m => !m); setShowPaidPanel(false); setShowMoreMenu(false) }} variant="ghost" />
                 <button
                   onClick={() => { setShowMoreMenu(m => !m); setShowPaidPanel(false) }}
