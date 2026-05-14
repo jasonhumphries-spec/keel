@@ -1,14 +1,15 @@
 import type { Metadata } from 'next'
-import { DM_Sans, DM_Mono } from 'next/font/google'
+import { Lora, DM_Mono } from 'next/font/google'
 import { AuthProvider }  from '@/contexts/AuthContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import '@/styles/themes.css'
 import './globals.css'
 
-const dmSans = DM_Sans({
+const lora = Lora({
   subsets:  ['latin'],
-  variable: '--font-dm-sans',
-  weight:   ['300', '400', '500', '600', '700'],
+  variable: '--font-dm-sans',   // keep same var name — every existing reference picks up Lora
+  weight:   ['400', '500', '600', '700'],
+  style:    ['normal', 'italic'],  // italic used for step subtitles and panel captions
 })
 
 const dmMono = DM_Mono({
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="harbour" suppressHydrationWarning>
-      <body className={`${dmSans.variable} ${dmMono.variable}`}>
+      <body className={`${lora.variable} ${dmMono.variable}`}>
         <ThemeProvider>
           <AuthProvider>
             {children}

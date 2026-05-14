@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap');
 @import './pill-tokens.css';
 
 *, *::before, *::after {
@@ -66,7 +66,7 @@ button, input, textarea, select {
 }
 
 body {
-  font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+  font-family: var(--font-dm-sans), 'Lora', serif;
   background: var(--color-bg);
   color: var(--color-text-primary);
   line-height: 1.5;
