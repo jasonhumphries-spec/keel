@@ -273,7 +273,8 @@ export default function CategoriesPage() {
                       <textarea
                         value={cat.descEdited}
                         onChange={e => update(cat.categoryId, 'descEdited', e.target.value)}
-                        onFocus={() => setHoveredId(cat.categoryId)}
+                        onFocus={e => { setHoveredId(cat.categoryId); e.target.style.borderColor = 'var(--color-accent)' }}
+                        onBlurCapture={e => { e.target.style.borderColor = cat.dirty ? 'var(--color-accent)' : 'var(--color-border)' }}
                         placeholder={
                           CATEGORY_DESCRIPTION_HINTS[cat.categoryId]
                             ?? "Describe what emails belong here — who sends them, what they're about, any key names…"
@@ -290,8 +291,6 @@ export default function CategoriesPage() {
                           resize: 'vertical' as const, lineHeight: 1.5, outline: 'none',
                           transition: 'border-color 0.15s',
                         }}
-                        onFocus={e => { e.target.style.borderColor = 'var(--color-accent)' }}
-                        onBlurCapture={e => { e.target.style.borderColor = cat.dirty ? 'var(--color-accent)' : 'var(--color-border)' }}
                       />
 
                       {/* Actions */}
