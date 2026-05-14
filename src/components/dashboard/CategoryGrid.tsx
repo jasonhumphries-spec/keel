@@ -742,7 +742,10 @@ function getRestingSignal(item: KeelItem, itemSigs: KeelSignal[]): string | null
   if (dl?.detectedDate) return `Due ${fmtDay(dl.detectedDate)}`
   const ev = itemSigs.find(s => s.type === 'event')
   if (ev?.detectedDate) return fmtDay(ev.detectedDate)
-  if (item.status === 'awaiting_reply') return 'Awaiting reply'
+  // Don't return 'Awaiting reply' — items showing this are already inside the
+  // "Waiting for a reply" section, so the label is pure redundancy there.
+  // In other contexts (e.g. category view) the status badge on the card handles it.
+  return null
   return null
 }
 
