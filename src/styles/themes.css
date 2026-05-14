@@ -233,9 +233,9 @@
   --color-overlay:          rgba(0, 0, 0, 0.35);
 
   /* Layout — scales with font size */
-  --sidebar-width:    216px;
+  --sidebar-width:    232px;
   --cal-width:        220px;
-  --topbar-height:    48px;
+  --topbar-height:    64px;
 
   /* Radii */
   --radius-sm:   4px;
@@ -255,19 +255,19 @@
 
 /* Layout widths scale with font size */
 html[data-fontsize="sm"] {
-  --sidebar-width: 188px;
+  --sidebar-width: 204px;
   --cal-width:     190px;
 }
 html[data-fontsize="md"] {
-  --sidebar-width: 216px;
+  --sidebar-width: 232px;
   --cal-width:     220px;
 }
 html[data-fontsize="lg"] {
-  --sidebar-width: 240px;
+  --sidebar-width: 256px;
   --cal-width:     248px;
 }
 html[data-fontsize="xl"] {
-  --sidebar-width: 268px;
+  --sidebar-width: 284px;
   --cal-width:     276px;
 }
 

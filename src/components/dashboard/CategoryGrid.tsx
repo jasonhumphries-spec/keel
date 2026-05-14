@@ -789,6 +789,12 @@ function ItemRow({
   const restSig   = getRestingSignal(item, itemSigs)
   const dateStr   = item.receivedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
+  // "New" badge — item created within last 3 hours
+  const ageMs        = Date.now() - (item.createdAt?.getTime?.() ?? 0)
+  const isJustIn     = ageMs < 60 * 60 * 1000         // < 1 hour
+  const isRecentNew  = ageMs < 3 * 60 * 60 * 1000     // < 3 hours
+  const newLabel     = isJustIn ? 'Just in' : 'New'
+
   const handleDone = async (e: React.MouseEvent) => {
     e.stopPropagation()
     await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
@@ -896,6 +902,19 @@ function ItemRow({
 
         {/* Title row — always visible, title + resting signal + date all on one line */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          {/* New / Just in badge */}
+          {isRecentNew && !isResolved && (
+            <span style={{
+              fontFamily: 'var(--font-dm-mono)', fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+              color: isJustIn ? '#3D7A6B' : 'var(--color-accent)',
+              border: `1px solid ${isJustIn ? '#3D7A6B' : 'var(--color-accent)'}`,
+              borderRadius: 3, padding: '1px 5px', flexShrink: 0,
+              whiteSpace: 'nowrap' as const, opacity: hovered ? 1 : 0.8,
+            }}>
+              {newLabel}
+            </span>
+          )}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: 13, fontWeight: hovered || calHighlighted ? 500 : 400,

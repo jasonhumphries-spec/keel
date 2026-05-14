@@ -181,9 +181,9 @@ function SidebarInner() {
   return (
     <div style={{ width: 'var(--sidebar-width)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── Logo — same warm bg, KEEL in brass ── */}
-      <div style={{ background: 'var(--color-bg)', flexShrink: 0 }}>
-        <div style={{ padding: '18px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* ── Logo — height matches topbar so they form one continuous band ── */}
+      <div style={{ background: 'var(--color-bg)', flexShrink: 0, borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ height: 'var(--topbar-height)', padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <KeelLogo />
           <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: '#B8964E', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-dm-mono)' }}>
             Keel

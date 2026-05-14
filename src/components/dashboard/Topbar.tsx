@@ -192,7 +192,7 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
 
   return (
     <>
-      <div style={{ background: 'var(--color-bg)', padding: '0 20px', height: 'var(--topbar-height)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)', padding: '0 20px', height: 'var(--topbar-height)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
 
         <div>
           <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>{greeting}</div>
