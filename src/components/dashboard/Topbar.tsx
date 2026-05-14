@@ -201,7 +201,7 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
             {/* Monitoring / scan status — with inline refresh icon */}
             {isScanning ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-accent)', letterSpacing: '0.02em' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-accent)', display: 'inline-block', animation: 'pulse-dot 1s ease-in-out infinite' }} />
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-accent)", display: "inline-block", animation: "pulse-dot 1s ease-in-out infinite" }} />
                 Scanning…
               </span>
             ) : (
@@ -213,8 +213,8 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
               >
                 {isMonitoring
-                  ? <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3D7A6B', flexShrink: 0, display: 'inline-block', animation: 'pulse-dot 2.5s ease-in-out infinite' }} />
-                  : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
+                  ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3D7A6B', flexShrink: 0, display: 'inline-block', animation: 'pulse-dot 2.5s ease-in-out infinite' }} />
+                  : <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-border-strong)', flexShrink: 0, display: 'inline-block' }} />
                 }
                 {isMonitoring
                   ? lastBackgroundScanned

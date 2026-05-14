@@ -376,20 +376,27 @@ function StepHeader({
   title,
   subtitle,
   badge,
+  accent,
 }: {
   step:     1 | 2 | 3 | 4 | 5
   title:    string
   subtitle: string
   badge:    string
+  accent?:  string
 }) {
-  const c = STEP_COLOURS[step]
+  const c         = STEP_COLOURS[step]
+  const col       = accent ?? c.border
+  const bgTint    = accent ? `${accent}18` : c.num
+  const textCol   = accent ?? c.text
+  const badgeBg   = accent ? `${accent}12` : c.badge
+  const badgeTxt  = accent ?? c.badgeText
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, paddingBottom: 4 }}>
       <div style={{
         width: 26, height: 26, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 3,
-        background: c.num, color: c.text, border: `1.5px solid ${c.border}`,
+        background: bgTint, color: textCol, border: `1.5px solid ${col}`,
       }}>
         {step}
       </div>
@@ -403,9 +410,10 @@ function StepHeader({
       </div>
       <div style={{
         fontFamily: 'var(--font-dm-mono)',
-        fontSize: 11, fontWeight: 500,
+        fontSize: 11, fontWeight: 600,
         padding: '2px 9px', borderRadius: 10, flexShrink: 0, marginTop: 4,
-        background: c.badge, color: c.badgeText,
+        background: badgeBg, color: badgeTxt,
+        border: `1px solid ${col}38`,
       }}>
         {badge}
       </div>
@@ -939,6 +947,7 @@ export function DashboardShell2() {
                   title="A few items need sorting first"
                   subtitle="Keel remembers your choices. Classifying now means nothing urgent gets missed."
                   badge={`${uncatItems.length} to sort`}
+                  accent="#B8964E"
                 />
                 <TriagePanel
                   count={uncatItems.length}
@@ -964,6 +973,7 @@ export function DashboardShell2() {
               title="These look urgent — worth a look first"
               subtitle="Time-sensitive items that may need action today or very soon."
               badge={`${urgentCount} item${urgentCount !== 1 ? 's' : ''}`}
+              accent="#9C5E2B"
             />
             {urgentData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
@@ -999,6 +1009,7 @@ export function DashboardShell2() {
               title="Waiting for a reply — worth a nudge?"
               subtitle="You sent the last message. These may benefit from a follow-up."
               badge={`${awaitingCount} item${awaitingCount !== 1 ? 's' : ''}`}
+              accent="#4A7FA5"
             />
             {awaitingData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
@@ -1031,6 +1042,7 @@ export function DashboardShell2() {
               title="On your radar — when you're ready"
               subtitle="These can wait a little, but are worth getting to today or tomorrow."
               badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
+              accent="#B8964E"
             />
             {highData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
@@ -1068,6 +1080,7 @@ export function DashboardShell2() {
               title="The rest — just so you know"
               subtitle="Receipts, confirmations, auto-pay bills. No action needed."
               badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}
+              accent="#6B7A82"
             />
             {fyiData.length === 0 ? (
               <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
