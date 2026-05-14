@@ -13,7 +13,7 @@ import { SettingsPanel }     from '../settings/SettingsPanel'
 import { CategoriseModal }   from './CategoriseModal'
 import { BottomNav }         from './BottomNav'
 import { DevTools }          from '../dev/DevTools'
-import { CategoryCard, scoreToLevel, getPriorityColour } from './CategoryGrid'
+import { CategoryCard, ItemList, scoreToLevel, getPriorityColour } from './CategoryGrid'
 import { SessionBanner }          from '@/components/layout/SessionBanner'
 import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
 import { CategoryFilterProvider, useCategoryFilter } from '@/contexts/CategoryFilterContext'
@@ -955,11 +955,14 @@ export function DashboardShell2() {
               </div>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
-                  {urgentData.map(d => (
-                    <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
-                  ))}
-                </div>
+                <ItemList
+                  categoryData={urgentData}
+                  signals={signals}
+                  uid={uid}
+                  onItemClick={item => setSelectedItem(item)}
+                  onResolved={handleResolved}
+                  resolvedItems={resolvedItems}
+                />
                 {filteredCategoryData.length - urgentData.length > 0 && (
                   <SectNote>
                     Only categories with urgent items — {filteredCategoryData.length - urgentData.length} others have nothing at this level.
@@ -991,11 +994,14 @@ export function DashboardShell2() {
                 Nothing waiting on a reply right now.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
-                {awaitingData.map(d => (
-                  <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
-                ))}
-              </div>
+              <ItemList
+                categoryData={awaitingData}
+                signals={signals}
+                uid={uid}
+                onItemClick={item => setSelectedItem(item)}
+                onResolved={handleResolved}
+                resolvedItems={resolvedItems}
+              />
             )}
           </StepRow>
           </div>
@@ -1020,11 +1026,14 @@ export function DashboardShell2() {
                 Nothing in this tier right now.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 10 }}>
-                {highData.map(d => (
-                  <CategoryCard key={d.category.categoryId} data={d} {...cardProps} />
-                ))}
-              </div>
+              <ItemList
+                categoryData={highData}
+                signals={signals}
+                uid={uid}
+                onItemClick={item => setSelectedItem(item)}
+                onResolved={handleResolved}
+                resolvedItems={resolvedItems}
+              />
             )}
           </StepRow>
 

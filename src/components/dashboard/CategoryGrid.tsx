@@ -699,6 +699,355 @@ export function CategoryCard({
   )
 }
 
+// ─── Hover-reveal row (ItemRow / ItemList) ────────────────────────────────────
+//
+// Used in the Urgent, Awaiting reply, and High priority step bands.
+// Items sit quietly at rest — only the single critical fact (amount due,
+// deadline date) is visible for High/Urgent items. Everything else (subtitle,
+// signal pills, action buttons) reveals on hover.
+// The left border fires in priority colour on hover, grounding the interaction.
+
+function fmtAmt(pence: number | null, currency: string | null): string | null {
+  if (!pence) return null
+  const sym = (currency ?? 'GBP') === 'GBP' ? '£' : '$'
+  const val = pence / 100
+  return `${sym}${val % 1 === 0 ? val.toLocaleString('en-GB') : val.toFixed(2)}`
+}
+
+function fmtDay(d: Date): string {
+  const today    = new Date()
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+  if (d.toDateString() === today.toDateString())    return 'Today'
+  if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+/**
+ * The single critical fact shown at rest for High (3) + Urgent (4) items.
+ * Priority: Payment > Deadline/RSVP > Event > Awaiting reply status.
+ */
+function getRestingSignal(item: KeelItem, itemSigs: KeelSignal[]): string | null {
+  const level = scoreToLevel(item.aiImportanceScore ?? 0.5)
+  if (level < 3) return null
+
+  const pay = itemSigs.find(s => s.type === 'payment')
+  if (pay) {
+    const amt  = fmtAmt(pay.detectedAmount, pay.currency)
+    const date = pay.detectedDate ? fmtDay(pay.detectedDate) : null
+    if (amt && date) return `${amt} · ${date}`
+    if (amt)         return amt
+    if (date)        return `Payment · ${date}`
+  }
+  const dl = itemSigs.find(s => s.type === 'deadline' || s.type === 'rsvp')
+  if (dl?.detectedDate) return `Due ${fmtDay(dl.detectedDate)}`
+  const ev = itemSigs.find(s => s.type === 'event')
+  if (ev?.detectedDate) return fmtDay(ev.detectedDate)
+  if (item.status === 'awaiting_reply') return 'Awaiting reply'
+  return null
+}
+
+// Resting opacity for the title by priority level
+const ROW_RESTING_OPACITY: Record<1|2|3|4, number> = { 4: 0.78, 3: 0.60, 2: 0.45, 1: 0.30 }
+
+function ItemRow({
+  item,
+  isResolved,
+  signals,
+  uid,
+  onItemClick,
+  onResolved,
+  snoozingId,
+  setSnoozingId,
+}: {
+  item:          KeelItem
+  isResolved:    boolean
+  signals:       KeelSignal[]
+  uid:           string
+  onItemClick:   (item: KeelItem) => void
+  onResolved:    (item: KeelItem) => void
+  snoozingId:    string | null
+  setSnoozingId: (id: string | null) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+
+  const isSnoozed = item.status === 'snoozed'
+  const itemSigs  = signals.filter(s => s.itemId === item.itemId && s.status === 'active')
+  const pc        = getPriorityColour(item)
+  const level     = scoreToLevel(item.aiImportanceScore ?? 0.5) as 1|2|3|4
+  const titleOp   = isResolved ? 0.65 : isSnoozed ? 0.28 : (hovered ? 1 : ROW_RESTING_OPACITY[level])
+  const restSig   = getRestingSignal(item, itemSigs)
+  const dateStr   = item.receivedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+  const handleDone = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    })
+    onResolved(item)
+  }
+
+  const handleSnooze = async (days: number) => {
+    const wake = new Date(); wake.setDate(wake.getDate() + days)
+    setSnoozingId(null)
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status: 'snoozed', snoozedUntil: Timestamp.fromDate(wake),
+      preSnoozePriority: item.aiImportanceScore, updatedAt: Timestamp.now(),
+    })
+  }
+
+  const handleUnsnooze = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
+      status: 'new', snoozedUntil: null, preSnoozePriority: null,
+      aiImportanceScore: item.preSnoozePriority ?? item.aiImportanceScore,
+      updatedAt: Timestamp.now(),
+    })
+  }
+
+  // ── Snoozed: collapsed single-row treatment ─────────────────────────────────
+  if (isSnoozed) {
+    const wakeDate = item.snoozedUntil instanceof Date
+      ? item.snoozedUntil
+      : (item.snoozedUntil as unknown as { toDate?: () => Date })?.toDate?.()
+    const wakeStr = wakeDate?.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    return (
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 16px 7px 20px',
+          borderLeft: '3px solid #9CA3AF',
+          background: hovered ? 'rgba(255,255,255,0.5)' : 'transparent',
+          opacity: 0.5, transition: 'background 0.13s',
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span style={{ flex: 1, fontSize: 12, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {item.aiTitle || item.senderName}
+        </span>
+        {wakeStr && (
+          <span style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+            until {wakeStr}
+          </span>
+        )}
+        <button onClick={handleUnsnooze} style={{
+          fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 6px', borderRadius: 4,
+          border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+          color: 'var(--color-text-muted)', cursor: 'pointer',
+        }}>Wake</button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      onClick={() => !isResolved && onItemClick(item)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center',
+        padding: '0 16px 0 20px',
+        cursor: isResolved ? 'default' : 'pointer',
+        minHeight: 44,
+        background: isResolved
+          ? 'rgba(46,104,72,0.04)'
+          : hovered ? 'rgba(255,255,255,0.75)' : 'transparent',
+        borderLeft: `3px solid ${isResolved ? '#2e6848' : hovered ? pc : 'transparent'}`,
+        transition: 'background 0.13s ease, border-left-color 0.13s ease',
+      }}
+    >
+      {/* Priority dot — invisible at rest, pops in on hover */}
+      <div style={{
+        width: 7, height: 7, borderRadius: '50%',
+        background: isResolved ? '#2e6848' : pc,
+        flexShrink: 0, marginRight: 10,
+        opacity: hovered || isResolved ? 1 : 0,
+        transform: hovered || isResolved ? 'scale(1)' : 'scale(0.3)',
+        transition: 'opacity 0.13s, transform 0.13s',
+      }} />
+
+      {/* Text body */}
+      <div style={{ flex: 1, minWidth: 0, padding: '9px 0' }}>
+        {/* Title — opacity varies by priority level at rest */}
+        <div style={{
+          fontSize: 13, fontWeight: hovered ? 500 : 400,
+          color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
+          opacity: titleOp,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          maxWidth: 480, transition: 'opacity 0.13s',
+        }}>
+          {item.aiTitle || item.senderName}
+        </div>
+        {/* Subtitle — sender + summary snippet, hover only */}
+        <div style={{
+          fontSize: 10.5, color: 'var(--color-text-muted)',
+          opacity: hovered ? 0.7 : 0,
+          marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          transition: 'opacity 0.13s',
+        }}>
+          {item.senderName}{item.aiSummary ? ` · ${item.aiSummary.slice(0, 90)}` : ''}
+        </div>
+      </div>
+
+      {/* Category tag — visible at rest, fades on hover as signals take over */}
+      <span style={{
+        fontSize: 10, fontWeight: 500, color: 'var(--color-text-muted)',
+        opacity: hovered ? 0 : 0.38,
+        marginRight: 10, flexShrink: 0, whiteSpace: 'nowrap',
+        transition: 'opacity 0.13s',
+      }}>{item.categoryName}</span>
+
+      {/* Resting signal — the critical fact for High/Urgent (amount/date).
+          Fades out when hover signals take its place. */}
+      {restSig && (
+        <span style={{
+          fontSize: 11, fontWeight: 500, color: pc,
+          opacity: hovered ? 0 : (level === 4 ? 0.72 : 0.55),
+          marginRight: 10, flexShrink: 0, whiteSpace: 'nowrap',
+          transition: 'opacity 0.13s', pointerEvents: 'none',
+        }}>{restSig}</span>
+      )}
+
+      {/* Hover: full signal pills slide in */}
+      <div style={{
+        display: 'flex', gap: 4, alignItems: 'center',
+        marginRight: 8, flexShrink: 0,
+        opacity: hovered ? 1 : 0,
+        transform: hovered ? 'translateX(0)' : 'translateX(8px)',
+        transition: 'opacity 0.15s, transform 0.15s',
+        pointerEvents: hovered ? 'auto' : 'none',
+      }}>
+        {itemSigs.slice(0, 2).map(sig => (
+          <MiniPill key={sig.signalId} signal={sig} />
+        ))}
+      </div>
+
+      {/* Hover: action buttons slide in */}
+      {!isResolved ? (
+        <div style={{
+          display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0,
+          opacity: hovered ? 1 : 0,
+          transform: hovered ? 'translateX(0)' : 'translateX(6px)',
+          transition: 'opacity 0.18s 0.02s, transform 0.18s 0.02s',
+          pointerEvents: hovered ? 'auto' : 'none',
+        }} onClick={e => e.stopPropagation()}>
+          <button onClick={handleDone} style={{
+            fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+            background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
+          }}>✓ Done</button>
+          <button onClick={() => onItemClick(item)} style={{
+            fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
+            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
+            background: 'rgba(184,150,78,0.09)', color: '#A07C3A', border: '1px solid rgba(184,150,78,0.18)',
+          }}>Open</button>
+          {snoozingId === item.itemId ? (
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+              {([{l:'1d',d:1},{l:'3d',d:3},{l:'7d',d:7}] as const).map(o => (
+                <button key={o.d} onClick={() => handleSnooze(o.d)} style={{
+                  fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 5px',
+                  borderRadius: 3, border: '1px solid var(--color-accent)',
+                  background: 'var(--color-accent-sub)', color: 'var(--color-accent)',
+                  cursor: 'pointer', fontWeight: 600,
+                }}>{o.l}</button>
+              ))}
+              <button onClick={() => setSnoozingId(null)} style={{
+                fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '2px 4px',
+                borderRadius: 3, border: '1px solid var(--color-border)',
+                background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
+              }}>×</button>
+            </div>
+          ) : (
+            <button onClick={() => setSnoozingId(item.itemId)} title="Snooze" style={{
+              background: 'transparent', border: '1px solid var(--color-border)',
+              borderRadius: 5, padding: '3px 5px', cursor: 'pointer',
+              color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center',
+            }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      ) : (
+        <span style={{
+          fontFamily: 'var(--font-dm-mono)', fontSize: 10, padding: '2px 7px', flexShrink: 0,
+          borderRadius: 4, background: '#f0f6f2', border: '1px solid #2e6848', color: '#2e6848', whiteSpace: 'nowrap',
+        }}>✓ Done</span>
+      )}
+
+      {/* Date — always present, low-contrast at rest */}
+      <div style={{
+        fontSize: 10, color: 'var(--color-text-muted)',
+        flexShrink: 0, marginLeft: 8,
+        opacity: hovered ? 0.6 : (level === 4 ? 0.45 : level === 3 ? 0.35 : 0.22),
+        fontVariantNumeric: 'tabular-nums' as const,
+        minWidth: 32, textAlign: 'right' as const,
+        transition: 'opacity 0.13s',
+      }}>{dateStr}</div>
+    </div>
+  )
+}
+
+/**
+ * Flat hover-reveal list for Urgent, Awaiting reply, and High priority step bands.
+ * Groups items by category with a quiet label, then renders an ItemRow for each.
+ * FYI section and mobile continue to use CategoryCard.
+ */
+export function ItemList({
+  categoryData,
+  signals,
+  uid,
+  onItemClick,
+  onResolved,
+  resolvedItems,
+}: {
+  categoryData:  CategoryWithItems[]
+  signals:       KeelSignal[]
+  uid:           string
+  onItemClick:   (item: KeelItem) => void
+  onResolved:    (item: KeelItem) => void
+  resolvedItems: Map<string, KeelItem>
+}) {
+  const [snoozingId, setSnoozingId] = useState<string | null>(null)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', margin: '0 -16px' }}>
+      {categoryData.map(({ category, items }) => (
+        <div key={category.categoryId}>
+          {/* Quiet category anchor label — contextual without being heavy */}
+          <div style={{
+            padding: '8px 20px 2px',
+            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            color: 'var(--color-text-muted)', opacity: 0.45,
+          }}>
+            {category.name}
+          </div>
+          {items.map(item => (
+            <ItemRow
+              key={item.itemId}
+              item={item}
+              isResolved={resolvedItems.has(item.itemId)}
+              signals={signals}
+              uid={uid}
+              onItemClick={onItemClick}
+              onResolved={onResolved}
+              snoozingId={snoozingId}
+              setSnoozingId={setSnoozingId}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function SkeletonCard() {
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
