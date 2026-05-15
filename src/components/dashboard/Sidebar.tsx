@@ -18,13 +18,28 @@ function KeelLogo() {
 
   const handleEnter = () => {
     if (timerRef.current) clearTimeout(timerRef.current)
+    if (outroRef.current) clearTimeout(outroRef.current)
+    setOutro(false)
     setActive(true)
   }
 
+  const [outro, setOutro] = useState(false)
+  const outroRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleLeave = () => {
-    // Keep animation classes alive for 2.5s after mouse leaves
-    timerRef.current = setTimeout(() => setActive(false), 2500)
+    // Sway for 1.5s then drain the water back down (0.6s), then clean up
+    timerRef.current = setTimeout(() => {
+      setOutro(true)
+      outroRef.current = setTimeout(() => {
+        setActive(false)
+        setOutro(false)
+      }, 600)
+    }, 1500)
   }
+
+  const waveClass = !active
+    ? 'keel-wave-group-idle'
+    : outro ? 'keel-wave-group-outro' : 'keel-wave-group-active'
 
   return (
     <>
@@ -32,6 +47,10 @@ function KeelLogo() {
         @keyframes keel-wave-rise {
           0%   { transform: translateY(100%); }
           100% { transform: translateY(22%); }
+        }
+        @keyframes keel-wave-drop {
+          0%   { transform: translateY(22%); }
+          100% { transform: translateY(105%); }
         }
         @keyframes keel-wave-sway {
           0%   { transform: translateY(22%) translateX(0px); }
@@ -50,6 +69,7 @@ function KeelLogo() {
         }
         .keel-wave-group-idle   { transform: translateY(100%); }
         .keel-wave-group-active { animation: keel-wave-rise 0.55s ease forwards, keel-wave-sway 3s ease-in-out 0.55s infinite; }
+        .keel-wave-group-outro  { animation: keel-wave-drop 0.55s ease-in forwards; }
         .keel-circle-active     { animation: keel-circle-blue 1.2s ease forwards; }
         .keel-fin-1-active      { animation: keel-fin-flash 1.2s ease forwards 0.05s; }
         .keel-fin-2-active      { animation: keel-fin-flash 1.2s ease forwards 0.12s; }
@@ -80,7 +100,7 @@ function KeelLogo() {
                 <stop offset="100%" stopColor="#1a5c82" stopOpacity={0.92} />
               </linearGradient>
             </defs>
-            <g className={active ? 'keel-wave-group-active' : 'keel-wave-group-idle'}>
+            <g className={waveClass}>
               {/* Back wave layer */}
               <path
                 d="M-10 28 Q7 22 17 28 Q27 34 37 28 Q47 22 57 28 Q67 34 78 28 L78 80 L-10 80 Z"
