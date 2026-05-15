@@ -406,7 +406,7 @@ export async function POST(req: NextRequest) {
       // These are .ics meeting invitations — Google Calendar already handles them.
       if (excludeCalendarInvites && hasCalendarInvite(detail)) {
         console.log(`📅 Calendar invite — skipped: ${extractHeader(detail.payload?.headers ?? [], 'subject').slice(0, 50)}`)
-        skipped++
+        unchangedSkipped++
         continue
       }
 
