@@ -1028,8 +1028,9 @@ export function DashboardShell2() {
                 categoryData={actionData}
                 signals={signals}
                 resolvedItems={resolvedItems}
-                onItemClick={setExpandedItem}
-                onMarkDone={handleMarkDone}
+                onItemClick={item => setSelectedItem(item)}
+                onResolved={handleMarkDone}
+                uid={uid}
               />
             </StepRow>
             <div style={{ height: 20, background: 'transparent' }} />
