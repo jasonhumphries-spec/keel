@@ -320,6 +320,20 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
   const [saving, setSaving]               = useState(false)
   const [reanalysing,   setReanalysing]   = useState(false)
   const [reanalyseMsg,  setReanalyseMsg]  = useState('')
+  const [emailClient,   setEmailClient]   = useState<'gmail' | 'apple_mail'>(() =>
+    typeof window !== 'undefined'
+      ? (localStorage.getItem('keel_email_client') as 'gmail' | 'apple_mail') ?? 'gmail'
+      : 'gmail'
+  )
+  useEffect(() => {
+    const sync = () => setEmailClient(
+      (localStorage.getItem('keel_email_client') as 'gmail' | 'apple_mail') ?? 'gmail'
+    )
+    window.addEventListener('storage', sync)
+    // Also read immediately on open in case settings changed since last render
+    sync()
+    return () => window.removeEventListener('storage', sync)
+  }, [])
   const [noteText,      setNoteText]      = useState(item?.userNote ?? '')
   const [noteSaving,    setNoteSaving]    = useState(false)
   const [noteSaved,     setNoteSaved]     = useState(false)
@@ -777,29 +791,18 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               </div>
             ) : (
               <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', flexShrink: 0, background: 'var(--color-surface)' }}>
-                {/* Open email — target depends on user's email client preference */}
+                {/* Open email — Gmail or Apple Mail depending on settings */}
                 {(() => {
-                  const pref = typeof window !== 'undefined'
-                    ? (localStorage.getItem('keel_email_client') as 'gmail' | 'apple_mail' | null) ?? 'gmail'
-                    : 'gmail'
-                  const isAppleMail = pref === 'apple_mail'
-                  const canOpenAppleMail = isAppleMail && !!item.rfcMessageId
-                  const label  = isAppleMail ? 'Open in Mail' : 'Open in Gmail'
+                  const isAppleMail = emailClient === 'apple_mail'
+                  const label = isAppleMail && item.rfcMessageId ? 'Open in Mail' : 'Open in Gmail'
                   const onClick = () => {
                     if (isAppleMail && item.rfcMessageId) {
-                      // message:// URL scheme — opens directly in Mail.app on Mac
                       window.location.href = `message://%3C${encodeURIComponent(item.rfcMessageId)}%3E`
                     } else {
                       window.open(`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`, '_blank')
                     }
                   }
-                  return (
-                    <ActBtn
-                      label={isAppleMail && !item.rfcMessageId ? 'Open in Gmail' : label}
-                      onClick={onClick}
-                      variant="primary"
-                    />
-                  )
+                  return <ActBtn label={label} onClick={onClick} variant="primary" />
                 })()}
                 {(item.mergedThreadIds ?? []).map((tid, i) => (
                   <ActBtn key={tid} label={`Open thread ${i + 2} in Gmail`} onClick={() => window.open(`https://mail.google.com/mail/u/0/#inbox/${tid}`, '_blank')} variant="ghost" />

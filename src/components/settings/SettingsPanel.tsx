@@ -138,6 +138,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const handleEmailClientChange = async (value: 'gmail' | 'apple_mail') => {
     setEmailClientState(value)
     localStorage.setItem('keel_email_client', value)
+    // Notify same-tab listeners (storage event only fires cross-tab natively)
+    window.dispatchEvent(new Event('storage'))
     if (!user) return
     const { doc: fDoc, updateDoc } = await import('firebase/firestore')
     const { db: fDb } = await import('@/lib/firebase')
