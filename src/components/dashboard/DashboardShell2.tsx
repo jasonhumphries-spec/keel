@@ -543,81 +543,132 @@ function FyiSection({
   const hidden  = categoryData.length - 5
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {visible.map(({ category, items }) => {
-        const isExpanded = expandedId === category.categoryId
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Collapsed rows in a responsive grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gap: 3,
+      }}>
+        {visible.map(({ category, items }) => {
+          const isExpanded = expandedId === category.categoryId
+          if (isExpanded) return null // expanded one renders below full-width
+          return (
+            <div key={category.categoryId} style={{
+              background: 'var(--color-surface)',
+              border: '0.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              overflow: 'hidden',
+            }}>
+              <div
+                onClick={() => onExpandChange(category.categoryId)}
+                style={{
+                  padding: '8px 14px',
+                  display: 'flex', gap: 10, alignItems: 'center',
+                  cursor: 'pointer',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(44,40,36,0.03)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{
+                  fontFamily: 'var(--font-dm-mono)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 600,
+                  letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+                  color: 'var(--color-text-secondary)',
+                  width: 100, flexShrink: 0,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {category.name}
+                </div>
+                <div style={{
+                  fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
+                  flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {items.slice(0, 2).map(i => i.aiTitle || i.senderName).join(' · ')}
+                  {items.length > 2 && ` · +${items.length - 2} more`}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-dm-mono)', fontSize: 10,
+                  color: 'var(--color-text-muted)', flexShrink: 0,
+                  background: 'var(--color-surface-recessed)',
+                  border: '0.5px solid var(--color-border)',
+                  borderRadius: 8, padding: '1px 7px',
+                }}>
+                  {items.length}
+                </div>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                  style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}
+                >
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Expanded category — full width below the grid */}
+      {expandedId && (() => {
+        const match = visible.find(d => d.category.categoryId === expandedId)
+        if (!match) return null
         return (
-          <div key={category.categoryId} style={{
+          <div style={{
             background: 'var(--color-surface)',
             border: '0.5px solid var(--color-border)',
+            borderLeft: '2px solid var(--color-accent)',
             borderRadius: 'var(--radius-md)',
             overflow: 'hidden',
           }}>
-            {/* Collapsed header row */}
+            {/* Expanded header */}
             <div
-              onClick={() => onExpandChange(isExpanded ? null : category.categoryId)}
+              onClick={() => onExpandChange(null)}
               style={{
                 padding: '8px 14px',
                 display: 'flex', gap: 10, alignItems: 'center',
                 cursor: 'pointer',
-                background: isExpanded ? 'rgba(44,40,36,0.03)' : 'transparent',
-                transition: 'background 0.1s',
+                background: 'rgba(44,40,36,0.03)',
+                borderBottom: '0.5px solid var(--color-border)',
               }}
             >
               <div style={{
                 fontFamily: 'var(--font-dm-mono)',
                 fontSize: 'var(--fs-xs)', fontWeight: 600,
                 letterSpacing: '0.08em', textTransform: 'uppercase' as const,
-                color: isExpanded ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                width: 120, flexShrink: 0,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                color: 'var(--color-accent)',
+                width: 100, flexShrink: 0,
               }}>
-                {category.name}
+                {match.category.name}
               </div>
-              <div style={{
-                fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
-                flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {items.slice(0, 4).map(i => i.aiTitle || i.senderName).join(' · ')}
-                {items.length > 4 && ` · +${items.length - 4} more`}
-              </div>
+              <div style={{ flex: 1 }} />
               <div style={{
                 fontFamily: 'var(--font-dm-mono)', fontSize: 10,
-                color: 'var(--color-text-muted)', flexShrink: 0,
-                background: 'var(--color-surface-recessed)',
-                border: '0.5px solid var(--color-border)',
+                color: 'var(--color-accent)', flexShrink: 0,
+                background: 'var(--color-accent-sub)',
+                border: '0.5px solid var(--color-accent)',
                 borderRadius: 8, padding: '1px 7px',
               }}>
-                {items.length}
+                {match.items.length}
               </div>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                style={{
-                  flexShrink: 0, color: 'var(--color-text-muted)',
-                  transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.15s',
-                }}
+                style={{ flexShrink: 0, color: 'var(--color-text-muted)', transform: 'rotate(180deg)' }}
               >
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
             </div>
-
-            {/* Expanded: hover-reveal ItemList rows (matches sections 1–3) */}
-            {isExpanded && (
-              <div style={{ borderTop: '0.5px solid var(--color-border)' }}>
-                <ItemList
-                  categoryData={[{ category, items }]}
-                  signals={signals}
-                  resolvedItems={resolvedItems}
-                  onItemClick={onItemClick}
-                  onResolved={onResolved}
-                  uid={uid}
-                />
-              </div>
-            )}
+            <ItemList
+              categoryData={[match]}
+              signals={signals}
+              resolvedItems={resolvedItems}
+              onItemClick={onItemClick}
+              onResolved={onResolved}
+              uid={uid}
+            />
           </div>
         )
-      })}
+      })()}
 
       {!showAll && hidden > 0 && (
         <button
