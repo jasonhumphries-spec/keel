@@ -140,12 +140,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       scanCount,
     }, { merge: true })
 
-    // New users go to onboarding
+    // New users go to onboarding — also auto-enable background scanning
     if (isNewUser) {
+      // Enable background scanning by default (non-blocking — fire and forget)
+      fetch('/api/inbox-watch', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ uid, action: 'enable', providerId: 'gmail' }),
+      }).catch(err => console.warn('[AuthContext] Auto-enable background scan failed:', err))
+
       if (typeof window !== 'undefined') {
         window.location.href = '/onboarding'
       }
       return
+    }
+
+    // Existing users: enable background scanning if they've never set it
+    // (upgrades existing accounts to the new default-on behaviour)
+    const rootSnap = await getDoc(doc(db, `users/${uid}`))
+    if (rootSnap.data()?.autoScanEnabled === undefined) {
+      fetch('/api/inbox-watch', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ uid, action: 'enable', providerId: 'gmail' }),
+      }).catch(err => console.warn('[AuthContext] Auto-enable background scan (existing user) failed:', err))
     }
 
     // Auto-scan on page load is disabled — background scanning via Gmail Pub/Sub
@@ -269,12 +287,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async () => {
     try {
       // signInWithPopup works on mobile when triggered by direct user gesture (button tap)
-      const result     = await signInWithPopup(auth, googleProvider)
-      const credential = GoogleAuthProvider.credentialFromResult(result)
-      const token      = credential?.accessToken ?? null
+      const result      = await signInWithPopup(auth, googleProvider)
+      const credential  = GoogleAuthProvider.credentialFromResult(result)
+      const token       = credential?.accessToken ?? null
+      // Firebase exposes the OAuth refresh token via result.user — grab it so
+      // server-side routes can refresh the access token without the user re-signing in
+      const refreshTok  = (result.user as any).stsTokenManager?.refreshToken
+                       ?? (result as any)._tokenResponse?.refreshToken
+                       ?? null
       if (token && result.user) {
         setAccessToken(token)
-        await saveTokenAndScan(result.user, token)
+        await saveTokenAndScan(result.user, token, refreshTok ?? undefined)
       }
     } catch (error: any) {
       if (

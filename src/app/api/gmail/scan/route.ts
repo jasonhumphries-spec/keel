@@ -75,7 +75,7 @@ async function getValidAccessToken(db: FirebaseFirestore.Firestore, uid: string)
   return newToken
 }
 
-async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social']) {
+async function fetchGmailMessages(accessToken: string, daysBack = 7, excludedLabels: string[] = ['promotions', 'social', 'spam']) {
   const messages: { id: string; threadId: string }[] = []
   let pageToken: string | undefined
 
@@ -143,6 +143,44 @@ function hasCalendarInvite(detail: any): boolean {
   }
   return searchParts(detail.payload)
 }
+
+// Returns true if this email is a calendar event reminder notification.
+// These are automated "your event starts in X minutes" emails — never actionable in Keel.
+// Covers Google Calendar, Outlook, Apple Calendar, and generic reminder patterns.
+function isCalendarReminder(detail: any): boolean {
+  if (!detail?.payload) return false
+  const headers  = detail.payload.headers ?? []
+  const subject  = extractHeader(headers, 'subject').toLowerCase().trim()
+  const from     = extractHeader(headers, 'from').toLowerCase()
+  const replyTo  = extractHeader(headers, 'reply-to').toLowerCase()
+
+  // Known calendar notification senders
+  const CALENDAR_SENDERS = [
+    'calendar-notification@google.com',
+    'calendar@google.com',
+    'no-reply@calendar.google.com',
+    'calendar-noreply@google.com',
+    'reminders@calendar.google.com',
+    'noreply@notify.microsoft.com',      // Outlook / Teams calendar
+    'calendar@e.apple.com',              // Apple Calendar
+    'invitations@apple.com',
+  ]
+  if (CALENDAR_SENDERS.some(s => from.includes(s) || replyTo.includes(s))) return true
+
+  // Subject-line patterns common to all calendar apps
+  const REMINDER_PATTERNS = [
+    /^reminder:/,
+    /^reminder for /,
+    /^event reminder/,
+    /^upcoming event/,
+    /^you have an upcoming/,
+    /^calendar reminder/,
+    /starts in \d+ (minute|hour)/,
+    /is (starting|starting now|about to start)/,
+  ]
+  return REMINDER_PATTERNS.some(p => p.test(subject))
+}
+
 
 function getThreadParticipants(thread: any): string[] {
   const messages  = thread?.messages ?? []
@@ -258,8 +296,8 @@ export async function POST(req: NextRequest) {
     const accountEmail        = (accountDoc.data()?.email as string ?? '').toLowerCase()
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
-    // Labels excluded from scanning — defaults to promotions + social if not set
-    const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social']
+    // Labels excluded from scanning — defaults to promotions, social, spam if not set
+    const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social', 'spam']
     // Default true — calendar invites are handled in Google Calendar, no need to surface in Keel
     const excludeCalendarInvites: boolean = accountDoc.data()?.excludeCalendarInvites ?? true
 
@@ -406,6 +444,13 @@ export async function POST(req: NextRequest) {
       // These are .ics meeting invitations — Google Calendar already handles them.
       if (excludeCalendarInvites && hasCalendarInvite(detail)) {
         console.log(`📅 Calendar invite — skipped: ${extractHeader(detail.payload?.headers ?? [], 'subject').slice(0, 50)}`)
+        unchangedSkipped++
+        continue
+      }
+
+      // Calendar reminders are always skipped — automated notifications, never actionable
+      if (isCalendarReminder(detail)) {
+        console.log(`🔔 Calendar reminder — skipped: ${extractHeader(detail.payload?.headers ?? [], 'subject').slice(0, 50)}`)
         unchangedSkipped++
         continue
       }

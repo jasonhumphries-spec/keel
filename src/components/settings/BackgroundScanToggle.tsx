@@ -42,7 +42,7 @@ export function BackgroundScanToggle({ uid, accountData }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isEnabled = accountData.autoScanEnabled ?? false
+  const isEnabled = accountData.autoScanEnabled ?? true
   const status: WatchStatus = accountData.watchStatus ?? 'inactive'
   const isPending = status === 'pending' || loading
 

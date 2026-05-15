@@ -109,8 +109,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     })
     return () => unsub?.()
   }, [user])
-  // Excluded Gmail labels (defaults: promotions + social excluded, not scanned)
-  const DEFAULT_EXCLUDED = ['promotions', 'social']
+  // Excluded Gmail labels (defaults: promotions, social, spam excluded, not scanned)
+  const DEFAULT_EXCLUDED = ['promotions', 'social', 'spam']
   const [excludedLabels, setExcludedLabels] = useState<string[]>(DEFAULT_EXCLUDED)
   const [excludeCalInvites, setExcludeCalInvites] = useState(true)
 
