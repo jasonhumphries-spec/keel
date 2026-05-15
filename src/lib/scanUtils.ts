@@ -77,14 +77,15 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * @param isUK       Whether to use British English in AI output
  */
 export async function classifyThread(
-  db:          ReturnType<typeof getFirestore>,
-  subject:     string,
-  from:        string,
-  threadBody:  string,
-  categories:  { id: string; name: string; description: string }[],
-  hints:       { categoryId: string; categoryName: string; senderEmail: string; senderName: string; subjectClue: string }[],
-  isUK:        boolean = true,
-  isOutbound:  boolean = false
+  db:              ReturnType<typeof getFirestore>,
+  subject:         string,
+  from:            string,
+  threadBody:      string,
+  categories:      { id: string; name: string; description: string }[],
+  hints:           { categoryId: string; categoryName: string; senderEmail: string; senderName: string; subjectClue: string }[],
+  isUK:            boolean = true,
+  isOutbound:      boolean = false,
+  ownerHasReplied: boolean = true,  // false = owner has NEVER sent a message in this thread
 ): Promise<ClassificationResult | null> {
   const categoryList = categories
     .map(c => {
@@ -118,7 +119,7 @@ export async function classifyThread(
 
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.
 ${isUK ? 'Write all text in British English — use UK spellings throughout (e.g. "organise" not "organize", "colour" not "color", "enquire" not "inquire", "cheque" not "check", "licence" not "license").\n' : ''}
-${outboundNote}RECENCY WEIGHTING — CRITICAL: The thread below is ordered oldest-first. The final message is marked *** LATEST MESSAGE ***. Your classification, status, importance score, and ALL bullet points in aiDetailedSummary must reflect the state of the thread AS OF THAT LATEST MESSAGE. Earlier messages are background context only — do not let them override what the latest message says.
+${ownerHasReplied ? '' : 'HARD FACT — DO NOT OVERRIDE: The account owner has NEVER sent any message in this thread. They have not replied, engaged, or participated. awaiting_reply is therefore IMPOSSIBLE — it would mean the owner is waiting for a reply to a message they never sent. Use awaiting_action if the owner should consider responding, or new/quietly_logged if it is noise.\n\n'}${outboundNote}RECENCY WEIGHTING — CRITICAL: The thread below is ordered oldest-first. The final message is marked *** LATEST MESSAGE ***. Your classification, status, importance score, and ALL bullet points in aiDetailedSummary must reflect the state of the thread AS OF THAT LATEST MESSAGE. Earlier messages are background context only — do not let them override what the latest message says.
 - If the latest message resolves a prior question → the thread is resolved, not awaiting_reply.
 - If the latest message is from the other party → it may be the account owner's turn to act.
 - If the latest message is from the account owner → the account owner has acted; the other party may now be on the hook.
@@ -264,7 +265,14 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       }
     }
 
-    return {
+    // Hard code override: if owner has never sent a message, awaiting_reply is logically impossible.
+    // The AI cannot reliably detect this from prompt rules alone — enforce it in code.
+    if (!ownerHasReplied && parsed?.status === 'awaiting_reply') {
+      console.warn('[classifyThread] awaiting_reply overridden → awaiting_action (owner has never sent a message in this thread)')
+      parsed.status = 'awaiting_action'
+    }
+
+        return {
       ...parsed,
       _usage: { inputTokens, outputTokens },
     }

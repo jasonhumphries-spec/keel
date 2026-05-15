@@ -498,7 +498,7 @@ export async function POST(req: NextRequest) {
     const classifications = await runInBatches(
       withThreads,
       5,
-      async ({ threadId, messageId, detail, participants, threadBody }) => {
+      async ({ threadId, messageId, detail, thread, participants, threadBody }) => {
         const headers     = detail.payload?.headers ?? []
         const from        = extractHeader(headers, 'from')
         const subject     = extractHeader(headers, 'subject')
@@ -509,8 +509,20 @@ export async function POST(req: NextRequest) {
         const senderEmail = senderMatch?.[2] ?? from
 
         // isOutbound: true when the user sent the first message in the thread
-        const isOutbound     = senderEmail.toLowerCase() === accountEmail
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound)
+        const isOutbound = senderEmail.toLowerCase() === accountEmail
+
+        // ownerHasReplied: true if the account owner has sent at least one message in this thread.
+        // Determined from actual message headers — not left to AI inference.
+        // Ensures awaiting_reply is never assigned to purely-inbound threads.
+        const allMsgs = (thread?.messages ?? []) as any[]
+        const ownerHasReplied = allMsgs.length === 0
+          ? isOutbound  // fallback: if we only have the first message, use isOutbound
+          : allMsgs.some((msg: any) => {
+              const msgFrom = ((msg.payload?.headers ?? []) as any[]).find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
+              return msgFrom.toLowerCase().includes(accountEmail)
+            })
+
+        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
         return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
       }
