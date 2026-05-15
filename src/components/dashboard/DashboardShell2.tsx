@@ -58,6 +58,9 @@ function calSignalsForBand(
       .flatMap(d => d.items)
       .filter(i => {
         if (i.status === 'snoozed') return false
+        // awaiting_action and awaiting_reply have their own dedicated cal bands
+        if (i.status === 'awaiting_action') return false
+        if (i.status === 'awaiting_reply') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
         return l >= minLevel && l <= maxLevel
       })
@@ -845,6 +848,16 @@ export function DashboardShell2() {
   // ── Calendar signals per band ───────────────────────────────────────────────
   const urgentCal   = calSignalsForBand(filteredCategoryData, signals, 4, 4)
   const allItems    = filteredCategoryData.flatMap(d => d.items)
+
+  const actionCal = signals
+    .filter(s => {
+      const item = allItems.find(i => i.itemId === s.itemId)
+      return item?.status === 'awaiting_action' && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+    })
+    .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
+    .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
+    .filter(x => x.item)
+
   const awaitingCal = signals
     .filter(s => {
       const item = allItems.find(i => i.itemId === s.itemId)
@@ -1066,7 +1079,7 @@ export function DashboardShell2() {
             <div>
             <StepRow
               accent="#9C5E2B"
-              calBand={<CalBand band="urgent" events={[]} uid={uid} />}
+              calBand={<CalBand band="urgent" events={actionCal} uid={uid} />}
             >
               <StepHeader
                 step={2}
