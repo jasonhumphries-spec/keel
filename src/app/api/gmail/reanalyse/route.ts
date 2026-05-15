@@ -149,6 +149,14 @@ export async function POST(req: NextRequest) {
     const rfcMessageId = extractHeader(headers, 'message-id').replace(/^<|>$/g, '') || null
     const threadBody = buildThreadContext(thread)
 
+    // Compute ownerHasReplied from actual message headers — same logic as scan route
+    const accountSnap2 = await db.doc(`users/${uid}/accounts/account_primary`).get()
+    const accountEmail = (accountSnap2.data()?.email as string ?? '').toLowerCase()
+    const ownerHasReplied = msgs.some((msg: any) => {
+      const msgFrom = ((msg.payload?.headers ?? []) as any[]).find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
+      return msgFrom.toLowerCase().includes(accountEmail)
+    })
+
     // Load categories for context
     const catsSnap = await db.collection(`users/${uid}/categories`).where('archived', '==', false).get()
     const categoryList = catsSnap.docs.map(d =>
@@ -157,10 +165,12 @@ export async function POST(req: NextRequest) {
 
     // Full classification prompt (mirrors scan route — preserves category if manually set)
     const preserveCategory = item.manualCategory === true
+    const ownerFactNote = ownerHasReplied ? '' : 'HARD FACT — DO NOT OVERRIDE: The account owner has NEVER sent any message in this thread. awaiting_reply is therefore IMPOSSIBLE. Use awaiting_action if a response is needed, or new/quietly_logged if it is noise.\n\n'
+
     const prompt = `You are Keel, a personal life admin AI. Re-analyse this email thread with fresh eyes.
 Write all text in British English.
 
-IMPORTANT: Your analysis must reflect the CURRENT STATE — what is happening now, what action (if any) is still needed. Judge by the most recent messages.
+${ownerFactNote}IMPORTANT: Your analysis must reflect the CURRENT STATE — what is happening now, what action (if any) is still needed. Judge by the most recent messages.
 
 ${preserveCategory ? `CATEGORY (DO NOT CHANGE): ${item.categoryName} (${item.categoryId}) — user has manually assigned this.` : `CATEGORIES:\n${categoryList}`}
 
@@ -211,7 +221,13 @@ Rules:
     const json = text.match(/\{[\s\S]*\}/)?.[0]
     if (!json) return NextResponse.json({ error: 'AI returned no JSON' }, { status: 500 })
 
-    const parsed = JSON.parse(json)
+    let parsed = JSON.parse(json)
+
+    // Hard override — same as scan route
+    if (!ownerHasReplied && parsed?.status === 'awaiting_reply') {
+      console.warn('[reanalyse] awaiting_reply overridden → awaiting_action (owner has never sent a message)')
+      parsed.status = 'awaiting_action'
+    }
 
     const now = Timestamp.now()
 
