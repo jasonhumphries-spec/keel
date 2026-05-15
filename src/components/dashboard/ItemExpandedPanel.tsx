@@ -794,7 +794,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 {/* Open email — Gmail or Apple Mail depending on settings */}
                 {(() => {
                   const isAppleMail = emailClient === 'apple_mail'
-                  const label = isAppleMail && item.rfcMessageId ? 'Open in Mail' : 'Open in Gmail'
+                  const label = isAppleMail ? 'Open in Mail' : 'Open in Gmail'
                   const onClick = () => {
                     if (isAppleMail && item.rfcMessageId) {
                       window.location.href = `message://%3C${encodeURIComponent(item.rfcMessageId)}%3E`
