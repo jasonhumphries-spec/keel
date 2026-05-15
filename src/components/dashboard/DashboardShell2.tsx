@@ -610,7 +610,8 @@ function FyiSection({
                   signals={signals}
                   resolvedItems={resolvedItems}
                   onItemClick={onItemClick}
-                  onMarkDone={onResolved}
+                  onResolved={onResolved}
+                  uid={uid}
                 />
               </div>
             )}
