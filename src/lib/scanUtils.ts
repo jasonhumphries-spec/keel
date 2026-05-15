@@ -161,9 +161,11 @@ Rules:
 - shouldProcess: true for everything else including bills, invoices, appointments, requests, personal correspondence, receipts, RSVPs, alerts
 
 IMPORTANCE SCORING — be precise:
-- 0.95: Overdue payment, urgent deadline today or tomorrow, legal/medical action required
-- 0.85-0.90: Payment due within 7 days, important event RSVP needed, time-sensitive request
-- 0.70-0.80: Action needed but not urgent, quote to review, appointment to confirm
+- 0.95: Overdue payment, legal/medical action required, anything the user absolutely must not miss today
+- 0.88-0.92: Any event, appointment, commitment, practice session, or action due TODAY or TOMORROW — proximity alone justifies Urgent. This includes school events, sports, social commitments, reminders about things happening tomorrow. If it's happening today or tomorrow, score 0.88 minimum regardless of the type.
+- 0.85-0.88: Any event or commitment happening within 3 days; payment due within 7 days; important RSVP needed
+- 0.75-0.82: Event or commitment within 7 days; action needed but not this week
+- 0.70-0.75: Action needed but not urgent, quote to review, appointment to confirm, event within 2 weeks
 - 0.72-0.78: Upcoming confirmed event or activity within 7 days — even if no action required. Proximity alone justifies High priority. A school trip in 2 days, a match tomorrow, a medical appointment this week — score 0.72 minimum so it surfaces as High. The closer the event, the higher within this range (today/tomorrow = 0.78, later this week = 0.72).
 - 0.55-0.65: FYI items needing light review, routine correspondence, upcoming events more than 7 days away
 - 0.25-0.35: Receipts (payment already made), informational only
