@@ -114,7 +114,11 @@ export async function classifyThread(
 
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.
 ${isUK ? 'Write all text in British English — use UK spellings throughout (e.g. "organise" not "organize", "colour" not "color", "enquire" not "inquire", "cheque" not "check", "licence" not "license").\n' : ''}
-${outboundNote}IMPORTANT: The thread below may contain older messages for full context, but your classification must reflect the CURRENT STATE of the thread — what is happening now, what action (if any) is still needed today. A thread that started months ago may already be fully resolved. Judge by the most recent messages.
+${outboundNote}RECENCY WEIGHTING — CRITICAL: The thread below is ordered oldest-first. The final message is marked *** LATEST MESSAGE ***. Your classification, status, importance score, and ALL bullet points in aiDetailedSummary must reflect the state of the thread AS OF THAT LATEST MESSAGE. Earlier messages are background context only — do not let them override what the latest message says.
+- If the latest message resolves a prior question → the thread is resolved, not awaiting_reply.
+- If the latest message is from the other party → it may be the account owner's turn to act.
+- If the latest message is from the account owner → the account owner has acted; the other party may now be on the hook.
+- NEXT STEP and aiSummary must describe what happens NOW, based on the latest message. Ignore superseded earlier actions.
 
 CATEGORIES:
 ${categoryList}${hintList}
@@ -205,7 +209,7 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
   • PURPOSE: What is this thread actually about and why does it matter? Include key context (e.g. the underlying goal, relationship, or project). Use real names.
   • EVOLUTION (only if meaningful): How did the thread develop — what was asked/proposed and what changed or was agreed along the way? Skip if single-message thread.
   • CURRENT STATE: The final agreed outcome with all concrete details — dates, times, locations, amounts, names, reference numbers. Be specific.
-  • NEXT STEP: Who specifically needs to do what next, and by when? Identify the person by name — is it the account owner (${from.split('<')[0].trim() || 'the account owner'}) or the other party? Judge by the direction of the most recent message. If the most recent outbound message asks a direct question and the account owner has nothing left to do, the next step is waiting for the other party's reply. If the account owner's last message was a commitment to follow up (e.g. 'I'll check', 'I'll confirm'), the next step is on the account owner — name what they need to do. If nothing is needed, omit this bullet entirely.
+  • NEXT STEP: Based on the *** LATEST MESSAGE *** only — who is on the hook for the next move, and what specifically do they need to do? Name the person. If the latest message is from the account owner and contains a question or request → the other party is on the hook (waiting for their reply). If the latest message is from the other party and requires a decision or action → the account owner is on the hook (name the action). If the latest message commits the account owner to something ('I'll check', 'I'll send', 'I'll confirm') → the account owner is on the hook. If the thread is fully resolved or no action is needed → omit this bullet entirely. Never reference earlier messages for this bullet — only the latest.
 - NAMES: Never use "the user", "you", or "the account owner" in summaries or next steps. Use real first names from the thread.
 - SIGNALS — strict quality rules:
   • event: For confirmed, agreed, upcoming appointments or events — including informational school/activity notices where a date and time are given, even if no parental action is required. The timing information is valuable regardless of whether action is needed. Create event signals for: school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, or vague "sometime next week" references.
@@ -406,13 +410,20 @@ export function buildThreadContext(thread: any, maxLen = 800): string {
   if (messages.length === 0) return ''
 
   const result: string[] = []
+  const total = messages.length
   messages.forEach((msg: any, i: number) => {
     const headers  = msg.payload?.headers ?? []
     const from     = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
     const date     = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value ?? ''
-    const isRecent = i >= messages.length - 3
+    const isLatest = i === total - 1
+    const isRecent = i >= total - 4  // last 4 messages get full body
     const body     = decodeBody(msg, isRecent ? maxLen : 200)
-    const label    = isRecent ? `[${date}] From: ${from}` : `[${date}] From: ${from} (earlier message)`
+    // The most recent message gets an explicit marker so the AI cannot miss it
+    const label    = isLatest
+      ? `[${date}] From: ${from} *** LATEST MESSAGE — this is the current state of the thread ***`
+      : isRecent
+        ? `[${date}] From: ${from} (recent)`
+        : `[${date}] From: ${from} (earlier — background context only)`
     result.push(`${label}\n${body}`)
   })
 
