@@ -539,12 +539,11 @@ function FyiSection({
   onExpandChange:  (id: string | null) => void
 }) {
   const [showAll, setShowAll] = useState(false)
-
   const visible = showAll ? categoryData : categoryData.slice(0, 5)
   const hidden  = categoryData.length - 5
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {visible.map(({ category, items }) => {
         const isExpanded = expandedId === category.categoryId
         return (
@@ -554,23 +553,23 @@ function FyiSection({
             borderRadius: 'var(--radius-md)',
             overflow: 'hidden',
           }}>
-            {/* Collapsed row — always visible */}
+            {/* Collapsed header row */}
             <div
-              onClick={() => onExpandChange(expandedId === category.categoryId ? null : category.categoryId)}
+              onClick={() => onExpandChange(isExpanded ? null : category.categoryId)}
               style={{
-                padding: '7px 12px',
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
+                padding: '8px 14px',
+                display: 'flex', gap: 10, alignItems: 'center',
                 cursor: 'pointer',
-                background: isExpanded ? 'var(--color-surface-recessed)' : 'transparent',
+                background: isExpanded ? 'rgba(44,40,36,0.03)' : 'transparent',
                 transition: 'background 0.1s',
               }}
             >
               <div style={{
-                fontSize: 'var(--fs-sm)', fontWeight: isExpanded ? 600 : 400,
-                color: isExpanded ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                width: 110, flexShrink: 0,
+                fontFamily: 'var(--font-dm-mono)',
+                fontSize: 'var(--fs-xs)', fontWeight: 600,
+                letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+                color: isExpanded ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                width: 120, flexShrink: 0,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {category.name}
@@ -579,18 +578,19 @@ function FyiSection({
                 fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
                 flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
-                {items.slice(0, 3).map(i => i.aiTitle || i.senderName).join(' · ')}
-                {items.length > 3 && ` · +${items.length - 3} more`}
+                {items.slice(0, 4).map(i => i.aiTitle || i.senderName).join(' · ')}
+                {items.length > 4 && ` · +${items.length - 4} more`}
               </div>
               <div style={{
-                fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)',
-                color: 'var(--color-text-muted)', flexShrink: 0, marginRight: 4,
+                fontFamily: 'var(--font-dm-mono)', fontSize: 10,
+                color: 'var(--color-text-muted)', flexShrink: 0,
+                background: 'var(--color-surface-recessed)',
+                border: '0.5px solid var(--color-border)',
+                borderRadius: 8, padding: '1px 7px',
               }}>
                 {items.length}
               </div>
-              {/* Chevron */}
-              <svg
-                width="12" height="12" viewBox="0 0 24 24" fill="none"
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                 style={{
                   flexShrink: 0, color: 'var(--color-text-muted)',
@@ -602,16 +602,15 @@ function FyiSection({
               </svg>
             </div>
 
-            {/* Expanded: full CategoryCard */}
+            {/* Expanded: hover-reveal ItemList rows (matches sections 1–3) */}
             {isExpanded && (
               <div style={{ borderTop: '0.5px solid var(--color-border)' }}>
-                <CategoryCard
-                  data={{ category, items }}
-                  onItemClick={onItemClick}
-                  onResolved={onResolved}
-                  resolvedItems={resolvedItems}
+                <ItemList
+                  categoryData={[{ category, items }]}
                   signals={signals}
-                  uid={uid}
+                  resolvedItems={resolvedItems}
+                  onItemClick={onItemClick}
+                  onMarkDone={onResolved}
                 />
               </div>
             )}
@@ -624,10 +623,13 @@ function FyiSection({
           onClick={() => setShowAll(true)}
           style={{
             background: 'transparent', border: '0.5px dashed var(--color-border)',
-            borderRadius: 'var(--radius-md)', padding: '6px 12px',
+            borderRadius: 'var(--radius-md)', padding: '7px 14px',
             fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)',
-            cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-dm-sans)',
+            cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'var(--font-dm-sans)',
+            transition: 'background 0.1s',
           }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(44,40,36,0.04)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
           + {hidden} more categories
         </button>
