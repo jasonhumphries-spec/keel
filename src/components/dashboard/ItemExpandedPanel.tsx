@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCategories } from '@/lib/hooks'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
+import { EmailPreviewDrawer } from './EmailPreviewDrawer'
 import type { KeelItem, KeelSignal } from '@/lib/types'
 
 function SignalPill({ signal, itemId, uid, item }: { signal: KeelSignal; itemId: string; uid: string; item?: KeelItem }) {
@@ -320,6 +321,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
   const [saving, setSaving]               = useState(false)
   const [reanalysing,   setReanalysing]   = useState(false)
   const [reanalyseMsg,  setReanalyseMsg]  = useState('')
+  const [showPreview,   setShowPreview]   = useState(false)
   const [emailClient,   setEmailClient]   = useState<'gmail' | 'apple_mail'>(() =>
     typeof window !== 'undefined'
       ? (localStorage.getItem('keel_email_client') as 'gmail' | 'apple_mail') ?? 'gmail'
@@ -804,6 +806,12 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   }
                   return <ActBtn label={label} onClick={onClick} variant="primary" />
                 })()}
+                {/* Preview email inline */}
+                <ActBtn
+                  label="Preview email"
+                  onClick={() => { setShowPreview(p => !p); setShowPaidPanel(false); setShowMoreMenu(false) }}
+                  variant="ghost"
+                />
                 {(item.mergedThreadIds ?? []).map((tid, i) => (
                   <ActBtn key={tid} label={`Open thread ${i + 2} in Gmail`} onClick={() => window.open(`https://mail.google.com/mail/u/0/#inbox/${tid}`, '_blank')} variant="ghost" />
                 ))}
@@ -838,6 +846,15 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
           </>
         )}
       </div>
+
+      {/* Email preview drawer — slides in to the left of this panel */}
+      {showPreview && item && user && (
+        <EmailPreviewDrawer
+          item={item}
+          uid={user.uid}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </>
   )
 }

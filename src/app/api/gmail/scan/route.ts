@@ -233,36 +233,48 @@ export async function POST(req: NextRequest) {
     const accountEmail        = (accountDoc.data()?.email as string ?? '').toLowerCase()
     const isUK                = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
     const lastScanCompletedAt = accountDoc.data()?.lastScanCompletedAt ?? null
-    // Labels excluded from scanning — defaults to promotions + social if not set
     const excludedLabels: string[] = accountDoc.data()?.excludedLabels ?? ['promotions', 'social']
 
-    // Optimised items fetch — split into two cheap queries instead of one full collection read:
+    // ── threadMeta optimisation ───────────────────────────────────────────────
+    // threadMeta is a map stored on the account doc, updated after every scan.
+    // It replaces the expensive full-collection existence query (~582 reads/scan).
     //
-    // Query A: all items, but ONLY threadId field — builds existence + dedup maps
-    //          Firestore still charges 1 read/doc, but this is unavoidable for dedup.
-    //          FUTURE OPT: maintain a threadIds[] array on the account doc to eliminate this.
+    // Shape: { [threadId]: { itemId, lastMsgMs, status, manualPriority, manualCategory } }
     //
-    // Query B: items updated since last scan — full fields needed for update logic
-    //          On incremental scans this is typically 5-20 docs, not 500+.
-    //
-    const existenceQuery = db.collection(`users/${uid}/items`)
-      .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId')
+    // First scan after deploy: threadMeta is empty → fall back to legacy query →
+    //   map is written below → all future scans use the map at 0 extra reads.
+    type ThreadMetaEntry = {
+      itemId:         string
+      lastMsgMs:      number
+      status:         string
+      manualPriority: boolean
+      manualCategory: boolean
+    }
+    const threadMeta    = (accountDoc.data()?.threadMeta ?? {}) as Record<string, ThreadMetaEntry>
+    const hasThreadMeta = Object.keys(threadMeta).length > 0
 
-    // Only fetch recently-changed full items if we have a lastScan timestamp
+    // Query B: items updated since last scan — needed regardless of threadMeta
+    //   to pick up manual changes (priority, category) made between scans
     const recentQuery = lastScanCompletedAt
       ? db.collection(`users/${uid}/items`)
           .where('updatedAt', '>=', lastScanCompletedAt)
           .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'categoryId', 'aiTitle', 'manualCategory')
       : null
 
-    const [existingSnap, recentSnap] = await Promise.all([
-      existenceQuery.get(),
-      recentQuery ? recentQuery.get() : Promise.resolve(null),
-    ])
-    fbReads += existingSnap.size + (recentSnap?.size ?? 0)
+    let existingSnap: FirebaseFirestore.QuerySnapshot | null = null
+    const recentSnap = recentQuery ? await recentQuery.get() : null
+    fbReads += recentSnap?.size ?? 0
 
-    console.log(`Items: ${existingSnap.size} total, ${recentSnap?.size ?? 'all'} recently changed`)
-
+    if (!hasThreadMeta) {
+      // First scan — read all items to bootstrap threadMeta
+      existingSnap = await db.collection(`users/${uid}/items`)
+        .select('threadId', 'status', 'updatedAt', 'manualPriority', 'messageId', 'lastMessageInternalDate', 'manualCategory')
+        .get()
+      fbReads += existingSnap.size
+      console.log(`threadMeta: bootstrapping from ${existingSnap.size} items (one-time cost)`)
+    } else {
+      console.log(`threadMeta: ${Object.keys(threadMeta).length} threads known (0 reads), ${recentSnap?.size ?? 0} recently changed`)
+    }
 
     let categories = catsSnap.docs.map(d => ({
       id:          d.id,
@@ -300,20 +312,74 @@ export async function POST(req: NextRequest) {
       senderEmail: string; senderName: string; subjectClue: string; aiTitle: string;
     })
 
-    const processedThreadIds = new Set(existingSnap.docs.map(d => d.data().threadId as string).filter(Boolean))
-    const existingItemIds    = new Set(existingSnap.docs.map(d => d.id))  // fallback: match by computed itemId
-    const threadToItemId     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.id]))
-    const threadToStatus     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().status as string]))
-    const threadToUpdatedAt  = new Map(existingSnap.docs.map(d => {
-      // Prefer lastMessageInternalDate (Gmail ms) over updatedAt (Keel write time)
-      // to avoid falsely skipping threads where a reply arrived just after our last write
-      const gmailTs = d.data().lastMessageInternalDate
-      const keelTs  = d.data().updatedAt
-      const ms      = gmailTs ?? (keelTs?.toMillis ? keelTs.toMillis() : 0)
-      return [d.data().threadId as string, ms]
-    }))
-    const threadManualPrio     = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualPriority as boolean]))
-    const threadManualCategory = new Map(existingSnap.docs.map(d => [d.data().threadId as string, d.data().manualCategory as boolean]))
+    // ── Build existence maps from threadMeta (0 reads) or existingSnap (first scan) ──
+    //
+    // recentSnap overrides stale threadMeta entries for recently-changed items
+    // (catches manual priority/category changes made since the last scan).
+    //
+    // Helper to merge a Firestore doc into all maps — used for both paths
+    function applyDocToMaps(
+      tid:              string,
+      itemDocId:        string,
+      status:           string,
+      lastMsgMs:        number,
+      manualPriority:   boolean,
+      manualCategory:   boolean,
+    ) {
+      processedThreadIds.add(tid)
+      existingItemIds.add(itemDocId)
+      threadToItemId.set(tid, itemDocId)
+      threadToStatus.set(tid, status)
+      threadToUpdatedAt.set(tid, lastMsgMs)
+      threadManualPrio.set(tid, manualPriority)
+      threadManualCategory.set(tid, manualCategory)
+    }
+
+    const processedThreadIds   = new Set<string>()
+    const existingItemIds      = new Set<string>()
+    const threadToItemId       = new Map<string, string>()
+    const threadToStatus       = new Map<string, string>()
+    const threadToUpdatedAt    = new Map<string, number>()
+    const threadManualPrio     = new Map<string, boolean>()
+    const threadManualCategory = new Map<string, boolean>()
+
+    if (hasThreadMeta) {
+      // Fast path — populate from threadMeta (no extra reads)
+      for (const [tid, m] of Object.entries(threadMeta)) {
+        applyDocToMaps(tid, m.itemId, m.status, m.lastMsgMs, m.manualPriority, m.manualCategory)
+      }
+    } else {
+      // First-scan path — populate from existingSnap
+      for (const d of (existingSnap?.docs ?? [])) {
+        const data    = d.data()
+        const tid     = data.threadId as string
+        if (!tid) continue
+        const gmailTs = data.lastMessageInternalDate as number | null
+        const keelTs  = data.updatedAt
+        const ms      = gmailTs ?? (keelTs?.toMillis ? keelTs.toMillis() : 0)
+        applyDocToMaps(tid, d.id, data.status as string, ms, !!data.manualPriority, !!data.manualCategory)
+      }
+    }
+
+    // Overlay recentSnap — overrides stale threadMeta entries for recently-changed items
+    for (const d of (recentSnap?.docs ?? [])) {
+      const data  = d.data()
+      const tid   = data.threadId as string
+      if (!tid) continue
+      threadToStatus.set(tid, data.status as string)
+      threadManualPrio.set(tid, !!data.manualPriority)
+      threadManualCategory.set(tid, !!data.manualCategory)
+    }
+
+    // Buffer for threadMeta updates — written back to account doc after the scan loop
+    const threadMetaBuffer: Array<{
+      threadId:       string
+      itemId:         string
+      lastMsgMs:      number
+      status:         string
+      manualPriority: boolean
+      manualCategory: boolean
+    }> = []
 
     // Step 1: Fetch messages active within the thread activity window
     // This finds threads with recent activity — not a hard lookback cutoff
@@ -521,6 +587,7 @@ export async function POST(req: NextRequest) {
         })
         updated++
         fbWrites++
+        threadMetaBuffer.push({ threadId, itemId, lastMsgMs: parseInt(detail?.internalDate ?? '0', 10) || Date.now(), status: isTerminal ? (existingStatus ?? effectiveStatus) : effectiveStatus, manualPriority: !!threadManualPrio.get(threadId), manualCategory: !!threadManualCategory.get(threadId) })
         console.log(`↻ Updated: ${senderName} — ${subject.slice(0, 50)}`)
       } else {
         await db.doc(`users/${uid}/items/${itemId}`).set({
@@ -574,6 +641,7 @@ export async function POST(req: NextRequest) {
 
         processed++
         fbWrites++ // new item write
+        threadMetaBuffer.push({ threadId, itemId, lastMsgMs: parseInt(detail?.internalDate ?? '0', 10) || Date.now(), status: effectiveStatus, manualPriority: false, manualCategory: false })
         console.log(`✓ New: ${senderName} — ${subject.slice(0, 50)}`)
       }
     }
@@ -622,14 +690,25 @@ export async function POST(req: NextRequest) {
       console.error('Usage write failed:', e)
     }
 
-    // Stamp lastScanCompletedAt on account doc so next scan can do incremental item fetch
+    // Stamp lastScanCompletedAt + flush threadMeta updates in one write
     try {
-      await db.doc(`users/${uid}/accounts/account_primary`).set(
-        { lastScanCompletedAt: Timestamp.now() },
-        { merge: true }
-      )
+      const metaUpdate: Record<string, any> = { lastScanCompletedAt: Timestamp.now() }
+      for (const entry of threadMetaBuffer) {
+        // Firestore dot-notation lets us update individual map keys without overwriting others
+        metaUpdate[`threadMeta.${entry.threadId}`] = {
+          itemId:         entry.itemId,
+          lastMsgMs:      entry.lastMsgMs,
+          status:         entry.status,
+          manualPriority: entry.manualPriority,
+          manualCategory: entry.manualCategory,
+        }
+      }
+      await db.doc(`users/${uid}/accounts/account_primary`).update(metaUpdate)
       fbWrites++
-    } catch (e) { /* non-fatal */ }
+      if (threadMetaBuffer.length > 0) {
+        console.log(`threadMeta: wrote ${threadMetaBuffer.length} updated entries`)
+      }
+    } catch (e) { console.warn('[scan] threadMeta/lastScanCompletedAt write failed:', e) }
 
     // Write per-scan run record for admin drill-down
     try {
