@@ -177,8 +177,12 @@ RECEIPT vs INVOICE — critical distinction:
 
 CONDITIONAL/OPTIONAL PAYMENTS — important distinction:
 - If payment is only due IF the user decides to participate/sign up/attend (e.g. "if you'd like to book", "if you wish to attend", "optional extra", "should you choose to"), treat as status="new", aiImportanceScore=0.50-0.65. Do NOT use "awaiting_action" — no action is required unless they choose to proceed.
+
+- IMPORTANT DISTINCTION — "to register" or "please register" is ONLY a conditional payment clue when it is explicitly linked to a payment decision. If "please register", "complete the registration form", "please confirm your attendance", or "RSVP by [date]" appear in an invitation email where NO payment is involved or has already been handled, this is awaiting_action — the user must do something. A school welcome evening asking parents to fill in a registration form, a club asking you to confirm attendance, an event asking you to RSVP — these are all awaiting_action even if there is no cost involved.
+
+- UNANSWERED INVITATIONS: If an email is an invitation (event, welcome evening, school function, social gathering, etc.) and the account owner has NOT yet responded/RSVPd/registered — status="awaiting_action", aiImportanceScore=0.70-0.85. The invitation is pending and requires a response. This applies even if the event is weeks away. Do NOT classify as "new" merely because the event is in the future.
 - The payment signal should still be created so the amount is visible, but the description must make clear it's conditional: e.g. "Sports camp fee if attending — £37/day"
-- Conditional payment clues: "if you wish", "if you would like", "should you decide", "optional", "only if", "to register", "to book", prices listed as information rather than demands
+- Conditional payment clues: "if you wish", "if you would like", "should you decide", "optional", "only if", "to book", prices listed as information rather than demands
 
 PAYMENT AMOUNTS — when multiple amounts appear:
 - Capture the PRIMARY cost as the main payment signal (the largest or most essential amount)
@@ -190,7 +194,8 @@ RESOLVED THREADS: If fully closed with zero further action (e.g. "now resolved",
 
 TRANSIENT SAME-DAY ITEMS: Calendar reminders, delivery dispatch/out-for-delivery notifications, event day-of reminders, shipping alerts, and any purely informational notification about something happening today with no action required — set status="quietly_logged", aiImportanceScore=0.10-0.15. These are heads-up notifications, not actionable items. Exception: if the delivery has failed or requires a response (e.g. rebook, collect from depot), treat as awaiting_action.
 
-RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance), do NOT set status="awaiting_reply". RSVP is terminal. Only awaiting_reply if user sent an open question needing a response.
+RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance, replied yes/no, completed registration), do NOT set status="awaiting_reply" or "awaiting_action". RSVP is terminal — set to "new" or "quietly_logged". Only awaiting_reply if user sent an open question needing a response. If RSVP/registration is still PENDING (user has not yet responded to the invitation), set status="awaiting_action" — see UNANSWERED INVITATIONS rule above.
+CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Google Calendar does NOT mean they have RSVPd or registered. Keel may have added the event to the calendar automatically. If the email contains "please complete the registration form", "please register", "please confirm attendance", "RSVP required", or similar — the registration/RSVP is still PENDING and must be classified as awaiting_action regardless of calendar status. Only treat RSVP as complete if the email thread itself contains evidence the user has responded (e.g. a confirmation reply, a "thank you for registering" message, or a "your registration is confirmed" response).
 
 - aiTitle: 4-7 words, more useful than raw subject. Use real names from the thread (e.g. "Paxton orthodontist appointment June 26th"), never "user" or "the user".
 - aiSummary: one sentence, current state, max 120 chars. Use real names, not "the user" or "you".
