@@ -31,11 +31,15 @@ async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: strin
   const data        = accountSnap.data()
   if (!data?.accessToken) return null
 
-  // Check if token is expired or expiring within 2 minutes
-  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
-  if (expiresAt > Date.now() + 120_000) return data.accessToken as string
+  const existingToken = data.accessToken as string
 
-  // Refresh it
+  // If tokenExpiresAt is missing or unknown, try using the existing token directly
+  // (the scan route keeps this refreshed so it's likely still valid)
+  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
+  const hasHeadroom = expiresAt > Date.now() + 2 * 60 * 1000
+  if (hasHeadroom || !data.refreshToken) return existingToken
+
+  // Token is near expiry and we have a refresh token — try refreshing
   try {
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method:  'POST',
@@ -48,8 +52,9 @@ async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: strin
       }),
     })
     if (!tokenRes.ok) {
-      console.warn('[reanalyse] Token refresh failed — user must re-sign-in')
-      return null  // Don't fall back to stale token — caller should surface auth error
+      // Refresh failed — fall back to existing token (may still work if not truly expired)
+      console.warn('[reanalyse] Token refresh failed, falling back to existing token')
+      return existingToken
     }
     const td = await tokenRes.json()
     await db.doc(`users/${uid}/accounts/account_primary`).update({
