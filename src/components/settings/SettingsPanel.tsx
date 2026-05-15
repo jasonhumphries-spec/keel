@@ -112,6 +112,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   // Excluded Gmail labels (defaults: promotions + social excluded, not scanned)
   const DEFAULT_EXCLUDED = ['promotions', 'social']
   const [excludedLabels, setExcludedLabels] = useState<string[]>(DEFAULT_EXCLUDED)
+  const [excludeCalInvites, setExcludeCalInvites] = useState(true)
 
   useEffect(() => {
     setScanDays(getScanDaysBack())
@@ -129,6 +130,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             const stored = snap.data()?.excludedLabels
             setExcludedLabels(stored ?? DEFAULT_EXCLUDED)
             setEmailClientState(snap.data()?.emailClient ?? 'gmail')
+            setExcludeCalInvites(snap.data()?.excludeCalendarInvites ?? true)
           })
         })
       })
@@ -144,6 +146,16 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     const { doc: fDoc, updateDoc } = await import('firebase/firestore')
     const { db: fDb } = await import('@/lib/firebase')
     await updateDoc(fDoc(fDb, `users/${user.uid}/accounts/account_primary`), { emailClient: value })
+  }
+
+  const handleExcludeCalInvites = async (val: boolean) => {
+    setExcludeCalInvites(val)
+    if (!user) return
+    const { doc: fDoc, updateDoc } = await import('firebase/firestore')
+    const { db: fDb } = await import('@/lib/firebase')
+    await updateDoc(fDoc(fDb, `users/${user.uid}/accounts/account_primary`), {
+      excludeCalendarInvites: val,
+    })
   }
 
   const handleCheckAllCals = async (val: boolean) => {
@@ -402,6 +414,21 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             {user && (
               <BackgroundScanToggle uid={user.uid} accountData={bgAccountData} />
             )}
+
+            {/* Calendar invite exclusion toggle */}
+            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 2 }}>
+                    Ignore calendar invitations
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
+                    Emails containing a calendar invite (.ics) are already handled in your calendar app — skip them in Keel
+                  </div>
+                </div>
+                <Toggle on={excludeCalInvites} onToggle={() => handleExcludeCalInvites(!excludeCalInvites)} />
+              </div>
+            </div>
 
             {/* Historical scan — premium placeholder */}
             <div style={{ padding: '10px 0' }}>
