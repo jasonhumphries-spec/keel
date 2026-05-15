@@ -777,7 +777,31 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
               </div>
             ) : (
               <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', flexShrink: 0, background: 'var(--color-surface)' }}>
-                <ActBtn label="Open in Gmail" onClick={() => window.open(`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`, '_blank')} variant="primary" />
+                {/* Open email — target depends on user's email client preference */}
+                {(() => {
+                  const pref = typeof window !== 'undefined'
+                    ? (localStorage.getItem('keel_email_client') as 'gmail' | 'apple_mail' | null) ?? 'gmail'
+                    : 'gmail'
+                  const isAppleMail = pref === 'apple_mail'
+                  const canOpenAppleMail = isAppleMail && !!item.rfcMessageId
+                  const label  = isAppleMail ? 'Open in Mail' : 'Open in Gmail'
+                  const onClick = () => {
+                    if (isAppleMail && item.rfcMessageId) {
+                      // message:// URL scheme — opens directly in Mail.app on Mac
+                      window.location.href = `message://%3C${encodeURIComponent(item.rfcMessageId)}%3E`
+                    } else {
+                      window.open(`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`, '_blank')
+                    }
+                  }
+                  return (
+                    <ActBtn
+                      label={isAppleMail && !item.rfcMessageId ? 'Open in Gmail' : label}
+                      onClick={onClick}
+                      variant="primary"
+                      title={isAppleMail && !item.rfcMessageId ? 'Apple Mail link not yet available — scan again to generate' : undefined}
+                    />
+                  )
+                })()}
                 {(item.mergedThreadIds ?? []).map((tid, i) => (
                   <ActBtn key={tid} label={`Open thread ${i + 2} in Gmail`} onClick={() => window.open(`https://mail.google.com/mail/u/0/#inbox/${tid}`, '_blank')} variant="ghost" />
                 ))}

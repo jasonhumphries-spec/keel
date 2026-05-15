@@ -33,6 +33,7 @@ export interface KeelItem {
   itemId:           string
   messageId:        string
   threadId:         string
+  rfcMessageId?:    string  // RFC 2822 Message-ID header — used for Apple Mail deep links
   accountId:        string
   senderEmail:      string
   senderName:       string

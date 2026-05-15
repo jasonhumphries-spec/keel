@@ -423,6 +423,7 @@ export async function POST(req: NextRequest) {
         const from        = extractHeader(headers, 'from')
         const subject     = extractHeader(headers, 'subject')
         const dateStr     = extractHeader(headers, 'date')
+        const rfcMessageId = extractHeader(headers, 'message-id').replace(/^<|>$/g, '') || undefined
         const senderMatch = from.match(/^(.*?)\s*<(.+?)>$/)
         const senderName  = senderMatch?.[1]?.trim().replace(/^"(.*)"$/, '$1') ?? from.split('@')[0]
         const senderEmail = senderMatch?.[2] ?? from
@@ -431,7 +432,7 @@ export async function POST(req: NextRequest) {
         const isOutbound     = senderEmail.toLowerCase() === accountEmail
         const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
-        return { threadId, messageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
+        return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
       }
     )
 
@@ -439,7 +440,7 @@ export async function POST(req: NextRequest) {
     try { await feedRef.delete() } catch {}
 
     // Step 7: Write results to Firestore (batch where possible)
-    for (const { threadId, messageId, detail, participants, subject, dateStr, senderName, senderEmail, isOutbound, classification } of classifications) {
+    for (const { threadId, messageId, rfcMessageId, detail, participants, subject, dateStr, senderName, senderEmail, isOutbound, classification } of classifications) {
       if (!classification) { skipped++; continue }
 
       if (classification._usage) {
@@ -453,7 +454,7 @@ export async function POST(req: NextRequest) {
           const receivedAt = dateStr ? new Date(dateStr) : new Date()
           const now        = Timestamp.now()
           await db.doc(`users/${uid}/items/${itemId}`).set({
-            itemId, messageId, threadId, accountId: 'account_primary',
+            itemId, messageId, threadId, rfcMessageId: rfcMessageId ?? null, accountId: 'account_primary',
             senderEmail, senderName, subject,
             receivedAt:        Timestamp.fromDate(receivedAt),
             categoryId:        classification.categoryId || 'cat_other',
@@ -513,6 +514,7 @@ export async function POST(req: NextRequest) {
           // Repair threadId if missing (fixes future isExisting detection)
           ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
           senderName, senderEmail, subject,
+          ...(rfcMessageId ? { rfcMessageId } : {}),
           lastMessageInternalDate: parseInt(detail?.internalDate ?? '0', 10) || null,
           updatedAt:         now,
           receivedAt:        Timestamp.fromDate(receivedAt),
@@ -522,7 +524,7 @@ export async function POST(req: NextRequest) {
         console.log(`↻ Updated: ${senderName} — ${subject.slice(0, 50)}`)
       } else {
         await db.doc(`users/${uid}/items/${itemId}`).set({
-          itemId, messageId, threadId, accountId: 'account_primary',
+          itemId, messageId, threadId, rfcMessageId: rfcMessageId ?? null, accountId: 'account_primary',
           senderEmail, senderName, subject,
           receivedAt:        Timestamp.fromDate(receivedAt),
           categoryId:        classification.categoryId,

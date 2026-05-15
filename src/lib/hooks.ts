@@ -55,7 +55,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     isOutbound:        d.isOutbound ?? false,
     linkedOutboundId: d.linkedOutboundId ?? null, linkedItemId: d.linkedItemId ?? null,
     isRecurring: d.isRecurring ?? false, fromTrackedReply: d.fromTrackedReply ?? false,
-    trackedReplyId: d.trackedReplyId ?? null, mergedThreadIds: d.mergedThreadIds ?? [], createdAt: toDate(d.createdAt),
+    trackedReplyId: d.trackedReplyId ?? null, mergedThreadIds: d.mergedThreadIds ?? [], rfcMessageId: d.rfcMessageId ?? null, createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt), resolvedAt: d.resolvedAt ? toDate(d.resolvedAt) : null,
     participants: d.participants ?? [],
     aiTitle:           d.aiTitle ?? d.subject ?? '',

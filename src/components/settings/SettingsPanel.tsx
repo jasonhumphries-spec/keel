@@ -76,6 +76,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [watchingSince, setWatchingSince] = useState<string | null>(null)
   const [checkAllCals, setCheckAllCals] = useState(false)
   const [calCheckRunning, setCalCheckRunning] = useState(false)
+  const [emailClient, setEmailClientState] = useState<'gmail' | 'apple_mail'>('gmail')
   const [bgAccountData, setBgAccountData] = useState<{
     autoScanEnabled?: boolean
     watchStatus?: 'active' | 'inactive' | 'pending' | 'error'
@@ -127,11 +128,21 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             setCheckAllCals(snap.data()?.checkAllCalendars ?? false)
             const stored = snap.data()?.excludedLabels
             setExcludedLabels(stored ?? DEFAULT_EXCLUDED)
+            setEmailClientState(snap.data()?.emailClient ?? 'gmail')
           })
         })
       })
     }
   }, [user])
+
+  const handleEmailClientChange = async (value: 'gmail' | 'apple_mail') => {
+    setEmailClientState(value)
+    localStorage.setItem('keel_email_client', value)
+    if (!user) return
+    const { doc: fDoc, updateDoc } = await import('firebase/firestore')
+    const { db: fDb } = await import('@/lib/firebase')
+    await updateDoc(fDoc(fDb, `users/${user.uid}/accounts/account_primary`), { emailClient: value })
+  }
 
   const handleCheckAllCals = async (val: boolean) => {
     setCheckAllCals(val)
@@ -348,6 +359,30 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 <span>60d</span>
                 <span>90d</span>
               </div>
+            </div>
+
+            {/* Email client preference */}
+            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>Open emails in</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {([
+                  { value: 'gmail',      label: 'Gmail',       sub: 'Opens in your browser' },
+                  { value: 'apple_mail', label: 'Apple Mail',  sub: 'Opens in Mail.app on Mac' },
+                ] as { value: 'gmail' | 'apple_mail'; label: string; sub: string }[]).map(opt => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 8px', borderRadius: 'var(--radius-md)', background: emailClient === opt.value ? 'var(--color-accent-sub)' : 'transparent', border: `1px solid ${emailClient === opt.value ? 'var(--color-accent)' : 'var(--color-border)'}`, transition: 'all 0.12s' }}>
+                    <input type="radio" name="emailClient" value={opt.value} checked={emailClient === opt.value} onChange={() => handleEmailClientChange(opt.value)} style={{ accentColor: 'var(--color-accent)' }} />
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{opt.label}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)' }}>{opt.sub}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {emailClient === 'apple_mail' && (
+                <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginTop: 6, lineHeight: 1.5, fontStyle: 'italic' }}>
+                  Requires Mail.app to be set up with your Gmail account. New emails will populate the link after your next scan.
+                </div>
+              )}
             </div>
 
             {/* Watching since */}
