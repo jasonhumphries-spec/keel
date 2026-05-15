@@ -81,10 +81,13 @@ function calSignalsForBand(
       .flatMap(d => d.items)
       .filter(i => {
         if (i.status === 'snoozed') return false
-        // awaiting_action and awaiting_reply have their own dedicated cal bands
-        if (i.status === 'awaiting_action') return false
-        if (i.status === 'awaiting_reply') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
+        const isManualUrgent = i.manualPriority && l === 4
+        if (!isManualUrgent) {
+          // awaiting_action and awaiting_reply have their own dedicated cal bands
+          if (i.status === 'awaiting_action') return false
+          if (i.status === 'awaiting_reply') return false
+        }
         return l >= minLevel && l <= maxLevel
       })
       .map(i => i.itemId),
@@ -898,7 +901,7 @@ export function DashboardShell2() {
     signals
       .filter(s => {
         const item = allItems.find(i => i.itemId === s.itemId)
-        return item?.status === 'awaiting_action' && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+        return item?.status === 'awaiting_action' && !(item.manualPriority && scoreToLevel(item.aiImportanceScore ?? 0.5) === 4) && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
       })
       .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
       .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
@@ -909,7 +912,7 @@ export function DashboardShell2() {
     signals
       .filter(s => {
         const item = allItems.find(i => i.itemId === s.itemId)
-        return item?.status === 'awaiting_reply' && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+        return item?.status === 'awaiting_reply' && !(item.manualPriority && scoreToLevel(item.aiImportanceScore ?? 0.5) === 4) && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
       })
       .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
       .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
