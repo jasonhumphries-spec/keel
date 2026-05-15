@@ -798,7 +798,6 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                       label={isAppleMail && !item.rfcMessageId ? 'Open in Gmail' : label}
                       onClick={onClick}
                       variant="primary"
-                      title={isAppleMail && !item.rfcMessageId ? 'Apple Mail link not yet available — scan again to generate' : undefined}
                     />
                   )
                 })()}
