@@ -403,27 +403,48 @@ export function decodeBody(message: any, maxLen = 2000): string {
 
 /**
  * Build a full thread context string for the AI prompt.
- * Most recent 3 messages get full content, older messages get brief excerpts.
+ *
+ * Backoff strategy by position from the end of the thread (most recent = position 1):
+ *   Position 1 (latest)  → full body, no cap          — the current state; AI must not miss anything
+ *   Position 2–3        → up to 1200 chars            — immediate prior context; nearly full
+ *   Position 4–6        → up to 500 chars             — recent history; key points survive
+ *   Position 7–10       → up to 250 chars             — background; topic and gist only
+ *   Position 11+        → up to 100 chars             — deep history; subject line + opening line only
+ *
+ * This keeps token cost bounded while preserving full fidelity where it matters.
+ * A 20-message thread costs roughly the same as sending the last 3 in full.
  */
-export function buildThreadContext(thread: any, maxLen = 800): string {
+export function buildThreadContext(thread: any): string {
   const messages = thread?.messages ?? []
   if (messages.length === 0) return ''
 
   const result: string[] = []
   const total = messages.length
+
   messages.forEach((msg: any, i: number) => {
     const headers  = msg.payload?.headers ?? []
     const from     = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
     const date     = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value ?? ''
-    const isLatest = i === total - 1
-    const isRecent = i >= total - 4  // last 4 messages get full body
-    const body     = decodeBody(msg, isRecent ? maxLen : 200)
-    // The most recent message gets an explicit marker so the AI cannot miss it
-    const label    = isLatest
+
+    // Position from end: 1 = latest, 2 = second-latest, etc.
+    const pos = total - i
+
+    const limit = pos === 1 ? 99999   // latest: uncapped
+                : pos <= 3  ? 1200    // recent context: nearly full
+                : pos <= 6  ? 500     // recent history: key points
+                : pos <= 10 ? 250     // background: gist only
+                :             100     // deep history: opening line only
+
+    const body  = decodeBody(msg, limit)
+
+    const label = pos === 1
       ? `[${date}] From: ${from} *** LATEST MESSAGE — this is the current state of the thread ***`
-      : isRecent
+      : pos <= 3
         ? `[${date}] From: ${from} (recent)`
-        : `[${date}] From: ${from} (earlier — background context only)`
+        : pos <= 6
+          ? `[${date}] From: ${from} (earlier context)`
+          : `[${date}] From: ${from} (background only)`
+
     result.push(`${label}\n${body}`)
   })
 

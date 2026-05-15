@@ -96,16 +96,21 @@ function decodeBody(message: any): string {
 }
 
 function buildThreadContext(thread: any): string {
-  const msgs = thread.messages ?? []
+  const msgs  = thread.messages ?? []
+  const total = msgs.length
   return msgs.map((msg: any, i: number) => {
-    const headers  = msg.payload?.headers ?? []
-    const from     = extractHeader(headers, 'from')
-    const date     = extractHeader(headers, 'date')
-    // Recent messages (last 3): 2000 chars — enough to capture full invitation body
-    // Older messages: 300 chars for context
-    const maxLen   = i < msgs.length - 3 ? 300 : 2000
-    const body     = decodeBody(msg).slice(0, maxLen)
-    return `[${date}] FROM: ${from}\n${body}`
+    const headers = msg.payload?.headers ?? []
+    const from    = extractHeader(headers, 'from')
+    const date    = extractHeader(headers, 'date')
+    // Backoff by position from end — mirrors scanUtils.ts
+    const pos   = total - i
+    const limit = pos === 1 ? 99999 : pos <= 3 ? 1200 : pos <= 6 ? 500 : pos <= 10 ? 250 : 100
+    const body  = decodeBody(msg).slice(0, limit)
+    const label = pos === 1
+      ? `[${date}] FROM: ${from} *** LATEST MESSAGE ***`
+      : pos <= 3 ? `[${date}] FROM: ${from} (recent)`
+      : `[${date}] FROM: ${from} (earlier context)`
+    return `${label}\n${body}`
   }).join('\n\n---\n\n')
 }
 
