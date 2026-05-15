@@ -14,6 +14,7 @@ import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 function KeelLogo() {
   const [active,  setActive]  = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const id = 'keel-wave-grad'
 
   const handleEnter = () => {
     if (timerRef.current) clearTimeout(timerRef.current)
