@@ -103,6 +103,7 @@ function calSignalsForBand(
     .filter(x => x.item != null)
 
   return dedupeCalSignals(filtered)
+}
 
 // ─── Calendar band event row ──────────────────────────────────────────────────
 
