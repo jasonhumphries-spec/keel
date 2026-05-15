@@ -12,16 +12,107 @@ import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 // Sidebar uses the same warm background as the dashboard throughout
 
 function KeelLogo() {
+  const [hovered, setHovered] = useState(false)
+  const id = 'keel-wave-grad'
+
   return (
-    <svg width="44" height="44" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <circle cx="128" cy="128" r="110" fill="none" stroke="#B8964E" strokeWidth="8"/>
-      <path d="M 108 83 L 128 93 L 148 83" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M 110 101 L 128 111 L 146 101" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M 112 119 L 128 129 L 144 119" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M 114 137 L 128 147 L 142 137" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M 116 155 L 128 165 L 140 155" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M 118 173 L 128 183 L 138 173" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <>
+      <style>{`
+        @keyframes keel-wave-rise {
+          0%   { transform: translateY(100%); }
+          100% { transform: translateY(22%); }
+        }
+        @keyframes keel-wave-sway {
+          0%   { transform: translateY(22%) translateX(0px); }
+          50%  { transform: translateY(20%) translateX(-6px); }
+          100% { transform: translateY(22%) translateX(0px); }
+        }
+        @keyframes keel-fin-flash {
+          0%   { stroke: #B8964E; }
+          30%  { stroke: #f0f7fc; }
+          100% { stroke: #B8964E; }
+        }
+        @keyframes keel-circle-blue {
+          0%   { stroke: #B8964E; }
+          40%  { stroke: #4A7FA5; }
+          100% { stroke: #B8964E; }
+        }
+        .keel-wave-group-idle   { transform: translateY(100%); }
+        .keel-wave-group-active { animation: keel-wave-rise 0.55s ease forwards, keel-wave-sway 3s ease-in-out 0.55s infinite; }
+        .keel-circle-active     { animation: keel-circle-blue 1.2s ease forwards; }
+        .keel-fin-1-active      { animation: keel-fin-flash 1.2s ease forwards 0.05s; }
+        .keel-fin-2-active      { animation: keel-fin-flash 1.2s ease forwards 0.12s; }
+        .keel-fin-3-active      { animation: keel-fin-flash 1.2s ease forwards 0.19s; }
+        .keel-fin-4-active      { animation: keel-fin-flash 1.2s ease forwards 0.26s; }
+        .keel-fin-5-active      { animation: keel-fin-flash 1.2s ease forwards 0.33s; }
+        .keel-fin-6-active      { animation: keel-fin-flash 1.2s ease forwards 0.40s; }
+      `}</style>
+
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ width: 44, height: 44, position: 'relative', flexShrink: 0, cursor: 'default' }}
+      >
+        {/* Wave fill — clipped inside circle boundary */}
+        <div style={{
+          position: 'absolute',
+          top: 4, left: 4, right: 4, bottom: 4,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          zIndex: 1,
+          pointerEvents: 'none',
+        }}>
+          <svg viewBox="0 0 68 68" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id={id} x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%"   stopColor="#2d7fa8" stopOpacity={0.78} />
+                <stop offset="100%" stopColor="#1a5c82" stopOpacity={0.92} />
+              </linearGradient>
+            </defs>
+            <g className={hovered ? 'keel-wave-group-active' : 'keel-wave-group-idle'}>
+              {/* Back wave layer */}
+              <path
+                d="M-10 28 Q7 22 17 28 Q27 34 37 28 Q47 22 57 28 Q67 34 78 28 L78 80 L-10 80 Z"
+                fill={`url(#${id})`} opacity={0.55}
+              />
+              {/* Front wave layer */}
+              <path
+                d="M-10 32 Q4 26 17 32 Q30 38 43 32 Q56 26 78 32 L78 80 L-10 80 Z"
+                fill={`url(#${id})`} opacity={0.88}
+              />
+              {/* Foam crest */}
+              <path
+                d="M-10 28 Q7 22 17 28 Q27 34 37 28 Q47 22 57 28 Q67 34 78 28"
+                fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={1.2}
+              />
+            </g>
+          </svg>
+        </div>
+
+        {/* Logo SVG on top of wave */}
+        <svg
+          width="44" height="44" viewBox="0 0 256 256"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{
+            position: 'relative', zIndex: 2, flexShrink: 0,
+            transition: 'transform 0.3s ease',
+            transform: hovered ? 'scale(1.05)' : 'scale(1)',
+          }}
+        >
+          <circle
+            cx="128" cy="128" r="110"
+            fill="none" stroke="#B8964E" strokeWidth="8"
+            className={hovered ? 'keel-circle-active' : ''}
+          />
+          <path className={hovered ? 'keel-fin-1-active' : ''} d="M 108 83 L 128 93 L 148 83"  fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={hovered ? 'keel-fin-2-active' : ''} d="M 110 101 L 128 111 L 146 101" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={hovered ? 'keel-fin-3-active' : ''} d="M 112 119 L 128 129 L 144 119" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={hovered ? 'keel-fin-4-active' : ''} d="M 114 137 L 128 147 L 142 137" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={hovered ? 'keel-fin-5-active' : ''} d="M 116 155 L 128 165 L 140 155" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={hovered ? 'keel-fin-6-active' : ''} d="M 118 173 L 128 183 L 138 173" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+    </>
   )
 }
 
