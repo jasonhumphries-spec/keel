@@ -81,7 +81,14 @@ function decodeBody(message: any): string {
     const data = p.body?.data ?? ''
     try { return atob(data.replace(/-/g, '+').replace(/_/g, '/')) } catch { return '' }
   }
-  return parts.map(decode).join('\n').replace(/\r\n/g, '\n').trim()
+  const raw = parts.map(decode).join('\n').replace(/\r\n/g, '\n').trim()
+  // Strip HTML tags so char limit is spent on actual content, not markup
+  return raw
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function buildThreadContext(thread: any): string {
@@ -90,7 +97,9 @@ function buildThreadContext(thread: any): string {
     const headers  = msg.payload?.headers ?? []
     const from     = extractHeader(headers, 'from')
     const date     = extractHeader(headers, 'date')
-    const maxLen   = i < msgs.length - 3 ? 200 : 600
+    // Recent messages (last 3): 2000 chars — enough to capture full invitation body
+    // Older messages: 300 chars for context
+    const maxLen   = i < msgs.length - 3 ? 300 : 2000
     const body     = decodeBody(msg).slice(0, maxLen)
     return `[${date}] FROM: ${from}\n${body}`
   }).join('\n\n---\n\n')
