@@ -34,8 +34,9 @@ function filterByBand(
       items: d.items.filter(i => {
         if (resolvedItems.has(i.itemId)) return false
         if (i.status === 'snoozed') return false
-        // awaiting_reply items appear in their own dedicated step — never repeat them here
+        // These statuses have their own dedicated bands — never repeat here
         if (i.status === 'awaiting_reply') return false
+        if (i.status === 'awaiting_action') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
         return l >= minLevel && l <= maxLevel
       }),
@@ -772,9 +773,19 @@ export function DashboardShell2() {
     }))
     .filter(d => d.items.length > 0)
 
-  const urgentCount  = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
+  const actionData: CategoryWithItems[] = filteredCategoryData
+    .map(d => ({
+      ...d,
+      items: d.items.filter(i =>
+        i.status === 'awaiting_action' && !resolvedItems.has(i.itemId) && (i as any).status !== 'snoozed'
+      ),
+    }))
+    .filter(d => d.items.length > 0)
+
+  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_action' && i.status !== 'awaiting_reply').length
+  const actionCount   = actionData.flatMap(d => d.items).length
   const awaitingCount = awaitingData.flatMap(d => d.items).length
-  const highCount    = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply').length
+  const highCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply' && i.status !== 'awaiting_action').length
   const fyiCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) <= 2 && !resolvedItems.has(i.itemId)).length
 
   // ── Calendar signals per band ───────────────────────────────────────────────
@@ -996,6 +1007,32 @@ export function DashboardShell2() {
 
           <div style={{ height: 20, background: 'transparent' }} />
 
+          {/* ── Step 2: Needs action ── */}
+          {actionData.length > 0 && (
+            <div>
+            <StepRow
+              accent="#9C5E2B"
+              calBand={<CalBand band="urgent" events={[]} uid={uid} />}
+            >
+              <StepHeader
+                step={2}
+                title="Needs your action — something to do"
+                subtitle="These are waiting on you — a form, a reply, a decision."
+                badge={`${actionCount} item${actionCount !== 1 ? 's' : ''}`}
+                accent="#9C5E2B"
+              />
+              <ItemList
+                categoryData={actionData}
+                signals={signals}
+                resolvedItems={resolvedItems}
+                onItemClick={setExpandedItem}
+                onMarkDone={handleMarkDone}
+              />
+            </StepRow>
+            <div style={{ height: 20, background: 'transparent' }} />
+            </div>
+          )}
+
           {/* ── Step 3: Awaiting responses ── */}
           <div>
           <StepRow
@@ -1005,7 +1042,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={2}
+              step={actionData.length > 0 ? 3 : 2}
               title="Waiting for a reply — worth a nudge?"
               subtitle="You sent the last message. These may benefit from a follow-up."
               badge={`${awaitingCount} item${awaitingCount !== 1 ? 's' : ''}`}
@@ -1038,7 +1075,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={3}
+              step={actionData.length > 0 ? 4 : 3}
               title="On your radar — when you're ready"
               subtitle="These can wait a little, but are worth getting to today or tomorrow."
               badge={`${highCount} item${highCount !== 1 ? 's' : ''}`}
@@ -1076,7 +1113,7 @@ export function DashboardShell2() {
             }
           >
             <StepHeader
-              step={4}
+              step={actionData.length > 0 ? 5 : 4}
               title="The rest — just so you know"
               subtitle="Receipts, confirmations, auto-pay bills. No action needed."
               badge={`${fyiCount} item${fyiCount !== 1 ? 's' : ''}`}
