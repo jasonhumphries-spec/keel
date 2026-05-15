@@ -1029,7 +1029,7 @@ export function DashboardShell2() {
                 signals={signals}
                 resolvedItems={resolvedItems}
                 onItemClick={item => setSelectedItem(item)}
-                onResolved={handleMarkDone}
+                onResolved={handleResolved}
                 uid={uid}
               />
             </StepRow>
