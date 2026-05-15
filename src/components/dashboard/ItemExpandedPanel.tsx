@@ -342,8 +342,8 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       })
       const data = await res.json()
       if (res.ok) {
-        setReanalyseMsg('Done — refresh to see updated summary')
-        setTimeout(() => setReanalyseMsg(''), 4000)
+        setReanalyseMsg('Done — panel will update shortly')
+        setTimeout(() => setReanalyseMsg(''), 5000)
       } else {
         setReanalyseMsg(`Failed: ${data.error ?? 'unknown error'}`)
         setTimeout(() => setReanalyseMsg(''), 4000)
@@ -754,9 +754,8 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 {[
                   { label: 'Snooze 3 days', action: () => snooze(3) },
                   { label: 'Snooze 1 week', action: () => snooze(7) },
-                  { label: 'Archive',        action: archive },
-                  { label: 'Ignore',         action: ignoreItem },
-                  { label: reanalysing ? 'Re-analysing…' : 'Re-analyse', action: reanalyse },
+                  { label: 'Archive',       action: archive },
+                  { label: 'Ignore',        action: ignoreItem },
                 ].map(m => (
                   <button key={m.label} onClick={m.action} style={{ display: 'flex', width: '100%', padding: '8px 10px', borderRadius: 6, fontSize: 'var(--fs-base)', color: m.label.startsWith('Re-anal') ? 'var(--color-accent)' : 'var(--color-text-secondary)', cursor: reanalysing && m.label.startsWith('Re-anal') ? 'not-allowed' : 'pointer', background: 'transparent', border: 'none', fontFamily: 'var(--font-dm-sans)', opacity: reanalysing && m.label.startsWith('Re-anal') ? 0.5 : 1 }}>
                     {m.label}
@@ -787,6 +786,19 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                 )}
                 <ActBtn label="Mark done" onClick={markDone} variant="confirm" />
                 <ActBtn label="Move to…" onClick={() => { setShowMoveTo(m => !m); setShowPaidPanel(false); setShowMoreMenu(false) }} variant="ghost" />
+                <button
+                  onClick={reanalyse}
+                  disabled={reanalysing}
+                  title="Re-fetch this thread from Gmail and re-run full AI analysis"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 'var(--radius-md)', background: 'transparent', border: '1px solid var(--color-border)', cursor: reanalysing ? 'not-allowed' : 'pointer', color: 'var(--color-text-secondary)', fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.04em', opacity: reanalysing ? 0.5 : 1, transition: 'background 0.12s, border-color 0.12s' }}
+                  onMouseEnter={e => { if (!reanalysing) { e.currentTarget.style.background = 'var(--color-surface-recessed)'; e.currentTarget.style.borderColor = 'var(--color-border-strong)' }}}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: reanalysing ? 'spin 1s linear infinite' : 'none', flexShrink: 0 }}>
+                    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                  </svg>
+                  {reanalysing ? 'Re-evaluating…' : 'Re-evaluate'}
+                </button>
                 <button
                   onClick={() => { setShowMoreMenu(m => !m); setShowPaidPanel(false) }}
                   style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '7px 9px', borderRadius: 'var(--radius-md)', background: showMoreMenu ? 'var(--color-surface-raised)' : 'transparent', border: '1px solid var(--color-border)', cursor: 'pointer', color: 'var(--color-text-muted)' }}

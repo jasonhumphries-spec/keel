@@ -170,6 +170,9 @@ Rules:
   • NEXT STEP: Who specifically needs to do what next? Identify by name. If the last outbound message asks a question, the next step is waiting for the other party's reply. Omit if nothing needed.
 - NAMES: Never use "the user", "you", or "the account owner". Use real first names.
 - STATUS: Use "quietly_logged" ONLY if the matter is 100% resolved with zero further relevance. If there is a date, an event, a payment, or any information worth knowing — use "new" not "quietly_logged". When in doubt, use "new".
+- RSVP / REGISTRATION: If the email contains "please complete the registration form", "please register", "please confirm attendance", "RSVP required", or similar — status must be "awaiting_action" regardless of anything else. Do not be misled by the event being far away.
+- CRITICAL — CALENDAR \u2260 RSVP: The fact that an event is in the user's Google Calendar does NOT mean they have RSVPd or registered. Keel adds calendar entries automatically. Only treat an RSVP as complete if the email thread itself contains a confirmation reply or "thank you for registering" message.
+- UNANSWERED INVITATIONS: If the email is an invitation and the thread contains no evidence the user has responded/registered — status must be "awaiting_action", aiImportanceScore 0.70-0.85, even if the event is weeks away.
 - SIGNALS — strict quality rules:
   • event: For confirmed upcoming appointments or events — INCLUDING informational school/activity notices where a date and time are given, even if no action is required. Create event signals for school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date.
   • awaiting: ONLY for genuinely open questions in the most recent outbound message. Not for already-confirmed matters.
