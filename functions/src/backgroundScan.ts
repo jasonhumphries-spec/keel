@@ -318,13 +318,14 @@ async function rescoreByProximity(uid: string, now: Date): Promise<number> {
     const sigsSnap = await db
       .collection(`users/${uid}/signals`)
       .where('itemId', 'in', chunk)
-      .where('type', 'in', ['event', 'deadline', 'rsvp'])
       .where('detectedDate', '>', nowTs)
       .where('detectedDate', '<=', cutoffTs)
       .get()
 
     for (const sigDoc of sigsSnap.docs) {
       const sig    = sigDoc.data()
+      // Filter type in JS — Firestore doesn't allow two 'in' operators per query
+      if (!['event', 'deadline', 'rsvp'].includes(sig.type as string)) continue
       const sigMs  = (sig.detectedDate as admin.firestore.Timestamp).toMillis()
       const itemId = sig.itemId as string
       const prev   = earliestSignalMs.get(itemId)
@@ -471,11 +472,12 @@ export const nightlyItemExpiry = onSchedule(
           const sigsSnap = await db
             .collection(`users/${uid}/signals`)
             .where('itemId', 'in', chunk)
-            .where('type', 'in', ['event', 'deadline', 'rsvp'])
             .get()
 
           for (const sigDoc of sigsSnap.docs) {
             const sig = sigDoc.data()
+            // Filter type in JS — Firestore doesn't allow two 'in' operators per query
+            if (!['event', 'deadline', 'rsvp'].includes(sig.type as string)) continue
             const existing = signalsByItem.get(sig.itemId) ?? []
             existing.push({ type: sig.type, detectedDate: sig.detectedDate })
             signalsByItem.set(sig.itemId, existing)
@@ -483,7 +485,7 @@ export const nightlyItemExpiry = onSchedule(
         }
 
         // Evaluate each item
-        const batch = db.batch()
+        let batch = db.batch()  // let so we can reset after 400-op commits
         let batchCount = 0
 
         for (const itemDoc of itemsSnap.docs) {
@@ -529,6 +531,7 @@ export const nightlyItemExpiry = onSchedule(
           // Commit in batches of 400 (Firestore limit is 500)
           if (batchCount % 400 === 0) {
             await batch.commit()
+            batch = db.batch()  // must create a new batch — committed batches can't be reused
             batchCount = 0
           }
         }
