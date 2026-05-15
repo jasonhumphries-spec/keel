@@ -49,6 +49,24 @@ function filterByBand(
     .filter(d => d.items.length > 0)
 }
 
+// De-duplicate calendar signals: same item on same day → keep highest-priority type
+function dedupeCalSignals(
+  entries: { signal: KeelSignal; item: KeelItem }[],
+): { signal: KeelSignal; item: KeelItem }[] {
+  const TYPE_PRIORITY: Record<string, number> = { event: 0, deadline: 1, rsvp: 2 }
+  const seen = new Map<string, number>() // itemId::date → best priority seen
+  return entries.filter(({ signal: s }) => {
+    const day  = s.detectedDate!.toISOString().slice(0, 10)
+    const key  = `${s.itemId}::${day}`
+    const prio = TYPE_PRIORITY[s.type] ?? 9
+    if (!seen.has(key) || prio < seen.get(key)!) {
+      seen.set(key, prio)
+      return true
+    }
+    return false
+  })
+}
+
 function calSignalsForBand(
   categoryData: CategoryWithItems[],
   signals: KeelSignal[],
@@ -72,8 +90,6 @@ function calSignalsForBand(
       .map(i => i.itemId),
   )
 
-  const TYPE_PRIORITY: Record<string, number> = { event: 0, deadline: 1, rsvp: 2 }
-
   const filtered = signals
     .filter(s =>
       bandItemIds.has(s.itemId) &&
@@ -86,20 +102,7 @@ function calSignalsForBand(
     .map(s => ({ signal: s, item: itemMap.get(s.itemId)! }))
     .filter(x => x.item != null)
 
-  // De-duplicate: when multiple signals from the same item share the same calendar date,
-  // keep only the highest-priority type (event > deadline > rsvp)
-  const seen = new Map<string, number>() // key: itemId+dateDay → best priority seen
-  return filtered.filter(({ signal: s }) => {
-    const day = s.detectedDate!.toISOString().slice(0, 10)
-    const key = `${s.itemId}::${day}`
-    const prio = TYPE_PRIORITY[s.type] ?? 9
-    if (!seen.has(key) || prio < seen.get(key)!) {
-      seen.set(key, prio)
-      return true
-    }
-    return false
-  })
-}
+  return dedupeCalSignals(filtered)
 
 // ─── Calendar band event row ──────────────────────────────────────────────────
 
@@ -890,23 +893,27 @@ export function DashboardShell2() {
   const urgentCal   = calSignalsForBand(filteredCategoryData, signals, 4, 4)
   const allItems    = filteredCategoryData.flatMap(d => d.items)
 
-  const actionCal = signals
-    .filter(s => {
-      const item = allItems.find(i => i.itemId === s.itemId)
-      return item?.status === 'awaiting_action' && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
-    })
-    .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
-    .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
-    .filter(x => x.item)
+  const actionCal = dedupeCalSignals(
+    signals
+      .filter(s => {
+        const item = allItems.find(i => i.itemId === s.itemId)
+        return item?.status === 'awaiting_action' && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+      })
+      .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
+      .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
+      .filter(x => x.item),
+  )
 
-  const awaitingCal = signals
-    .filter(s => {
-      const item = allItems.find(i => i.itemId === s.itemId)
-      return item?.status === 'awaiting_reply' && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
-    })
-    .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
-    .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
-    .filter(x => x.item)
+  const awaitingCal = dedupeCalSignals(
+    signals
+      .filter(s => {
+        const item = allItems.find(i => i.itemId === s.itemId)
+        return item?.status === 'awaiting_reply' && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+      })
+      .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
+      .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
+      .filter(x => x.item),
+  )
   const highCal   = calSignalsForBand(filteredCategoryData, signals, 3, 3)
   // FYI cal: only show events from the currently expanded category
   const fyiCalAll = calSignalsForBand(filteredCategoryData, signals, 1, 2)
