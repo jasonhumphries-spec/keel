@@ -37,6 +37,21 @@ export function titlesMatch(a: string, b: string): boolean {
   return false
 }
 
+// Weaker match — same-day event exists but title overlap is only 1 word (< 8 chars).
+// Used to set calendarStatus: 'probable' rather than 'not_on_cal'.
+// "Bedales Senior Welcome Evening" vs "Bedales Block 3 Evening" → hits: ["bedales","evening"] → confident match
+// "School Play" vs "Paxton Nativity" → hits: [] → no match, not even probable
+// "Dentist Paxton" vs "Dental Appointment" → hits: [] → not probable (no shared words)
+export function titlesMatchProbable(a: string, b: string): boolean {
+  if (titlesMatch(a, b)) return false // already a confident match — caller uses on_cal
+  const wa = new Set(sigWords(a))
+  const wb = sigWords(b)
+  if (!wa.size || !wb.length) return false
+  const hits = wb.filter(w => wa.has(w))
+  // Single meaningful word overlap (5+ chars) = probable
+  return hits.some(w => w.length >= 5)
+}
+
 /**
  * Fallback: check if the sender's domain name appears in the calendar event title.
  * Handles cases where the calendar entry title differs completely from the email
@@ -195,22 +210,28 @@ export async function runCalendarCheck(
           || (itemTitle  && titlesMatch(itemTitle,  calTitle))
           || (senderEmail && senderMatchesCalTitle(senderEmail, calTitle))
     })
-    const isOnCal = !!matchedEvent
 
-    const newStatus = isOnCal ? 'on_cal' : 'not_on_cal'
+    // Check for a probable match (same day, weaker title overlap)
+    const probableEvent = !matchedEvent && sameDay.find(e => {
+      const calTitle = e.summary ?? ''
+      return (sigDesc   && titlesMatchProbable(sigDesc,   calTitle))
+          || (itemTitle && titlesMatchProbable(itemTitle, calTitle))
+    })
+
+    const newStatus: string = matchedEvent ? 'on_cal' : probableEvent ? 'probable' : 'not_on_cal'
     const update: Record<string, any> = { calendarStatus: newStatus, updatedAt: Timestamp.now() }
-    if (isOnCal && matchedEvent?.calendarName && matchedEvent.calendarName !== 'Primary') {
+    if (matchedEvent?.calendarName && matchedEvent.calendarName !== 'Primary') {
       update.matchedCalendarName = matchedEvent.calendarName
-    } else if (!isOnCal) {
+    } else {
       update.matchedCalendarName = null
     }
 
     // Only write if status changed — avoids unnecessary Firestore writes
-    if (sig.calendarStatus !== newStatus || (isOnCal && update.matchedCalendarName !== (sig.matchedCalendarName ?? null))) {
+    if (sig.calendarStatus !== newStatus || (newStatus === 'on_cal' && update.matchedCalendarName !== (sig.matchedCalendarName ?? null))) {
       batch.update(sigDoc.ref, update)
     }
 
-    if (isOnCal) matched++
+    if (newStatus === 'on_cal' || newStatus === 'probable') matched++
     else notMatched++
   }
 

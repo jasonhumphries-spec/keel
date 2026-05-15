@@ -67,7 +67,9 @@ function calSignalsForBand(
       .map(i => i.itemId),
   )
 
-  return signals
+  const TYPE_PRIORITY: Record<string, number> = { event: 0, deadline: 1, rsvp: 2 }
+
+  const filtered = signals
     .filter(s =>
       bandItemIds.has(s.itemId) &&
       ['event', 'rsvp', 'deadline'].includes(s.type) &&
@@ -78,6 +80,20 @@ function calSignalsForBand(
     .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
     .map(s => ({ signal: s, item: itemMap.get(s.itemId)! }))
     .filter(x => x.item != null)
+
+  // De-duplicate: when multiple signals from the same item share the same calendar date,
+  // keep only the highest-priority type (event > deadline > rsvp)
+  const seen = new Map<string, number>() // key: itemId+dateDay → best priority seen
+  return filtered.filter(({ signal: s }) => {
+    const day = s.detectedDate!.toISOString().slice(0, 10)
+    const key = `${s.itemId}::${day}`
+    const prio = TYPE_PRIORITY[s.type] ?? 9
+    if (!seen.has(key) || prio < seen.get(key)!) {
+      seen.set(key, prio)
+      return true
+    }
+    return false
+  })
 }
 
 // ─── Calendar band event row ──────────────────────────────────────────────────
@@ -119,10 +135,11 @@ function CalBandEvent({
   const [status, setStatus] = useState(signal.calendarStatus)
   const [acting, setActing] = useState(false)
 
-  const isOnCal  = status === 'on_cal'
-  const isPending = status === 'pending'
+  const isOnCal    = status === 'on_cal'
+  const isPending  = status === 'pending'
+  const isProbable = status === 'probable'
 
-  const dotColour = isOnCal || isPending ? '#3D7A6B' : bandColour
+  const dotColour = isOnCal || isPending ? '#3D7A6B' : isProbable ? '#6B9E8A' : bandColour
 
   const formatDate = (d: Date) => {
     const now   = new Date()
@@ -205,6 +222,17 @@ function CalBandEvent({
           <span style={{ fontSize: 'var(--fs-xs)', color: '#3D7A6B' }}>
             {isOnCal ? 'In calendar ✓' : 'Adding…'}
           </span>
+        </div>
+      ) : isProbable ? (
+        /* Probable match — likely already on calendar under a different name */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#6B9E8A', flexShrink: 0 }} />
+            <span style={{ fontSize: 'var(--fs-xs)', color: '#6B9E8A', fontFamily: 'var(--font-dm-mono)' }}>
+              Probably in calendar
+            </span>
+          </div>
+          <CalBtn label="+ Add" onClick={handleAdd} colour={bandColour} />
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
