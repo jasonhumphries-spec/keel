@@ -34,10 +34,15 @@ function filterByBand(
       items: d.items.filter(i => {
         if (resolvedItems.has(i.itemId)) return false
         if (i.status === 'snoozed') return false
-        // These statuses have their own dedicated bands — never repeat here
-        if (i.status === 'awaiting_reply') return false
-        if (i.status === 'awaiting_action') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
+        // Manual Urgent override: always surface in Section 1 regardless of status
+        // (user explicitly said "this is urgent" — it should be front and centre)
+        const isManualUrgent = i.manualPriority && l === 4
+        if (!isManualUrgent) {
+          // These statuses have their own dedicated bands — don't duplicate here
+          if (i.status === 'awaiting_reply') return false
+          if (i.status === 'awaiting_action') return false
+        }
         return l >= minLevel && l <= maxLevel
       }),
     }))
@@ -852,22 +857,31 @@ export function DashboardShell2() {
   const awaitingData: CategoryWithItems[] = filteredCategoryData
     .map(d => ({
       ...d,
-      items: d.items.filter(i =>
-        i.status === 'awaiting_reply' && !resolvedItems.has(i.itemId)
-      ),
+      items: d.items.filter(i => {
+        if (i.status !== 'awaiting_reply') return false
+        if (resolvedItems.has(i.itemId)) return false
+        // Already surfaced in Section 1 if user manually marked Urgent
+        if (i.manualPriority && scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
+        return true
+      }),
     }))
     .filter(d => d.items.length > 0)
 
   const actionData: CategoryWithItems[] = filteredCategoryData
     .map(d => ({
       ...d,
-      items: d.items.filter(i =>
-        i.status === 'awaiting_action' && !resolvedItems.has(i.itemId) && (i as any).status !== 'snoozed'
-      ),
+      items: d.items.filter(i => {
+        if (i.status !== 'awaiting_action') return false
+        if (resolvedItems.has(i.itemId)) return false
+        if (i.status === 'snoozed') return false
+        // Already surfaced in Section 1 if user manually marked Urgent
+        if (i.manualPriority && scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
+        return true
+      }),
     }))
     .filter(d => d.items.length > 0)
 
-  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_action' && i.status !== 'awaiting_reply').length
+  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => { const l = scoreToLevel(i.aiImportanceScore ?? 0.5); const isManualUrgent = i.manualPriority && l === 4; return l === 4 && !resolvedItems.has(i.itemId) && (isManualUrgent || (i.status !== 'awaiting_action' && i.status !== 'awaiting_reply')) }).length
   const actionCount   = actionData.flatMap(d => d.items).length
   const awaitingCount = awaitingData.flatMap(d => d.items).length
   const highCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply' && i.status !== 'awaiting_action').length
