@@ -873,7 +873,6 @@ export function DashboardShell2() {
       items: d.items.filter(i => {
         if (i.status !== 'awaiting_action') return false
         if (resolvedItems.has(i.itemId)) return false
-        if (i.status === 'snoozed') return false
         // Already surfaced in Section 1 if user manually marked Urgent
         if (i.manualPriority && scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
         return true
