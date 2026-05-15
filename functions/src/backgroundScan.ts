@@ -282,9 +282,9 @@ export const renewGmailWatches = onSchedule(
  * Only ever bumps upward. manualPriority items are never touched.
  */
 function proximityScore(daysUntil: number): number | null {
-  if (daysUntil <= 1) return 0.78
-  if (daysUntil <= 3) return 0.75
-  if (daysUntil <= 7) return 0.72
+  if (daysUntil <= 1) return 0.90  // today/tomorrow → Urgent
+  if (daysUntil <= 3) return 0.85  // within 3 days → Urgent
+  if (daysUntil <= 7) return 0.77  // within 7 days → High
   return null
 }
 
@@ -456,7 +456,7 @@ export const nightlyItemExpiry = onSchedule(
         // Fetch active items that could be candidates for expiry
         const itemsSnap = await db
           .collection(`users/${uid}/items`)
-          .where('status', 'in', ['new', 'awaiting_action'])
+          .where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply'])
           .get()
 
         if (itemsSnap.empty) continue
@@ -477,7 +477,7 @@ export const nightlyItemExpiry = onSchedule(
           for (const sigDoc of sigsSnap.docs) {
             const sig = sigDoc.data()
             // Filter type in JS — Firestore doesn't allow two 'in' operators per query
-            if (!['event', 'deadline', 'rsvp'].includes(sig.type as string)) continue
+            if (!['event', 'deadline', 'rsvp', 'payment'].includes(sig.type as string)) continue
             const existing = signalsByItem.get(sig.itemId) ?? []
             existing.push({ type: sig.type, detectedDate: sig.detectedDate })
             signalsByItem.set(sig.itemId, existing)
@@ -493,7 +493,27 @@ export const nightlyItemExpiry = onSchedule(
           const signals  = signalsByItem.get(itemDoc.id) ?? []
 
           // Skip items with no event signals — they expire through other means
-          if (signals.length === 0) { skipped++; continue }
+          // EXCEPTION: if item has only past-dated payment/awaiting signals and is
+          // older than 30 days, quietly archive it as stale
+          if (signals.length === 0) {
+            // Check if item is stale — no event signal but item received > 30 days ago
+            const receivedAt = (item.receivedAt as admin.firestore.Timestamp)?.toMillis?.() ?? 0
+            const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000
+            if (item.status === 'new' && receivedAt < thirtyDaysAgoMs) {
+              const itemRef = db.doc(`users/${uid}/items/${itemDoc.id}`)
+              batch.update(itemRef, {
+                status:     'quietly_logged',
+                resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt:  admin.firestore.FieldValue.serverTimestamp(),
+                expiredBy:  'nightly_expiry_stale',
+              })
+              archived++
+              batchCount++
+            } else {
+              skipped++
+            }
+            continue
+          }
 
           // Check: does this item have any FUTURE event/deadline dates?
           const hasFutureDate = signals.some(sig => {
@@ -507,8 +527,8 @@ export const nightlyItemExpiry = onSchedule(
           const itemRef = db.doc(`users/${uid}/items/${itemDoc.id}`)
           const now     = admin.firestore.FieldValue.serverTimestamp()
 
-          if (item.status === 'new') {
-            // Informational item — event happened, quietly archive it
+          if (item.status === 'new' || item.status === 'awaiting_reply') {
+            // Informational item or reply-pending item — event happened, quietly archive it
             batch.update(itemRef, {
               status:     'quietly_logged',
               resolvedAt: now,
