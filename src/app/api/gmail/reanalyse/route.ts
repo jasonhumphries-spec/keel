@@ -26,47 +26,51 @@ async function fetchThread(accessToken: string, threadId: string) {
   return { data: await res.json(), status: res.status }
 }
 
-async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: string): Promise<string | null> {
-  const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
-  const data        = accountSnap.data()
-  if (!data?.accessToken) return null
+async function getValidAccessToken(db: ReturnType<typeof getAdminDb>, uid: string): Promise<string> {
+  const accountRef  = db.doc(`users/${uid}/accounts/account_primary`)
+  const accountSnap = await accountRef.get()
+  if (!accountSnap.exists) throw new Error('Account not found')
 
-  const existingToken = data.accessToken as string
+  const data        = accountSnap.data()!
+  const accessToken = data.accessToken as string | undefined
+  const refreshToken = data.refreshToken as string | undefined
+  const expiresAt   = data.tokenExpiresAt?.toMillis?.() as number | undefined
 
-  // If tokenExpiresAt is missing or unknown, try using the existing token directly
-  // (the scan route keeps this refreshed so it's likely still valid)
-  const expiresAt = data.tokenExpiresAt?.toMillis?.() ?? 0
-  const hasHeadroom = expiresAt > Date.now() + 2 * 60 * 1000
-  if (hasHeadroom || !data.refreshToken) return existingToken
+  // Still valid with >5 min headroom — use as-is
+  const hasHeadroom = expiresAt && expiresAt - Date.now() > 5 * 60 * 1000
+  if (accessToken && hasHeadroom) return accessToken
 
-  // Token is near expiry and we have a refresh token — try refreshing
-  try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    new URLSearchParams({
-        client_id:     process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        refresh_token: data.refreshToken as string,
-        grant_type:    'refresh_token',
-      }),
-    })
-    if (!tokenRes.ok) {
-      // Refresh failed — fall back to existing token (may still work if not truly expired)
-      console.warn('[reanalyse] Token refresh failed, falling back to existing token')
-      return existingToken
-    }
-    const td = await tokenRes.json()
-    await db.doc(`users/${uid}/accounts/account_primary`).update({
-      accessToken:    td.access_token,
-      tokenExpiresAt: Timestamp.fromMillis(Date.now() + td.expires_in * 1000),
-      tokenUpdatedAt: Timestamp.now(),
-    })
-    return td.access_token as string
-  } catch (e) {
-    console.warn('[reanalyse] Token refresh threw:', e)
-    return null
+  // Token missing or about to expire — refresh
+  if (!refreshToken) throw new Error('No refresh token — please sign out and sign back in')
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    new URLSearchParams({
+      client_id:     process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!tokenRes.ok) {
+    const err = await tokenRes.text()
+    console.error('[reanalyse] Token refresh failed:', err)
+    throw new Error(`Token refresh failed — please sign out and sign back in (${tokenRes.status})`)
   }
+
+  const tokenData = await tokenRes.json()
+  const newToken  = tokenData.access_token as string
+  const expiresIn = tokenData.expires_in as number
+
+  await accountRef.update({
+    accessToken:    newToken,
+    tokenUpdatedAt: Timestamp.now(),
+    tokenExpiresAt: Timestamp.fromMillis(Date.now() + expiresIn * 1000),
+  })
+
+  return newToken
 }
 
 function extractHeader(headers: { name: string; value: string }[], name: string): string {
@@ -113,8 +117,12 @@ export async function POST(req: NextRequest) {
     const db = getAdminDb()
 
     // Get a valid (auto-refreshed) access token
-    const accessToken = await getValidAccessToken(db, uid)
-    if (!accessToken) return NextResponse.json({ error: 'Auth expired — user must sign in again', authError: true }, { status: 401 })
+    let accessToken: string
+    try {
+      accessToken = await getValidAccessToken(db, uid)
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message ?? 'Auth expired — please sign out and sign back in', authError: true }, { status: 401 })
+    }
 
     // Read existing item
     const itemSnap = await db.doc(`users/${uid}/items/${itemId}`).get()
