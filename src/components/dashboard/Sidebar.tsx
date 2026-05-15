@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useCounts, useCategories, useCategoryCounts } from '@/lib/hooks'
@@ -12,8 +12,18 @@ import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
 // Sidebar uses the same warm background as the dashboard throughout
 
 function KeelLogo() {
-  const [hovered, setHovered] = useState(false)
-  const id = 'keel-wave-grad'
+  const [active,  setActive]  = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleEnter = () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setActive(true)
+  }
+
+  const handleLeave = () => {
+    // Keep animation classes alive for 2.5s after mouse leaves
+    timerRef.current = setTimeout(() => setActive(false), 2500)
+  }
 
   return (
     <>
@@ -49,8 +59,8 @@ function KeelLogo() {
       `}</style>
 
       <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
         style={{ width: 44, height: 44, position: 'relative', flexShrink: 0, cursor: 'default' }}
       >
         {/* Wave fill — clipped inside circle boundary */}
@@ -69,7 +79,7 @@ function KeelLogo() {
                 <stop offset="100%" stopColor="#1a5c82" stopOpacity={0.92} />
               </linearGradient>
             </defs>
-            <g className={hovered ? 'keel-wave-group-active' : 'keel-wave-group-idle'}>
+            <g className={active ? 'keel-wave-group-active' : 'keel-wave-group-idle'}>
               {/* Back wave layer */}
               <path
                 d="M-10 28 Q7 22 17 28 Q27 34 37 28 Q47 22 57 28 Q67 34 78 28 L78 80 L-10 80 Z"
@@ -96,20 +106,20 @@ function KeelLogo() {
           style={{
             position: 'relative', zIndex: 2, flexShrink: 0,
             transition: 'transform 0.3s ease',
-            transform: hovered ? 'scale(1.05)' : 'scale(1)',
+            transform: active ? 'scale(1.05)' : 'scale(1)',
           }}
         >
           <circle
             cx="128" cy="128" r="110"
             fill="none" stroke="#B8964E" strokeWidth="8"
-            className={hovered ? 'keel-circle-active' : ''}
+            className={active ? 'keel-circle-active' : ''}
           />
-          <path className={hovered ? 'keel-fin-1-active' : ''} d="M 108 83 L 128 93 L 148 83"  fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path className={hovered ? 'keel-fin-2-active' : ''} d="M 110 101 L 128 111 L 146 101" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path className={hovered ? 'keel-fin-3-active' : ''} d="M 112 119 L 128 129 L 144 119" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path className={hovered ? 'keel-fin-4-active' : ''} d="M 114 137 L 128 147 L 142 137" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path className={hovered ? 'keel-fin-5-active' : ''} d="M 116 155 L 128 165 L 140 155" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path className={hovered ? 'keel-fin-6-active' : ''} d="M 118 173 L 128 183 L 138 173" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-1-active' : ''} d="M 108 83 L 128 93 L 148 83"  fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-2-active' : ''} d="M 110 101 L 128 111 L 146 101" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-3-active' : ''} d="M 112 119 L 128 129 L 144 119" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-4-active' : ''} d="M 114 137 L 128 147 L 142 137" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-5-active' : ''} d="M 116 155 L 128 165 L 140 155" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path className={active ? 'keel-fin-6-active' : ''} d="M 118 173 L 128 183 L 138 173" fill="none" stroke="#B8964E" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </div>
     </>
