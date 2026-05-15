@@ -179,11 +179,11 @@ function SidebarInner() {
   })
 
   return (
-    <div style={{ width: 'var(--sidebar-width)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ width: 'var(--sidebar-width)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '1px 0 0 var(--color-border)' }}>
 
       {/* ── Logo — boxShadow instead of borderBottom so height calc is identical to Topbar ── */}
       <div style={{
-        background: 'var(--color-bg)', flexShrink: 0,
+        background: 'var(--color-surface)', flexShrink: 0,
         height: 'var(--topbar-height)',
         display: 'flex', alignItems: 'center',
         padding: '0 16px', gap: 12,
@@ -196,7 +196,7 @@ function SidebarInner() {
       </div>
 
       {/* ── Nav body — same warm bg as dashboard ── */}
-      <div style={{ background: 'var(--color-bg)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* Views */}
         <div style={{ padding: '12px 8px 4px' }}>
