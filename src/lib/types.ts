@@ -13,7 +13,7 @@ export type ItemStatus =
 
 export type SignalType = 'event' | 'deadline' | 'payment' | 'rsvp' | 'awaiting'
 
-export type SignalCalendarStatus = 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | null
+export type SignalCalendarStatus = 'on_cal' | 'not_on_cal' | 'ignored' | 'pending' | 'probable' | null
 
 export interface KeelCategory {
   categoryId:   string
