@@ -110,7 +110,7 @@ function CategoryFilterItem({ cat, allIds, count }: {
           </svg>
         )}
       </div>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 'var(--fs-md)', color: checked ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.72)', transition: 'color 0.15s', pointerEvents: 'none' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 'var(--fs-base)', color: checked ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.72)', transition: 'color 0.15s', pointerEvents: 'none' }}>
         {cat.name}
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -168,7 +168,7 @@ function SidebarInner() {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: active ? '8px 8px 8px 6px' : '8px 8px',
     borderRadius: 'var(--radius-md)',
-    cursor: 'pointer', fontSize: 'var(--fs-md)',
+    cursor: 'pointer', fontSize: 'var(--fs-base)',
     fontFamily: 'var(--font-dm-sans)',
     textDecoration: 'none',
     color: active ? 'var(--color-text-primary)' : 'rgba(44,40,36,0.72)',
@@ -272,7 +272,7 @@ function SidebarInner() {
               : <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(184,150,78,0.2)', border: '1px solid #B8964E', flexShrink: 0 }} />
             }
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 'var(--fs-base)', fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.displayName ?? 'Account'}
               </div>
               <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginTop: 1 }}>Sign out</div>
