@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
     const headers  = latest?.payload?.headers ?? []
     const subject  = extractHeader(headers, 'subject') || item.subject
     const from     = extractHeader(headers, 'from')
+    const rfcMessageId = extractHeader(headers, 'message-id').replace(/^<|>$/g, '') || null
     const threadBody = buildThreadContext(thread)
 
     // Load categories for context
@@ -228,6 +229,7 @@ Rules:
       aiImportanceScore: parsed.aiImportanceScore ?? item.aiImportanceScore,
       status:            resolvedStatus,
       updatedAt:         now,
+      ...(rfcMessageId ? { rfcMessageId } : {}),
     }
 
     if (!preserveCategory && parsed.categoryId) {
