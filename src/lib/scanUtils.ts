@@ -104,13 +104,17 @@ export async function classifyThread(
     : ''
 
   const outboundNote = isOutbound
-    ? '\nDIRECTION: This is a thread the account owner initiated — they sent the first message. ' +
+    ? '\nDIRECTION: This is a thread the account owner initiated — they sent the first (and possibly only) message. ' +
       'If the sender and recipient email addresses are the same (self-email), treat it as a personal note or reminder — ' +
       'classify as new or awaiting_action depending on whether it contains a task or reminder. ' +
-      'Otherwise, the recipient has not yet replied — if the message contains a question, request, or anything ' +
-      'requiring a response, classify as awaiting_reply (score 0.55+). ' +
+      'Otherwise, the account owner sent a message to a third party who has not yet replied. ' +
+      'If the message contains a direct question or request requiring a response, classify as awaiting_reply (score 0.55+). ' +
+      'If the account owner sent it as information only (no reply expected), use new or quietly_logged. ' +
       'Only use quietly_logged if the content is clearly automated, transactional, or requires no response.\n'
-    : ''
+    : '\nDIRECTION: This thread was initiated by a third party (inbound to the account owner). ' +
+      'NEVER classify as awaiting_reply unless the account owner has sent at least one reply in the thread ' +
+      'that itself contains an unanswered question. If the account owner has not replied at all, ' +
+      'use awaiting_action (if the email requires a response or decision) or new (if informational).\n'
 
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.
 ${isUK ? 'Write all text in British English — use UK spellings throughout (e.g. "organise" not "organize", "colour" not "color", "enquire" not "inquire", "cheque" not "check", "licence" not "license").\n' : ''}
@@ -166,9 +170,13 @@ IMPORTANCE SCORING — be precise:
 
 STATUS RULES:
 - "quietly_logged": Matter is fully resolved OR informational only with zero action needed
-- "awaiting_reply": ONLY if the most recent outbound message contains a direct question to the other party AND the account owner's sole next step is to wait for their response. The account owner has nothing left to do until the other party replies.
-- "awaiting_action": The account owner needs to do something — including cases where they have committed to following up after completing a task first (e.g. "I'll check and get back to you", "I'll confirm X", "let me look into that"). If the account owner still has a task to complete before they can reply, this is awaiting_action NOT awaiting_reply — even if an outbound message was the last one sent.
-- CRITICAL DISTINCTION — "I asked them a question, now I wait for their answer" = awaiting_reply. "I said I'd do something, I still need to do it" = awaiting_action. When in doubt prefer awaiting_action — surfacing an item is always better than parking it passively.
+- "awaiting_reply": ONLY valid when ALL of the following are true:
+  (1) The account owner has sent at least one message in this thread (i.e. there is at least one outbound message from the account owner's email address).
+  (2) The most recent outbound message from the account owner contains a direct question, request, or commitment that requires a response from the other party.
+  (3) The other party has NOT yet responded to that specific message.
+  NEVER use awaiting_reply if: the thread is purely inbound (the account owner has never sent a message); the latest message is from a third party who initiated contact and the user has not yet replied; or the thread is cold outreach from a third party. A third party emailing the user and waiting for a response is NOT awaiting_reply — it is awaiting_action (the user needs to decide whether to respond) or new (informational).
+- "awaiting_action": The account owner needs to do something — including cases where they have committed to following up after completing a task first (e.g. "I'll check and get back to you", "I'll confirm X", "let me look into that"). If the account owner still has a task to complete before they can reply, this is awaiting_action NOT awaiting_reply — even if an outbound message was the last one sent. Also use awaiting_action when a third party has emailed the user and the user needs to reply or respond.
+- CRITICAL DISTINCTION — "I asked them a question, now I wait for their answer" = awaiting_reply. "Someone emailed me and I haven't replied" = awaiting_action or new, NOT awaiting_reply. "I said I'd do something, I still need to do it" = awaiting_action. When in doubt prefer awaiting_action — surfacing an item is always better than parking it passively.
 - "new": Informational, no clear action required
 
 RECEIPT vs INVOICE — critical distinction:
