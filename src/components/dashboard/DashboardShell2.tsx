@@ -35,11 +35,8 @@ function filterByBand(
         if (resolvedItems.has(i.itemId)) return false
         if (i.status === 'snoozed') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
-        // Manual Urgent override: always surface in Section 1 regardless of status
-        // (user explicitly said "this is urgent" — it should be front and centre)
-        const isManualUrgent = i.manualPriority && l === 4
-        if (!isManualUrgent) {
-          // These statuses have their own dedicated bands — don't duplicate here
+        // Level 4 (Urgent) always surfaces in Section 1 — urgency trumps status bands
+        if (l < 4) {
           if (i.status === 'awaiting_reply') return false
           if (i.status === 'awaiting_action') return false
         }
@@ -82,9 +79,7 @@ function calSignalsForBand(
       .filter(i => {
         if (i.status === 'snoozed') return false
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
-        const isManualUrgent = i.manualPriority && l === 4
-        if (!isManualUrgent) {
-          // awaiting_action and awaiting_reply have their own dedicated cal bands
+        if (l < 4) {
           if (i.status === 'awaiting_action') return false
           if (i.status === 'awaiting_reply') return false
         }
@@ -867,8 +862,7 @@ export function DashboardShell2() {
       items: d.items.filter(i => {
         if (i.status !== 'awaiting_reply') return false
         if (resolvedItems.has(i.itemId)) return false
-        // Already surfaced in Section 1 if user manually marked Urgent
-        if (i.manualPriority && scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
+        if (scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
         return true
       }),
     }))
@@ -880,14 +874,13 @@ export function DashboardShell2() {
       items: d.items.filter(i => {
         if (i.status !== 'awaiting_action') return false
         if (resolvedItems.has(i.itemId)) return false
-        // Already surfaced in Section 1 if user manually marked Urgent
-        if (i.manualPriority && scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
+        if (scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
         return true
       }),
     }))
     .filter(d => d.items.length > 0)
 
-  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => { const l = scoreToLevel(i.aiImportanceScore ?? 0.5); const isManualUrgent = i.manualPriority && l === 4; return l === 4 && !resolvedItems.has(i.itemId) && (isManualUrgent || (i.status !== 'awaiting_action' && i.status !== 'awaiting_reply')) }).length
+  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
   const actionCount   = actionData.flatMap(d => d.items).length
   const awaitingCount = awaitingData.flatMap(d => d.items).length
   const highCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply' && i.status !== 'awaiting_action').length
@@ -901,7 +894,7 @@ export function DashboardShell2() {
     signals
       .filter(s => {
         const item = allItems.find(i => i.itemId === s.itemId)
-        return item?.status === 'awaiting_action' && !(item.manualPriority && scoreToLevel(item.aiImportanceScore ?? 0.5) === 4) && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+        return item?.status === 'awaiting_action' && scoreToLevel(item.aiImportanceScore ?? 0.5) < 4 && ['event','rsvp','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
       })
       .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
       .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
@@ -912,7 +905,7 @@ export function DashboardShell2() {
     signals
       .filter(s => {
         const item = allItems.find(i => i.itemId === s.itemId)
-        return item?.status === 'awaiting_reply' && !(item.manualPriority && scoreToLevel(item.aiImportanceScore ?? 0.5) === 4) && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+        return item?.status === 'awaiting_reply' && scoreToLevel(item.aiImportanceScore ?? 0.5) < 4 && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
       })
       .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
       .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
