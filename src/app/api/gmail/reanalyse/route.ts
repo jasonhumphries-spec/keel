@@ -212,6 +212,7 @@ Rules:
 - CRITICAL — CALENDAR \u2260 RSVP: The fact that an event is in the user's Google Calendar does NOT mean they have RSVPd or registered. Keel adds calendar entries automatically. Only treat an RSVP as complete if the email thread itself contains a confirmation reply or "thank you for registering" message.
 - UNANSWERED INVITATIONS: If the email is an invitation and the thread contains no evidence the user has responded/registered — status must be "awaiting_action", aiImportanceScore 0.70-0.85, even if the event is weeks away.
 - SIGNALS — strict quality rules:
+  • DATE ACCURACY (critical): Always read the full month from the email context. If the email discusses June events and mentions 'the 16th', that is June 16th not May 16th. Never assume a day number belongs to the current month — use the month explicitly stated or contextually implied. Output all detectedDate values as YYYY-MM-DD with the correct month.
   • event: For confirmed upcoming appointments or events — INCLUDING informational school/activity notices where a date and time are given, even if no action is required. Create event signals for school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date.
   • awaiting: ONLY for genuinely open questions in the most recent outbound message. Not for already-confirmed matters.
   • deadline/payment/rsvp: Only when genuinely present and unresolved.
