@@ -275,6 +275,21 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       parsed.status = 'awaiting_action'
     }
 
+    // Hard proximity override: any signal due within 2 days → Urgent (≥0.85).
+    // AI consistently under-scores response deadlines vs payment deadlines regardless of prompting.
+    const _nowMs     = Date.now()
+    const _twoDaysMs = 2 * 24 * 60 * 60 * 1000
+    const _sigs      = Array.isArray(parsed?.signals) ? parsed.signals : []
+    const _imminent  = _sigs.some((s: any) => {
+      if (!s?.detectedDate) return false
+      const ms = new Date(s.detectedDate).getTime()
+      return ms > _nowMs && ms - _nowMs <= _twoDaysMs
+    })
+    if (_imminent && (parsed?.aiImportanceScore ?? 0) < 0.85) {
+      console.warn(`[classifyThread] Proximity override: signal within 2 days, bumping ${parsed.aiImportanceScore} → 0.88`)
+      parsed.aiImportanceScore = 0.88
+    }
+
         return {
       ...parsed,
       _usage: { inputTokens, outputTokens },

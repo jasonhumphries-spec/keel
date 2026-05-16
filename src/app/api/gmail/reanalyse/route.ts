@@ -230,6 +230,21 @@ Rules:
       parsed.status = 'awaiting_action'
     }
 
+    // Hard proximity override — if any signal is due within 2 days, score must be Urgent (≥0.85).
+    // The AI consistently under-scores response deadlines vs payment deadlines regardless of prompting.
+    const nowMs       = Date.now()
+    const twoDaysMs   = 2 * 24 * 60 * 60 * 1000
+    const signals     = Array.isArray(parsed?.signals) ? parsed.signals : []
+    const hasImminent = signals.some((s: any) => {
+      if (!s?.detectedDate) return false
+      const sigMs = new Date(s.detectedDate).getTime()
+      return sigMs > nowMs && sigMs - nowMs <= twoDaysMs
+    })
+    if (hasImminent && (parsed?.aiImportanceScore ?? 0) < 0.85) {
+      console.warn(`[reanalyse] Proximity override: signal due within 2 days, score ${parsed.aiImportanceScore} → 0.88`)
+      parsed.aiImportanceScore = 0.88
+    }
+
     const now = Timestamp.now()
 
     // Build update — always update content fields, preserve category if manually set
