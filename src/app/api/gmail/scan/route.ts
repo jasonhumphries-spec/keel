@@ -753,6 +753,17 @@ export async function POST(req: NextRequest) {
     // Fire-and-forget calendar status check — non-fatal, runs after scan completes
     runCalendarCheck(db, uid, accessToken).catch(e => console.warn('[CalCheck] Non-fatal error:', e))
 
+    // Fire-and-forget expiry + proximity rescore — archives past-dated items immediately
+    // rather than waiting for the 1am nightly job. Prevents re-scans from re-surfacing
+    // items whose event dates have already passed.
+    const expireUrl    = `${req.nextUrl.origin}/api/admin/expire-items`
+    const adminSecret  = process.env.ADMIN_SECRET ?? ''
+    fetch(expireUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'x-keel-admin-secret': adminSecret },
+      body:    JSON.stringify({ uid }),
+    }).catch(e => console.warn('[expire-items] Non-fatal post-scan error:', e))
+
     console.log(`Scan complete — ${processed} new, ${updated} updated, ${skipped} skipped. AI: $${aiCostUsd.toFixed(4)} · FB: ${fbReads}r/${fbWrites}w ($${fbCostUsd.toFixed(4)}) · Total: $${totalCostUsd.toFixed(4)}`)
 
     return NextResponse.json({
