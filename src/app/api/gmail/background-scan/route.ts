@@ -65,8 +65,9 @@ async function getValidAccessToken(
   if (accessToken && Date.now() < expiresAt - 60_000) return accessToken
 
   if (!refreshToken) {
-    console.warn(`[background-scan] No refreshToken for uid=${uid}`)
-    return accessToken ?? ''
+    // No way to get a fresh token — throw so the caller gets a clean error
+    // rather than silently using an expired/empty token that will 401 on Gmail
+    throw new Error('No refresh token — user must sign in again to re-grant Gmail access')
   }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -105,8 +106,15 @@ async function getChangedThreadIds(accessToken: string, lastHistoryId: string): 
   url.searchParams.set('maxResults',     '100')
 
   const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
-  if (res.status === 404) { console.warn('[background-scan] historyId expired'); return [] }
-  if (!res.ok) throw new Error(`Gmail history.list failed: ${res.status}`)
+  if (res.status === 404) {
+    // historyId too old — Gmail only keeps ~7 days. Treat as empty (next scan will catch up).
+    console.warn('[background-scan] historyId expired (404) — no history to process')
+    return []
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '(no body)')
+    throw new Error(`Gmail history.list failed: ${res.status} ${body}`)
+  }
 
   const data = await res.json()
   const seen = new Set<string>()
@@ -264,7 +272,12 @@ export async function POST(req: NextRequest) {
           (messages[0].payload?.headers ?? []).some((h: any) =>
             h.name.toLowerCase() === 'to' && (h.value as string).toLowerCase().includes(accountEmail)
           )
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound)
+        // ownerHasReplied: computed from message headers — blocks awaiting_reply on inbound-only threads
+        const ownerHasReplied = messages.some((msg: any) => {
+          const msgFrom = ((msg.payload?.headers ?? []) as any[]).find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
+          return msgFrom.toLowerCase().includes(accountEmail)
+        })
+        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied)
         // Self-emails and outbound threads are always worth storing — never skip them
         // even if the AI returns shouldProcess=false
         if (!classification || (!classification.shouldProcess && !isOutbound)) { skippedItems++; continue }
