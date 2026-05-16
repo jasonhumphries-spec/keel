@@ -283,8 +283,8 @@ export const renewGmailWatches = onSchedule(
  */
 function proximityScore(daysUntil: number): number | null {
   if (daysUntil <= 1) return 0.90  // today/tomorrow → Urgent
-  if (daysUntil <= 3) return 0.85  // within 3 days → Urgent
-  if (daysUntil <= 7) return 0.77  // within 7 days → High
+  if (daysUntil <= 2) return 0.85  // within 2 days → Urgent
+  if (daysUntil <= 7) return 0.77  // within 7 days → High (not Urgent)
   return null
 }
 

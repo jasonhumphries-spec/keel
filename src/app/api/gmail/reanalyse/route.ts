@@ -215,7 +215,7 @@ Rules:
   • event: For confirmed upcoming appointments or events — INCLUDING informational school/activity notices where a date and time are given, even if no action is required. Create event signals for school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date.
   • awaiting: ONLY for genuinely open questions in the most recent outbound message. Not for already-confirmed matters.
   • deadline/payment/rsvp: Only when genuinely present and unresolved.
-- IMPORTANCE: Proximity to today is the primary driver. Events or commitments TODAY or TOMORROW score 0.88-0.92 (Urgent) — this includes practice sessions, school events, appointments, social commitments, anything happening in the next 24-48 hours. Events within 3 days score 0.83-0.87. Events within 7 days score 0.75-0.82 (High). Events more than 7 days away score 0.55-0.65 (Medium). Never score an event happening today or tomorrow below 0.85.`
+- IMPORTANCE: Proximity to today is the primary driver. Events or commitments TODAY or TOMORROW score 0.88-0.92 (Urgent) — includes school events, sports, practice sessions, appointments, social commitments. Events or commitments within 2 days score 0.85-0.87 (Urgent). Non-payment deadlines within 3–7 days (e.g. 'reply by Friday', 'let me know by next week') score 0.75-0.80 (High) — do NOT treat a response deadline as equivalent to a payment deadline. Payment due within 7 days scores 0.82-0.87. Events more than 7 days away score 0.55-0.65 (Medium). Never score today/tomorrow below 0.85.`
 
     const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
     const json = text.match(/\{[\s\S]*\}/)?.[0]
