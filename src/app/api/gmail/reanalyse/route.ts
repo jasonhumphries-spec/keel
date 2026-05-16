@@ -218,7 +218,7 @@ Rules:
   • deadline/payment/rsvp: Only when genuinely present and unresolved.
 - IMPORTANCE: Proximity to today is the primary driver. Events or commitments TODAY or TOMORROW score 0.88-0.92 (Urgent) — includes school events, sports, practice sessions, appointments, social commitments. Events or commitments within 2 days score 0.85-0.87 (Urgent). Non-payment deadlines within 3–7 days (e.g. 'reply by Friday', 'let me know by next week') score 0.75-0.80 (High) — do NOT treat a response deadline as equivalent to a payment deadline. Payment due within 7 days scores 0.82-0.87. Events more than 7 days away score 0.55-0.65 (Medium). Never score today/tomorrow below 0.85.`
 
-    const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 1024)
+    const { text, inputTokens, outputTokens } = await aiComplete(db, prompt, 2048)
     const json = text.match(/\{[\s\S]*\}/)?.[0]
     if (!json) return NextResponse.json({ error: 'AI returned no JSON' }, { status: 500 })
 
@@ -229,6 +229,8 @@ Rules:
       console.warn('[reanalyse] awaiting_reply overridden → awaiting_action (owner has never sent a message)')
       parsed.status = 'awaiting_action'
     }
+
+    console.log('[reanalyse] parsed.signals:', JSON.stringify(parsed?.signals ?? []))
 
     // Hard proximity override — if any signal is due within 2 days, score must be Urgent (≥0.85).
     // The AI consistently under-scores response deadlines vs payment deadlines regardless of prompting.
