@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { classifyThread, decodeBody, buildThreadContext } from '@/lib/scanUtils'
+import { runCalendarCheck } from '@/lib/server/calendarCheck'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -368,6 +369,11 @@ export async function POST(req: NextRequest) {
     ])
 
     console.log(`[background-scan] uid=${uid} new=${newItems} updated=${updatedItems} skipped=${skippedItems} cost=$${totalCost.toFixed(5)} ${durationMs}ms`)
+
+    // Fire-and-forget calendar status check — non-fatal, runs after scan completes.
+    // Marks event/rsvp/deadline signals as on_cal/not_on_cal and auto-quietly-logs
+    // 'new' items whose event is already on the user's calendar.
+    runCalendarCheck(db, uid, accessToken).catch(e => console.warn('[CalCheck] Non-fatal error:', e))
 
     return NextResponse.json({ success: true, newItems, updatedItems, skippedItems, aiCostUsd: totalAiCost, totalCostUsd: totalCost, durationMs })
 
