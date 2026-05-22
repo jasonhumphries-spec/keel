@@ -187,12 +187,22 @@ async function expireItemsForUser(
       continue
     }
 
-    // Does this item have any future event/deadline dates?
-    const hasFutureDate = signals.some(sig =>
-      sig.detectedDate && sig.detectedDate.toMillis() > thresholdTs.toMillis(),
+    // Does this item have any future event/deadline/rsvp dates?
+    // Only these types drive expiry — payment signals don't expire items.
+    // Also log the first few for debugging.
+    const eventSignals = signals.filter(s => ['event', 'deadline', 'rsvp'].includes(s.type))
+    const hasFutureDate = eventSignals.some(sig =>
+      sig.detectedDate && (sig.detectedDate as Timestamp).toMillis() > thresholdTs.toMillis(),
     )
 
+    if (eventSignals.length === 0) {
+      // No event signals at all — treat same as no signals (stale items logic above handles it)
+      skipped++; continue
+    }
+
     if (hasFutureDate) { skipped++; continue }
+
+    console.log(`[expire] expiring item ${itemDoc.id} status=${item.status} signals=${JSON.stringify(eventSignals.map(s => ({ type: s.type, date: s.detectedDate ? (s.detectedDate as Timestamp).toDate().toISOString() : null })))}`)
 
     // All event dates are in the past — expire
     if (item.status === 'new' || item.status === 'awaiting_reply') {
