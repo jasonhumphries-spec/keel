@@ -1,0 +1,161 @@
+=== 2026-05-22 SESSION 9 (classification quality + expiry + background scan fix) ===
+
+PRE-SESSION STATE:
+- App live at www.jaison.app, background scanning active via Pub/Sub
+- Background scan returning 400 errors (OAuth token issue)
+- Nightly expiry not clearing old items
+- Re-evaluate button not applying latest classification rules (diverged prompt)
+
+PWA:
+- Added manifest.ts (Next.js App Router), service worker (public/sw.js), icon set (6 sizes)
+- layout.tsx: viewport meta, apple-mobile-web-app tags, SW registration script
+- Installs from www.jaison.app in Chrome/Edge ("Install" button) and Safari ("Add to Home Screen")
+- Icons: 16, 32, 180 (apple-touch), 192, 512 — generated as PNG from brass chevron design
+- SW strategy: network-first, caches app shell, API/Firestore always bypass cache
+
+SCAN FILTER ADDITIONS:
+- Calendar invites (.ics attachments) skipped during scan — setting in SettingsPanel (default ON)
+  excludeCalendarInvites stored on account_primary, read in scan route
+  hasCalendarInvite() helper checks MIME parts recursively
+- Calendar reminder emails always skipped (hardcoded, no setting)
+  isCalendarReminder() checks known sender addresses + subject patterns
+- Spam added to default excludedLabels: ['promotions', 'social', 'spam']
+- Background scan ON by default: autoScanEnabled:true written for new users on sign-in
+  Also auto-enables for existing users who don't have the field set yet (AuthContext)
+- BackgroundScanToggle display default changed from false → true
+
+BACKGROUND SCAN FIX (/api/gmail/background-scan):
+- Silent-fail bug: missing refreshToken was returning expired/empty token → 401 on Gmail
+  Fixed: throw cleanly instead of returning bad token
+- history.list error now includes response body in log (was swallowing the message)
+- Token error response changed from 400 → 503 (retryable, not bad-request)
+- ownerHasReplied passed to classifyThread (consistent with scan route)
+- ROOT CAUSE: stale refresh token in Firestore — fix: sign out and sign back in
+
+REANALYSE ROUTE REFACTOR (major):
+- Old: /api/gmail/reanalyse had its own inline prompt (325 lines, diverged from scanUtils.ts)
+- New: uses classifyThread() from scanUtils.ts — identical pipeline to scan route
+- All prompt improvements, scoring rules, ownerHasReplied, proximity override now apply
+  automatically to Re-evaluate button without manual mirroring
+- Fetches full Gmail thread, builds threadContext, computes ownerHasReplied from headers
+- Preserves manualCategory + manualPriority overrides
+- Guards against silently moving active items to quietly_logged via re-evaluate
+- Rewrites signals in Firestore batch on re-evaluate
+
+CLASSIFICATION FIXES (scanUtils.ts):
+- awaiting_reply now requires ALL THREE: owner sent ≥1 message, their last msg had
+  unanswered question, other party hasn't responded
+- Cold outreach: third party emailing owner with no reply = awaiting_action/new, NOT awaiting_reply
+- Cold outreach follow-up chase ("just following up") explicitly blocked from awaiting_reply
+- Self-consistency check: if NEXT STEP says owner needs to act → status must be awaiting_action
+- ownerHasReplied computed from actual message headers in scan + background-scan + reanalyse routes
+  Hard override in code: if ownerHasReplied=false and AI returns awaiting_reply → force awaiting_action
+- Thread context backoff (buildThreadContext):
+  Latest message: uncapped (*** LATEST MESSAGE *** label)
+  Positions 2-3: 1200 chars
+  Positions 4-6: 500 chars
+  Positions 7-10: 250 chars
+  Position 11+: 100 chars
+- Recency weighting: LATEST MESSAGE labelled, strong next-turn ownership rules
+- Document/statement availability: score 0.15-0.20, quietly_logged (bank statements, HMRC docs)
+- SCORING BANDS (revised):
+  0.95: overdue payment, legal/medical action required
+  0.88-0.92: today/tomorrow event/deadline/commitment → Urgent
+  0.82-0.87: payment due ≤7 days, RSVP imminent
+  0.75-0.80: non-payment response deadline ≤7 days → High (not Urgent)
+  0.70-0.75: action needed, not urgent
+- Proximity override in code (classifyThread + reanalyse): any signal ≤2 days → score ≥0.88
+- Date accuracy rule: read month from email context, not current month
+  ("the 16th" in a June discussion = June 16th, not May 16th)
+- Travel disruption alerts: quietly_logged (Trainline, National Rail, airlines)
+- Security alerts: status=new, score 0.35-0.45 (not awaiting_action unless explicitly compromised)
+- Promotional offers with prices: quietly_logged — price in offer ≠ payment signal
+- Marketing/promotional emails: quietly_logged
+- Calendar reminder skip improved (subject patterns + known senders)
+
+SECTION/DASHBOARD FIXES (DashboardShell2.tsx):
+- Any level 4 (Urgent) item goes to Section 1 regardless of status
+  Previously only manualPriority=true items got this treatment
+  Fixed: filterByBand, actionData, awaitingData, calSignalsForBand, actionCal, awaitingCal, urgentCount
+- Calendar band routing: manually-urgent items' cal entries follow item to Section 1 cal band
+- Calendar signal deduplication: dedupeCalSignals() helper applied to actionCal + awaitingCal
+  (was only applied to score-band cal, causing duplicate entries in Section 2 calendar)
+- Fixed missing closing brace in calSignalsForBand after dedup refactor
+
+NIGHTLY PROXIMITY RESCORE (functions/src/backgroundScan.ts):
+- Thresholds updated to match new scoring bands:
+  ≤1 day: 0.90 (Urgent)
+  ≤2 days: 0.85 (Urgent)
+  ≤7 days: 0.77 (High)
+
+POST-SCAN EXPIRY (/api/admin/expire-items — NEW):
+- Runs per-user expiry + proximity rescore on demand
+- Called fire-and-forget after every scan (scan/route.ts)
+- Admin console "Run expiry (this user)" + "Run expiry (all users)" buttons in DevOps card
+- Expiry logic:
+  Items with all event/deadline/rsvp signals in past → archived (new/awaiting_reply) or overdue (awaiting_action)
+  Only event/deadline/rsvp signals drive expiry — payment signals don't expire items
+  new items, no signals, >7 days old → quietly_logged (transient alerts, disruption notices)
+  awaiting_action items, no signals, >14 days old → quietly_logged
+  awaiting_reply items, no signals, >60 days old → quietly_logged
+- Proximity rescore also runs alongside expiry (same query, same batch)
+- keel-admin: proxy route + "Run expiry" buttons in DevOps card
+  Requires KEEL_APP_URL env var in keel-admin Vercel settings
+
+SETTINGS ADDITIONS:
+- "Ignore calendar invitations" toggle (default ON) — excludeCalendarInvites on account_primary
+- Spam added to default excluded labels
+
+FILES CHANGED THIS SESSION (keel):
+- src/app/layout.tsx (PWA meta tags, SW registration, viewport)
+- src/app/manifest.ts (NEW — web app manifest)
+- public/sw.js (NEW — service worker)
+- public/icons/*.png (NEW — 6 icon sizes)
+- src/app/api/gmail/scan/route.ts (threadMeta, ownerHasReplied, calendar invite skip, post-scan expiry call, calendar reminder skip, spam default)
+- src/app/api/gmail/reanalyse/route.ts (REFACTORED — now uses classifyThread from scanUtils)
+- src/app/api/gmail/background-scan/route.ts (token fix, 503 error, ownerHasReplied)
+- src/app/api/gmail/thread-preview/route.ts (NEW — email preview endpoint)
+- src/app/api/admin/expire-items/route.ts (NEW — on-demand expiry + rescore)
+- src/components/dashboard/EmailPreviewDrawer.tsx (NEW)
+- src/components/dashboard/ItemExpandedPanel.tsx (Preview email button)
+- src/components/dashboard/DashboardShell2.tsx (level 4 always Section 1, cal band routing, dedup fix)
+- src/components/settings/SettingsPanel.tsx (calendar invite toggle, spam default, background scan default)
+- src/components/settings/BackgroundScanToggle.tsx (default display true)
+- src/contexts/AuthContext.tsx (auto-enable background scan for new + existing users)
+- src/lib/scanUtils.ts (classifyThread signature + ownerHasReplied param + proximity override,
+  all prompt improvements, backoff strategy, scoring bands, date accuracy, transient rules,
+  security alerts, promotional emails, travel disruption)
+- functions/src/backgroundScan.ts (proximity rescore thresholds updated)
+
+FILES CHANGED THIS SESSION (keel-admin):
+- src/app/page.tsx (Run expiry buttons in DevOps card)
+- src/app/api/admin/expire-items/route.ts (NEW — proxy to keel app)
+
+CURRENT STATE (end of session 9):
+- www.jaison.app: LIVE ✓
+- Background scanning: ACTIVE (Pub/Sub) — token fix deployed, sign-out/in needed to refresh token
+- Post-scan expiry: ACTIVE — runs after every scan + manual via admin console
+- Re-evaluate: now uses same pipeline as full scan (no more divergence)
+- Dashboard: significantly cleaner — 200 stale items archived in first expiry run
+- Version: 0.2.0
+
+OUTSTANDING BACKLOG:
+1.  Google OAuth app verification — required before public beta; max 100 test users
+2.  Security/GDPR doc — UK compliance, required before real user testing
+3.  Replace privacy@keel.app placeholder + update LAST_UPDATED in privacy policy
+4.  Firestore indexes needed:
+    - signals: itemId ASC, detectedDate ASC (needed for nightlyItemExpiry proximity rescore)
+    - scanRuns: scanAt desc
+    - items: (status, receivedAt) for reclassify quietly_logged query
+5.  Background scan token: sign out and sign back in to get fresh refresh token
+    (current token likely expired/revoked — background scan returning 503)
+6.  KEEL_APP_URL env var needed in keel-admin Vercel settings (for expire-items proxy)
+7.  Email preview: show all messages in thread, not just latest
+8.  Multi-account Gmail support — account switcher in sidebar
+9.  threadMeta in Cloud Function — backgroundScan.ts not yet using threadMeta
+10. Beta landing page — partially built in separate session
+11. Field-level encryption (V2)
+12. Code review — dead code, docToItem pattern standardisation
+13. LinkedIn/Amazon digest prompt rules — these are still surfacing as actionable
+14. Terminate active scan before dev reset — AbortController
+15. Google OAuth app verification (needed before public beta)

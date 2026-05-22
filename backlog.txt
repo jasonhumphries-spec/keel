@@ -1,5 +1,5 @@
 KEEL — BACKLOG
-Last updated: 2026-05-03 Session 5
+Last updated: 2026-05-22 Session 9
 Status key: [ ] todo  [~] in progress  [x] done
 
 ═══════════════════════════════════════════════
@@ -7,8 +7,9 @@ CRITICAL / PRE-BETA
 ═══════════════════════════════════════════════
 
 [ ] Google OAuth app verification
-    Required before public beta. Currently unverified — works for test users only.
+    Required before public beta. Currently unverified — max 100 test users.
     Submit via Google Cloud Console → OAuth consent screen.
+    Need: privacy policy live + app logo + scope justifications + demo video.
 
 [ ] Security/GDPR doc
     UK GDPR compliance, data handling, retention policy. Required before any real
@@ -18,209 +19,121 @@ CRITICAL / PRE-BETA
     Also update LAST_UPDATED date in privacy policy page.
 
 [ ] Firestore indexes
-    - scanRuns: scanAt desc (Firebase will prompt with link on first query)
-    - items: (status, receivedAt) — needed for reclassify quietly_logged query
-
-═══════════════════════════════════════════════
-UX / DESIGN — SESSION 5 (approved for implementation)
-═══════════════════════════════════════════════
-
-[ ] Priority system — full replacement (Session 5 design doc §1)
-    Remove 4-bar WiFi-style signal strength icon entirely.
-    Replace with two complementary indicators:
-    A. Filled circle dot — right-aligned on card header, colour = priority level
-    B. Coloured left border on card — 3–4px vertical bar, same colour as dot
-    Temperature ramp:
-      Low    #6B7A82  slate-brass, cool, recedes
-      Med    #C4A265  warm sand / light amber
-      High   #B8964E  full brass (core brand accent)
-      Urgent #9C5E2B  deep burnt amber / rust
-    Snoozed state renders dot + border in neutral grey.
-    Expanded panel: same four levels as clickable pill buttons (Low/Med/High/Urgent).
-    Manual override → manualPriority:true. "Reset to AI" clears it.
-    Optimistic local state — UI updates immediately.
-
-[ ] Button role system — standardise across whole app (Session 5 design doc §2)
-    Primary    — brass filled #B8964E, white text (Run Scan, Mark as Paid, Add to Cal)
-    Secondary  — brass outline #B8964E border+text (Open in Gmail, Move, Reclassify)
-    Neutral    — mist filled #E7E9E6, muted text #4A5568 (Cancel, Undo, Reset to AI)
-    Destructive— rust outline #9C5E2B border+text (Ignore, Delete)
-    Confirm    — teal filled #3D7A6B, white text — ONLY Mark Done + Payment Recorded
-    Hover states: Primary→#A07C3A, Confirm→#2E6558, Secondary→brass tint 8%,
-                  Destructive→rust tint 8%, Neutral→#D8DAD8
-
-[ ] Calendar column — full redesign (Session 5 design doc §3)
-    Dynamic date range driven by active sidebar filter (not fixed 10-day strip).
-    Three event states:
-      on_cal     — teal #3D7A6B + tick, title from GCal entry (fallback aiTitle)
-      not_on_cal + High/Urgent — rust/brass (match priority), aiTitle, prominent Add
-      not_on_cal + Low/Med    — sand #C4A265, aiTitle, quieter Add
-      ignored ("Don't add")  — disappears from calendar column; card stays
-    "Don't add" writes ignored to SignalCalendarStatus on the signal (not the item).
-    Tapping a calendar event opens the corresponding item card (carry itemId).
-    GCal title matching: approximate date+title similarity; fallback to aiTitle if unsure.
-    SignalCalendarStatus: on_cal | not_on_cal | ignored | pending
-    pending shown as muted ? indicator (calendar check not yet complete).
-
-[ ] Snooze (Session 5 design doc §4)
-    Snooze button on every item card (card actions row or ... menu).
-    Popover with three options: 1 day / 3 days / 7 days. No free-form entry.
-    Data model: add snoozedUntil:Timestamp + preSnoozePriority:number to KeelItem.
-    During snooze: priority -> -1, card greyed with "Snoozed until [date]" label.
-    Card visible in category views but hidden from High & above / Urgent filter views.
-    On app load: check elapsed snoozedUntil -> restore preSnoozePriority, clear field.
-    Dedicated "Snoozed" sidebar view shows all snoozed items with wake date.
-
-[ ] Card calendar badges (Session 5 design doc §5)
-    Small calendar icon badge on every card with date signals.
-    States: on_cal (teal+tick), not_on_cal (priority colour+plus), ignored (grey+x), pending (?).
-    Tapping badge opens same add/don't-add popover as calendar column.
-    Multiple date signals -> multiple icons side by side, each with small text label.
-    Inline action only — does not open expanded panel or navigate to calendar column.
-
-[ ] Sidebar — new filter views + scrollable category list (Session 5 design doc §6)
-    New views:
-      Overdue      — near top, prominent, rust colour treatment
-      Payment Due  — near top, items with unpaid payment signal
-      Snoozed      — mid-section, all snoozed items with wake date
-      Archived     — bottom, quiet/muted, reference only
-    Existing views retained: Awaiting Reply, Ignored, To categorise, High & above, Urgent.
-    Category list: place in fixed-height scrollable container (scroll internal to list only).
-    Category show/hide toggles: parked — do not implement.
-
-[ ] Onboarding additions (Session 5 design doc §7)
-    A. Alpha code gate — post sign-in, pre-onboarding.
-       Single input "Enter your access code". Code: HELM3X (env var ALPHA_ACCESS_CODE).
-       Case-insensitive. On success: write alphaVerified:true to account doc.
-       Checked once only — skip if alphaVerified:true on subsequent sign-ins.
-       On failure: inline error, allow retry, no lockout.
-    B. Post-scan thread volume reaction — shown after onboarding scan completes.
-       Rate = threadsFound / daysBack:
-         <10/day  -> "A steady inbox — Keel should have this organised quickly."
-         10-25    -> "That's a healthy amount of email. You're in good hands."
-         25-50    -> "Busy inbox. Keel's going to earn its keep here."
-         50+      -> "That's a lot. Keel's built for this — let's get it sorted."
-    C. Top banner — persistent thread count "243 threads · last 7 days".
-       Updates when date range changes. Rescan button inline. "counting..." during scan.
-
-[ ] Version display in sidebar footer (Session 5 design doc §8)
-    Format: "Keel · Alpha · v0.x.x" — same row as Feedback + Privacy links.
-    Source: NEXT_PUBLIC_APP_VERSION via next.config.js env: { npm_package_version }.
-
-[ ] Themes — reduce to three (Session 5 design doc §9)
-    Remove 7 of current 10 themes. Keep:
-      Harbour  (default) — warm maritime, brass #B8964E accent, sidebar #1e3a4a
-      Slate               — cool professional, steel blue #4A7FA5, sidebar #1E2A35
-      Obsidian            — dark premium, copper #C47B3A, sidebar #141414
-    All three use same CSS custom property token system — swap theme = swap values.
-    Urgent for Obsidian = #D4521A (slightly more saturated for legibility on near-black).
-    Confirm teal #3D7A6B same across all three themes.
-    Settings panel: three named options with colour swatch previews.
-    Dark mode works independently of theme choice.
-
-[ ] Reclassify All — progress indicator
-    Currently shows no feedback during reclassify run which can take 20-30s.
-    Add live progress similar to scan feed — show count of items processed / total
-    so user knows it's working. Mirror the onboarding scan feed pattern.
+    - signals: itemId ASC, detectedDate ASC (needed for nightlyItemExpiry proximity rescore)
+    - scanRuns: scanAt desc
+    - items: (status, receivedAt) — for reclassify quietly_logged query
 
 ═══════════════════════════════════════════════
 INFRASTRUCTURE
 ═══════════════════════════════════════════════
 
-[ ] Scan file parity — STANDING NOTE
-    functions/src/scan.ts is a near-copy of src/app/api/gmail/scan/route.ts.
-    ANY prompt or skip logic change must be applied to BOTH files.
-    Manual scans hit the Cloud Function; Vercel route is fallback only.
-    Always deploy both: git push + firebase deploy --only functions.
+[ ] Background scan token refresh
+    Current refresh token likely stale — background scan returning 503.
+    Fix: sign out of www.jaison.app and sign back in to write fresh token.
+    Then verify background scan in Vercel logs.
+
+[ ] KEEL_APP_URL env var in keel-admin Vercel
+    Required for expire-items proxy route in keel-admin.
+    Set to: https://www.jaison.app
+
+[ ] Phase 2: Gmail Pub/Sub
+    Pub/Sub topic created, toggle wired. Background scanning active.
+    Monitor for token expiry issues.
 
 [ ] Terminate active scan before dev reset
-    AbortController on scan fetch in AuthContext; call from DevTools wipe button
-    before data reset.
-
-[ ] Phase 2: Gmail Pub/Sub webhooks
-    Automatic background scanning ~5min latency, no user action needed.
-    Requires Cloud Function + Gmail watch() API + Pub/Sub topic.
+    AbortController on scan fetch in AuthContext; call from DevTools wipe button.
 
 ═══════════════════════════════════════════════
 PERFORMANCE / COST
 ═══════════════════════════════════════════════
 
-[ ] threadIds[] array on account doc
-    Flat existence index to eliminate full items collection read per scan.
-    Biggest remaining Firestore read saving. Currently ~582 reads/incremental scan.
+[ ] threadMeta in Cloud Function
+    backgroundScan.ts does not yet use threadMeta optimisation.
+    Next.js scan route uses it (0 reads from 2nd scan onward).
 
 [ ] Efficiency review
     Firestore reads per scan, batch sizes, onSnapshot listener counts.
 
 [ ] AI cost review
     Prompt lengths, token usage per classification, compression opportunities.
-    Current: ~$0.0008–0.002/scan (Gemini Flash). Very cheap but worth auditing.
-
-[ ] DB cost review
-    Read/write counts, index usage, data shape optimisation.
 
 ═══════════════════════════════════════════════
 FEATURES
 ═══════════════════════════════════════════════
 
-[ ] Email preview drawer
-    Slide-in panel replacing "Open in Gmail" button. User setting to toggle
-    preference (open in Gmail vs preview in-app).
+[ ] Email preview: thread navigation
+    Current implementation shows latest message only.
+    Add prev/next controls to step through all messages in a thread.
 
-[ ] Nightly auto-archive Cloud Function
-    Scheduled Cloud Function: date/info signals → archived;
-    payment_due/action_required → OVERDUE status.
-
-[ ] Multi-account support
+[ ] Multi-account Gmail support
     Account switcher in sidebar (Slack-style). Multiple Gmail accounts per user.
 
 [ ] Beta landing page
     Partially built in a separate session. Needs completion + copy.
+
+[ ] LinkedIn/Amazon digest suppression
+    LinkedIn connection requests, activity digests, Amazon feedback requests
+    are surfacing as actionable. Add prompt rules to quietly_log these.
+
+[ ] Spark / Mimestream email client options
+    Settings radio group already extensible. Add URL schemes for Spark + Mimestream.
+
+[ ] Admin: per-item re-evaluate trigger
+    Trigger re-evaluate on specific item from admin console (currently only Re-analyse all).
 
 ═══════════════════════════════════════════════
 CODE QUALITY
 ═══════════════════════════════════════════════
 
 [ ] Code review
-    Structure, patterns, remaining dead code (check for any orphaned files).
-    Standardise docToItem pattern across all pages.
+    Structure, patterns, remaining dead code. Standardise docToItem pattern
+    across all pages (some pages have local versions).
 
 [ ] Field-level encryption (V2)
     Before public launch. Encrypt sensitive Firestore fields client-side.
 
-[ ] Gemini Flash billing / testing
-    Gemini 2.5 Flash confirmed working. Needs Google AI billing enabled for
-    production scale (free tier quota = 0 for some endpoints).
-    Current cost: ~$0.0008–0.002/scan — monitor as user count grows.
+[ ] Gemini Flash billing
+    Confirmed working. Ensure Google AI billing enabled for production scale.
 
 ═══════════════════════════════════════════════
 DONE (this project)
 ═══════════════════════════════════════════════
 
-[x] Scan stability fix — Session 5
-    Removed hasOpenSignal bypass from skip gate (was re-processing 9-13 threads
-    on every scan regardless of new emails). Added temperature:0 to both Claude
-    and Gemini calls to prevent score/status drift on any re-processed threads.
-    Fixed in BOTH src/app/api/gmail/scan/route.ts AND functions/src/scan.ts.
-
-[x] Improved aiDetailedSummary prompt — Session 5
-    Structured as Purpose / Evolution / Current State / Next Step.
-    Produces specific, actionable summaries rather than participant catalogues.
-    Applied to both scan route and Cloud Function.
-
-[x] Deploy keel to Vercel (www.jaison.app) ← Session 4
-[x] Deploy keel-admin to Vercel (keel-admin.vercel.app) ← Session 4
-[x] Cloud Function (gmailScan) deployed + IAM fixed ← Session 4
-[x] Custom domain www.jaison.app live ← Session 4
-[x] All env vars set in Vercel ← Session 4
-[x] Google OAuth + Firebase Auth domains configured ← Session 4
-[x] Gemini 2.5 Flash integration + cost confirmed ← Session 3
-[x] Scan run logging (users/{uid}/scanRuns) ← Session 3
-[x] Admin per-user drill-down ← Session 3
-[x] Reclassify all ← Session 3
-[x] Categorise modal (nav, ignore, bail-out) ← Session 3
-[x] Ignored list (renamed from Quietly Logged) ← Session 3
-[x] AI provider abstraction (aiComplete.ts) ← Session 2
-[x] Admin console light theme ← Sessions 2–3
-[x] Onboarding overhaul (email type, SVG icons, live feed) ← Session 2
-[x] Signal bars priority UI ← Session 2
+[x] PWA support — manifest, service worker, icons ← Session 9
+[x] Reanalyse route refactored to use classifyThread() ← Session 9
+[x] Background scan 400→503 fix + token error logging ← Session 9
+[x] ownerHasReplied hard override (scan + reanalyse + background-scan) ← Session 9
+[x] Thread context backoff strategy (5 tiers by position from end) ← Session 9
+[x] Proximity score override in code (≤2 days → 0.88+) ← Session 9
+[x] Date accuracy rule (month from context, not current month) ← Session 9
+[x] Scoring bands revised (response deadlines ≠ payment deadlines) ← Session 9
+[x] Any level 4 (Urgent) item → Section 1 (was manualPriority only) ← Session 9
+[x] Calendar signal dedup applied to all bands (actionCal, awaitingCal) ← Session 9
+[x] Calendar band follows item section (manually-urgent cal entry → Section 1) ← Session 9
+[x] Post-scan expiry (/api/admin/expire-items) ← Session 9
+[x] Expiry runs fire-and-forget after every scan ← Session 9
+[x] Admin console expiry buttons (this user / all users) ← Session 9
+[x] Stale expiry: new items 7d, awaiting_action 14d, awaiting_reply 60d ← Session 9
+[x] Calendar invite skip (setting, default ON) ← Session 9
+[x] Calendar reminder skip (hardcoded) ← Session 9
+[x] Spam in default excluded labels ← Session 9
+[x] Background scan ON by default (new + existing users) ← Session 9
+[x] Security alerts: status=new not awaiting_action ← Session 9
+[x] Travel disruption alerts: quietly_logged ← Session 9
+[x] Promotional offers: quietly_logged, price ≠ payment signal ← Session 9
+[x] Cold outreach / follow-up chase blocked from awaiting_reply ← Session 9
+[x] Self-consistency check: NEXT STEP on owner → awaiting_action ← Session 9
+[x] Document availability notifications: quietly_logged ← Session 9
+[x] Email preview drawer (EmailPreviewDrawer.tsx + /api/gmail/thread-preview) ← Session 8
+[x] threadMeta optimisation — ~500+ reads/scan eliminated after first scan ← Session 8
+[x] Keel logo wave animation ← Session 7
+[x] Apple Mail deep link integration ← Session 7
+[x] Re-evaluate button + reanalyse route ← Session 7
+[x] OAuth refresh token fix (root cause of all 401s) ← Session 7
+[x] Section 2: Needs your action ← Session 7
+[x] Lora font + Harbour theme warmed ← Session 7
+[x] Background scan toggle wired ← Session 7
+[x] isMonitoring green dot ← Session 7
+[x] Gemini 2.5 Flash as active provider ← Session 3
+[x] Deploy keel + keel-admin to Vercel ← Session 4
+[x] Cloud Function deployed, custom domain live ← Session 4
