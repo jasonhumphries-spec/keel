@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { doc, getDoc, updateDoc, onSnapshot, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData, useRecentPromotionalOffers } from '@/lib/hooks'
+import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData, useRecentPromotionalOffers, docToItem } from '@/lib/hooks'
 import { Sidebar }           from './Sidebar'
 import { Topbar }            from './Topbar'
 import { ItemExpandedPanel } from './ItemExpandedPanel'
@@ -861,10 +861,8 @@ export function DashboardShell2() {
     const itemId = selectedItem.itemId
     const unsub = onSnapshot(doc(db, `users/${user.uid}/items/${itemId}`), snap => {
       if (!snap.exists()) return
-      const data = snap.data()
-      setSelectedItem(prev =>
-        prev && prev.itemId === itemId ? ({ ...prev, ...data, itemId } as KeelItem) : prev
-      )
+      const fresh = docToItem(snap.id, snap.data())
+      setSelectedItem(prev => prev && prev.itemId === itemId ? fresh : prev)
     })
     return unsub
   }, [user, selectedItem?.itemId])

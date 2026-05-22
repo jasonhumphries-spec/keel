@@ -38,7 +38,7 @@ function docToCategory(id: string, d: DocumentData): KeelCategory {
   }
 }
 
-function docToItem(id: string, d: DocumentData): KeelItem {
+export function docToItem(id: string, d: DocumentData): KeelItem {
   return {
     itemId: id, messageId: d.messageId ?? '', threadId: d.threadId ?? '',
     accountId: d.accountId ?? '', senderEmail: d.senderEmail ?? '',
