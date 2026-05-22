@@ -193,7 +193,14 @@ export async function POST(req: NextRequest) {
       accessToken = await getValidAccessToken(db, uid)
       fbReads++
     } catch (err: any) {
-      return NextResponse.json({ error: `Token error: ${err.message}` }, { status: 400 })
+      // Return 503 not 400 — the CF treats non-2xx as errors and logs them.
+      // 503 signals a transient failure (token expired/revoked) rather than a bad request.
+      // User needs to sign in again to get a fresh refresh token.
+      console.error(`[background-scan] Token error for uid=${uid.slice(0,8)}:`, err.message)
+      return NextResponse.json(
+        { error: `Token error — user may need to sign in again: ${err.message}` },
+        { status: 503 },
+      )
     }
 
     // ── Changed threads ────────────────────────────────────────────────────
