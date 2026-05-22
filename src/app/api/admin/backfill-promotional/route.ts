@@ -35,16 +35,20 @@ function getAdminDb() {
 }
 
 // Marketing sender patterns. Substring match, lowercase.
+// NOTE: 'noreply'/'no-reply'/'updates'/'news' removed — too generic; schools,
+// banks, doctors all use them for legit transactional mail.
 const MARKETING_SENDER_HINTS = [
-  'newsletter', 'noreply', 'no-reply', 'marketing', 'promo', 'promos',
-  'offers', 'deals', 'insideapple', 'updates', 'news', 'campaigns',
+  'newsletter', 'marketing', 'promo', 'promos',
+  'offers', 'deals', 'insideapple', 'campaigns',
   'announce', 'announcement',
 ]
 
 // Strong AI-summary hints that indicate promotional content. Substring match, lowercase.
+// NOTE: 'sign up for', 'subscribe for', 'free trial' removed — schools use
+// 'sign up for the trip', 'register your child' which would false-trigger.
 const PROMO_SUMMARY_HINTS = [
   'promotional', 'offer valid', "don't miss", 'special offer', 'limited time',
-  'discount', '% off', 'free trial', 'sign up for', 'subscribe for',
+  'discount', '% off',
 ]
 
 function looksPromotional(item: any): boolean {

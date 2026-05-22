@@ -265,10 +265,11 @@ export async function runCalendarCheck(
 
   await batch.commit()
 
-  // Downgrade confirmation emails whose event is already on the user's calendar.
+  // Soften priority of items whose event is already on the user's calendar.
   // Rule: if an item is status='new' (AI saw no action needed), the user hasn't
-  // manually set priority, and the event has a confident calendar match → it's a
-  // pure FYI confirmation. The calendar will remind them; we don't need to.
+  // manually set priority, and the event has a confident calendar match → drop
+  // score to Medium so it sits in 'On your radar' rather than commanding attention.
+  // Original status preserved so the user still sees it; calendar reminds of the event.
   let downgraded = 0
   if (itemsMatchedOnCal.size > 0) {
     const downgradeBatch = db.batch()
@@ -276,9 +277,10 @@ export async function runCalendarCheck(
     for (const itemId of itemsMatchedOnCal) {
       if (itemStatuses.get(itemId) !== 'new')     continue
       if (itemManualPri.get(itemId) === true)     continue
+      // Score-down only — keep status='new' so the item stays visible in FYI/On your radar.
+      // The calendar tells the user about the event; we just signal it's no longer 'High'.
       downgradeBatch.update(db.doc(`users/${uid}/items/${itemId}`), {
-        status:             'quietly_logged',
-        aiImportanceScore:  0.15,
+        aiImportanceScore:  0.45,
         autoQuietedReason:  'on_calendar',
         updatedAt:          ts,
       })
