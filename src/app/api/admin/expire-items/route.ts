@@ -174,11 +174,13 @@ async function expireItemsForUser(
       // 'awaiting_reply': 60 days (gave them time, they never responded)
       // 'awaiting_action': never expire without signals — user explicitly needs to act
       const receivedMs       = (item.receivedAt as Timestamp)?.toMillis?.() ?? 0
-      const sevenDaysAgoMs   = Date.now() - 7  * 24 * 60 * 60 * 1000
-      const sixtyDaysAgoMs   = Date.now() - 60 * 24 * 60 * 60 * 1000
-      const isStaleNew       = item.status === 'new'            && receivedMs < sevenDaysAgoMs
-      const isStaleAwaiting  = item.status === 'awaiting_reply' && receivedMs < sixtyDaysAgoMs
-      if (isStaleNew || isStaleAwaiting) {
+      const sevenDaysAgoMs    = Date.now() - 7  * 24 * 60 * 60 * 1000
+      const fourteenDaysAgoMs = Date.now() - 14 * 24 * 60 * 60 * 1000
+      const sixtyDaysAgoMs    = Date.now() - 60 * 24 * 60 * 60 * 1000
+      const isStaleNew        = item.status === 'new'             && receivedMs < sevenDaysAgoMs
+      const isStaleAction     = item.status === 'awaiting_action' && receivedMs < fourteenDaysAgoMs
+      const isStaleAwaiting   = item.status === 'awaiting_reply'  && receivedMs < sixtyDaysAgoMs
+      if (isStaleNew || isStaleAction || isStaleAwaiting) {
         batch.update(itemDoc.ref, {
           status:     'quietly_logged',
           resolvedAt: FieldValue.serverTimestamp(),
