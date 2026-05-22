@@ -215,7 +215,8 @@ TRANSIENT SAME-DAY ITEMS: Calendar reminders, delivery dispatch/out-for-delivery
 TRAVEL DISRUPTION ALERTS: Notifications from Trainline, National Rail, airlines, or any transport provider about delays, cancellations, disruptions, or journey alerts — these are informational only. The user cannot change the disruption. Set status="quietly_logged", aiImportanceScore=0.10-0.15. Do NOT classify as awaiting_action or urgent. Exception: if the alert requires rebooking or a specific user action (e.g. "your flight is cancelled, please rebook"), treat as awaiting_action.
 SECURITY ALERTS: Automated security notifications from Google, Apple, Microsoft, or any platform — "new sign-in detected", "new device added", "password changed", "unusual activity" — are informational. Set status="new", aiImportanceScore=0.35-0.45. Do NOT classify as awaiting_action unless the email explicitly states the account has been compromised and requires immediate action. The standard "if this wasn't you, secure your account" footer does NOT make it awaiting_action — that is boilerplate on all security emails.
 MARKETING AND PROMOTIONAL EMAILS: Any email that is primarily advertising, a sale, a newsletter, a product recommendation, or unsolicited commercial content — set status="quietly_logged", aiImportanceScore=0.05-0.15. Do NOT surface these as actionable items.
-PROMOTIONAL OFFERS WITH PRICES: If an email is a promotional offer containing a price (e.g. "3 months for £1.99", "50% off", "special offer"), do NOT create a payment signal — the user has not agreed to pay anything. The price is part of the offer, not a payment due. Set status="quietly_logged". Only create a payment signal when the user has actually been charged or has an existing subscription renewal due.
+PROMOTIONAL OFFERS WITH PRICES: If an email is a promotional offer containing a price (e.g. "3 months for £1.99", "50% off", "special offer", "Don't miss out", "Offer valid until"), do NOT create a payment signal — the user has not agreed to pay anything. The price is part of the offer, not a payment due. Do NOT create a deadline signal for an offer's expiry date — the "deadline" is purely to create urgency, not a real obligation. Set status="quietly_logged", aiImportanceScore=0.05-0.15. Only create a payment signal when the user has actually been charged or has an existing subscription renewal due.
+CONCRETE EXAMPLE: An email from Apple Music titled "3 months for £1.99 offer" saying "Don't miss out on 3 months for £1.99, offer valid until May 29th" is promotional. Status=quietly_logged, score=0.10, NO payment signal, NO deadline signal. The user has not signed up; £1.99 is the offer price, not money owed; May 29th is artificial urgency, not a real deadline.
 
 RSVP HANDLING: If user has already RSVPd (confirmed attendance/acceptance, replied yes/no, completed registration), do NOT set status="awaiting_reply" or "awaiting_action". RSVP is terminal — set to "new" or "quietly_logged". Only awaiting_reply if user sent an open question needing a response. If RSVP/registration is still PENDING (user has not yet responded to the invitation), set status="awaiting_action" — see UNANSWERED INVITATIONS rule above.
 CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Google Calendar does NOT mean they have RSVPd or registered. Keel may have added the event to the calendar automatically. If the email contains "please complete the registration form", "please register", "please confirm attendance", "RSVP required", or similar — the registration/RSVP is still PENDING and must be classified as awaiting_action regardless of calendar status. Only treat RSVP as complete if the email thread itself contains evidence the user has responded (e.g. a confirmation reply, a "thank you for registering" message, or a "your registration is confirmed" response).
@@ -292,6 +293,26 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
     if (_imminent && (parsed?.aiImportanceScore ?? 0) < 0.85) {
       console.warn(`[classifyThread] Proximity override: signal within 2 days, bumping ${parsed.aiImportanceScore} → 0.88`)
       parsed.aiImportanceScore = 0.88
+    }
+
+    // Promotional override: AI sometimes creates payment/deadline signals for marketing
+    // emails despite the prompt rule. If the AI itself labels a signal as promotional in
+    // its description, strip the bogus signals and force quietly_logged. High-precision
+    // check — the AI's own admission of promotional intent.
+    const _isPromotional = _sigs.some((s: any) => {
+      const d = (s?.description ?? '').toLowerCase()
+      return d.includes('promotional') || d.includes('offer valid')
+    })
+    if (_isPromotional && parsed?.status !== 'quietly_logged') {
+      console.warn('[classifyThread] Promotional override: AI-flagged promotional signal — forcing quietly_logged')
+      parsed.signals = _sigs.filter((s: any) => {
+        const d = (s?.description ?? '').toLowerCase()
+        if (s.type === 'payment'  && (d.includes('promotional') || d.includes('offer'))) return false
+        if (s.type === 'deadline' && d.includes('offer valid'))                          return false
+        return true
+      })
+      parsed.status            = 'quietly_logged'
+      parsed.aiImportanceScore = 0.12
     }
 
         return {
