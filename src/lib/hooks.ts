@@ -338,7 +338,7 @@ export function markItemClassified(itemId: string) {
 }
 const _classifiedListeners = new Set<() => void>()
 
-export function useRecentPromotionalOffers(daysBack = 3): { items: KeelItem[]; loading: boolean } {
+export function useRecentPromotionalOffers(daysBack = 7): { items: KeelItem[]; loading: boolean } {
   const { user } = useAuth()
   const [items, setItems]     = useState<KeelItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -348,7 +348,7 @@ export function useRecentPromotionalOffers(daysBack = 3): { items: KeelItem[]; l
     const q = query(
       collection(db, `users/${user.uid}/items`),
       where('autoQuietedReason', '==', 'promotional'),
-      limit(50),
+      limit(200),
     )
     const unsub = onSnapshot(q, snap => {
       const cutoff = Date.now() - daysBack * 86400 * 1000

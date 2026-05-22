@@ -818,7 +818,7 @@ export function DashboardShell2() {
   }, [])
 
   const { categoryData, loading } = useDashboardData()
-  const { items: promoOffers }    = useRecentPromotionalOffers(3)
+  const { items: promoOffers }    = useRecentPromotionalOffers(7)
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
   const { isVisible: isCatVisible } = useCategoryFilter()
@@ -1281,7 +1281,7 @@ export function DashboardShell2() {
                 <StepHeader
                   step={6}
                   title="Recent offers"
-                  subtitle="Promotional emails from the past 3 days — quietly logged, surfaced here in case you want a look."
+                  subtitle="Promotional emails from the past week — quietly logged, surfaced here in case you want a look."
                   badge={`${promoOffers.length} item${promoOffers.length !== 1 ? 's' : ''}`}
                   accent="#A87878"
                 />
