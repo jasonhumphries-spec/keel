@@ -65,6 +65,7 @@ export interface KeelItem {
   aiTitle:           string
   aiSummary:         string
   aiDetailedSummary: string
+  autoQuietedReason?: 'on_calendar' | 'promotional' | null
 }
 
 export interface KeelSignal {

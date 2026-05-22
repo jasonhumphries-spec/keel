@@ -602,6 +602,7 @@ export async function POST(req: NextRequest) {
             : {}),
           // Never overwrite a terminal status (done / archived / paid) — user explicitly resolved this
           ...(!isTerminal ? { status: effectiveStatus } : {}),
+          autoQuietedReason: classification.autoQuietedReason ?? null,
           // categoryId is intentionally NOT updated here — never overwrite existing category assignment
           // Repair threadId if missing (fixes future isExisting detection)
           ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
@@ -625,6 +626,7 @@ export async function POST(req: NextRequest) {
           status:            effectiveStatus,
           importanceFlag:    false,
           aiImportanceScore: classification.aiImportanceScore,
+          autoQuietedReason: classification.autoQuietedReason ?? null,
           isOutbound:        isOutbound ?? false,
           snoozedUntil:      null, linkedOutboundId: null, linkedItemId: null,
           isRecurring:       classification.isRecurring,

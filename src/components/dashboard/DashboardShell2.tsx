@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { doc, getDoc, updateDoc, onSnapshot, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData } from '@/lib/hooks'
+import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData, useRecentPromotionalOffers } from '@/lib/hooks'
 import { Sidebar }           from './Sidebar'
 import { Topbar }            from './Topbar'
 import { ItemExpandedPanel } from './ItemExpandedPanel'
@@ -408,6 +408,7 @@ const STEP_COLOURS = {
   3: { num: '#E8F0F6', text: '#2A5070', border: '#4A7FA5', badge: '#E8F0F6', badgeText: '#2A5070' },
   4: { num: '#FFF8EC', text: '#7A5C1A', border: '#B8964E', badge: '#f2f2f0', badgeText: '#666'    },
   5: { num: '#f2f2f0', text: '#888',    border: '#ccc',    badge: '#f2f2f0', badgeText: '#888'    },
+  6: { num: '#F5EAEA', text: '#7A4848', border: '#A87878', badge: '#F5EAEA', badgeText: '#7A4848' },
 }
 
 function StepHeader({
@@ -417,7 +418,7 @@ function StepHeader({
   badge,
   accent,
 }: {
-  step:     1 | 2 | 3 | 4 | 5
+  step:     1 | 2 | 3 | 4 | 5 | 6
   title:    string
   subtitle: string
   badge:    string
@@ -817,6 +818,7 @@ export function DashboardShell2() {
   }, [])
 
   const { categoryData, loading } = useDashboardData()
+  const { items: promoOffers }    = useRecentPromotionalOffers(3)
   const { signals }               = useAllSignals()
   const { items: uncatItems }     = useUncategorised()
   const { isVisible: isCatVisible } = useCategoryFilter()
@@ -1229,9 +1231,9 @@ export function DashboardShell2() {
 
           <div style={{ height: 20, background: 'transparent' }} />
 
-          {/* ── Step 4: Everything else ── */}
+          {/* ── Step 5: Everything else ── */}
           <StepRow
-            last
+            last={promoOffers.length === 0}
             accent="#6B7A82"
             calBand={
               <CalBand
@@ -1266,6 +1268,49 @@ export function DashboardShell2() {
               />
             )}
           </StepRow>
+
+          {/* ── Step 6: Recent promotional offers ── */}
+          {promoOffers.length > 0 && (
+            <>
+              <div style={{ height: 20, background: 'transparent' }} />
+              <StepRow
+                last
+                accent="#A87878"
+                calBand={null}
+              >
+                <StepHeader
+                  step={6}
+                  title="Recent offers"
+                  subtitle="Promotional emails from the past 3 days — quietly logged, surfaced here in case you want a look."
+                  badge={`${promoOffers.length} item${promoOffers.length !== 1 ? 's' : ''}`}
+                  accent="#A87878"
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {promoOffers.map(item => (
+                    <div
+                      key={item.itemId}
+                      onClick={() => setSelectedItem(item)}
+                      style={{
+                        display: 'flex', alignItems: 'baseline', gap: 12,
+                        padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                        background: 'transparent', transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(168,120,120,0.06)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+                    >
+                      <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.senderName}
+                        <span style={{ color: 'var(--color-text-muted)' }}>{' — '}{item.aiTitle || item.subject}</span>
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                        {item.receivedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </StepRow>
+            </>
+          )}
 
         </div>
       </div>

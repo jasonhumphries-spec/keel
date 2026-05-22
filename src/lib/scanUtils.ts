@@ -36,6 +36,7 @@ export interface ClassificationResult {
   }>
   isRecurring: boolean
   status:      string
+  autoQuietedReason?: 'promotional' | null
   _usage?:     { inputTokens: number; outputTokens: number }
 }
 
@@ -311,8 +312,9 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
         if (s.type === 'deadline' && d.includes('offer valid'))                          return false
         return true
       })
-      parsed.status            = 'quietly_logged'
-      parsed.aiImportanceScore = 0.12
+      parsed.status              = 'quietly_logged'
+      parsed.aiImportanceScore   = 0.12
+      parsed.autoQuietedReason   = 'promotional'
     }
 
         return {

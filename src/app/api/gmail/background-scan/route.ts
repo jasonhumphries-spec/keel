@@ -308,6 +308,7 @@ export async function POST(req: NextRequest) {
           aiSummary:               classification.aiSummary         ?? '',
           aiDetailedSummary:       classification.aiDetailedSummary ?? '',
           aiImportanceScore:       classification.aiImportanceScore ?? 0.5,
+          autoQuietedReason:       (classification as any).autoQuietedReason ?? null,
           signals:                 Array.isArray(classification.signals) ? classification.signals : [],
           isRecurring:             classification.isRecurring        ?? false,
           updatedAt:               Timestamp.fromMillis(internalDate),

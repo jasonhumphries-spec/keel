@@ -61,6 +61,7 @@ function docToItem(id: string, d: DocumentData): KeelItem {
     aiTitle:           d.aiTitle ?? d.subject ?? '',
     aiSummary:         d.aiSummary ?? '',
     aiDetailedSummary: d.aiDetailedSummary ?? '',
+    autoQuietedReason: d.autoQuietedReason ?? null,
   }
 }
 
@@ -336,6 +337,33 @@ export function markItemClassified(itemId: string) {
   _classifiedListeners.forEach(fn => fn())
 }
 const _classifiedListeners = new Set<() => void>()
+
+export function useRecentPromotionalOffers(daysBack = 3): { items: KeelItem[]; loading: boolean } {
+  const { user } = useAuth()
+  const [items, setItems]     = useState<KeelItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) { setLoading(false); return }
+    const q = query(
+      collection(db, `users/${user.uid}/items`),
+      where('autoQuietedReason', '==', 'promotional'),
+      limit(50),
+    )
+    const unsub = onSnapshot(q, snap => {
+      const cutoff = Date.now() - daysBack * 86400 * 1000
+      const all    = snap.docs.map(d => docToItem(d.id, d.data()))
+      const recent = all
+        .filter(i => i.receivedAt.getTime() >= cutoff)
+        .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime())
+      setItems(recent)
+      setLoading(false)
+    })
+    return unsub
+  }, [user, daysBack])
+
+  return { items, loading }
+}
 
 export function useUncategorised() {
   const { user } = useAuth()
