@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type MouseEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, onSnapshot, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAllSignals, useUncategorised, useBreakpoint, useDashboardData } from '@/lib/hooks'
@@ -849,6 +849,23 @@ export function DashboardShell2() {
     })
     setSelectedItem(null)
   }, [user])
+
+  // Keep the open panel in sync with Firestore. The dashboard's live items list
+  // filters by status, so an item that moves to quietly_logged/done would otherwise
+  // freeze the panel at click-time data. Subscribing directly to the doc keeps
+  // status/score/aiTitle/signals fresh regardless of dashboard filtering.
+  useEffect(() => {
+    if (!user || !selectedItem) return
+    const itemId = selectedItem.itemId
+    const unsub = onSnapshot(doc(db, `users/${user.uid}/items/${itemId}`), snap => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      setSelectedItem(prev =>
+        prev && prev.itemId === itemId ? ({ ...prev, ...data, itemId } as KeelItem) : prev
+      )
+    })
+    return unsub
+  }, [user, selectedItem?.itemId])
 
   // ── Priority bands ──────────────────────────────────────────────────────────
   const urgentData  = filterByBand(filteredCategoryData, 4, 4, resolvedItems)
