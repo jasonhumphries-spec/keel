@@ -162,6 +162,8 @@ async function expireItemsForUser(
   let overdue    = 0
   let skipped    = 0
 
+  console.log(`[expire] uid=${uid.slice(0,8)} items=${itemsSnap.size} itemsWithSignals=${signalsByItem.size} threshold=${thresholdTs.toDate().toISOString()}`)
+
   for (const itemDoc of itemsSnap.docs) {
     const item    = itemDoc.data()
     const signals = signalsByItem.get(itemDoc.id) ?? []
