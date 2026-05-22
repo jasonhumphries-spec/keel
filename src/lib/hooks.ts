@@ -108,7 +108,7 @@ export function useCounts() {
     // All active items
     const qItems = query(
       collection(db, `users/${user.uid}/items`),
-      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed']),
+      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed', 'overdue']),
     )
     const unsubItems = onSnapshot(qItems, snap => {
       const items = snap.docs.map(d => d.data())
@@ -139,7 +139,7 @@ export function useCounts() {
     const qUncat = query(
       collection(db, `users/${user.uid}/items`),
       where('categoryId', 'in', ['cat_other', '', 'uncategorised']),
-      where('status', 'in', ['new', 'awaiting_action']),
+      where('status', 'in', ['new', 'awaiting_action', 'overdue']),
     )
     const unsubUncat = onSnapshot(qUncat, snap => {
       setCounts(prev => ({ ...prev, uncategorised: snap.size }))
@@ -182,7 +182,7 @@ export function useActiveItems() {
     if (!user) return
     const q = query(
       collection(db, `users/${user.uid}/items`),
-      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed']),
+      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed', 'overdue']),
     )
     const unsub = onSnapshot(q, snap => {
       setItems(snap.docs.map(d => docToItem(d.id, d.data())))
@@ -377,7 +377,7 @@ export function useUncategorised() {
     const DEFAULT_CATS = new Set(['cat_other', '', 'uncategorised'])
     const q = query(
       collection(db, `users/${user.uid}/items`),
-      where('status', 'in', ['new', 'awaiting_action']),
+      where('status', 'in', ['new', 'awaiting_action', 'overdue']),
     )
     let latestAll: KeelItem[] = []
 
@@ -415,7 +415,7 @@ export function useCategoryCounts(): Map<string, number> {
     if (!user) return
     const q = query(
       collection(db, `users/${user.uid}/items`),
-      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed']),
+      where('status', 'in', ['new', 'awaiting_action', 'awaiting_reply', 'snoozed', 'overdue']),
     )
     const unsub = onSnapshot(q, snap => {
       const map = new Map<string, number>()
