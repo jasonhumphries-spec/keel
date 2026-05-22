@@ -157,9 +157,12 @@ export async function runCalendarCheck(
   }
 
   const itemIds    = [...new Set(signalsSnap.docs.map(d => d.data().itemId as string).filter(Boolean))]
-  // Batch-get items for aiTitle + senderEmail (better match candidates than raw signal description)
-  const itemTitles  = new Map<string, string>()  // itemId → aiTitle
-  const itemSenders = new Map<string, string>()  // itemId → senderEmail
+  // Batch-get items for aiTitle + senderEmail (better match candidates than raw signal description),
+  // plus status + manualPriority so we can downgrade 'new' items whose event is on the calendar.
+  const itemTitles    = new Map<string, string>()
+  const itemSenders   = new Map<string, string>()
+  const itemStatuses  = new Map<string, string>()
+  const itemManualPri = new Map<string, boolean>()
 
   if (itemIds.length > 0) {
     const chunks: string[][] = []
@@ -168,12 +171,18 @@ export async function runCalendarCheck(
       const docs = await Promise.all(chunk.map(id => db.doc(`users/${uid}/items/${id}`).get()))
       for (const d of docs) {
         if (d.exists) {
-          itemTitles.set(d.id,  d.data()?.aiTitle     ?? '')
-          itemSenders.set(d.id, d.data()?.senderEmail ?? '')
+          const data = d.data() ?? {}
+          itemTitles.set(d.id,    data.aiTitle        ?? '')
+          itemSenders.set(d.id,   data.senderEmail    ?? '')
+          itemStatuses.set(d.id,  data.status         ?? '')
+          itemManualPri.set(d.id, data.manualPriority ?? false)
         }
       }
     }))
   }
+
+  // Track items whose signal matched on_cal — we'll downgrade these after the signal batch.
+  const itemsMatchedOnCal = new Set<string>()
 
   // Match each signal against calendar events on the same day
   const batch  = db.batch()
@@ -231,12 +240,40 @@ export async function runCalendarCheck(
       batch.update(sigDoc.ref, update)
     }
 
-    if (newStatus === 'on_cal' || newStatus === 'probable') matched++
-    else notMatched++
+    if (newStatus === 'on_cal') {
+      matched++
+      if (sig.itemId) itemsMatchedOnCal.add(sig.itemId as string)
+    } else if (newStatus === 'probable') {
+      matched++
+    } else {
+      notMatched++
+    }
   }
 
   await batch.commit()
 
-  console.log(`[CalCheck] uid=${uid.slice(0,8)} — ${matched} on_cal · ${notMatched} not_on_cal · ${signalsSnap.size} total`)
+  // Downgrade confirmation emails whose event is already on the user's calendar.
+  // Rule: if an item is status='new' (AI saw no action needed), the user hasn't
+  // manually set priority, and the event has a confident calendar match → it's a
+  // pure FYI confirmation. The calendar will remind them; we don't need to.
+  let downgraded = 0
+  if (itemsMatchedOnCal.size > 0) {
+    const downgradeBatch = db.batch()
+    const ts = Timestamp.now()
+    for (const itemId of itemsMatchedOnCal) {
+      if (itemStatuses.get(itemId) !== 'new')     continue
+      if (itemManualPri.get(itemId) === true)     continue
+      downgradeBatch.update(db.doc(`users/${uid}/items/${itemId}`), {
+        status:             'quietly_logged',
+        aiImportanceScore:  0.15,
+        autoQuietedReason:  'on_calendar',
+        updatedAt:          ts,
+      })
+      downgraded++
+    }
+    if (downgraded > 0) await downgradeBatch.commit()
+  }
+
+  console.log(`[CalCheck] uid=${uid.slice(0,8)} — ${matched} on_cal · ${notMatched} not_on_cal · ${signalsSnap.size} total · ${downgraded} items auto-quieted`)
   return { matched, notMatched, total: signalsSnap.size }
 }
