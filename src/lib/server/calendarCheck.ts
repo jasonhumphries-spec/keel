@@ -81,8 +81,21 @@ export function senderMatchesCalTitle(senderEmail: string, calTitle: string): bo
     ...domainBase,
   ]
 
-  // A candidate matches if it appears as a substring in the calendar title
-  return candidates.some(c => c.length > 4 && calLower.includes(c))
+  // First pass: a candidate appears as a substring in the calendar title.
+  // e.g. cal title "Pax - Orthodontist Petworth Donovans Dentist" contains "donovansdentalcare"? no,
+  // but contains "portmandental"? no. Cal title is short and curated by the user.
+  if (candidates.some(c => c.length > 4 && calLower.includes(c))) return true
+
+  // Stem fallback for brief cal titles: if any cal word (5+ chars) has its
+  // 4-char prefix as a substring in any sender candidate, count it as a match.
+  // e.g. cal "JH Dentist and hyg" → cal word "dentist" → prefix "dent" → matches
+  // sender candidate "donovansdentalcare" (contains "dent"). Loose enough to handle
+  // dental/dentist/dentistry variants without hard-coding stems.
+  const calWords = calLower.split(/\s+/).filter(w => w.length >= 5)
+  return calWords.some(cw => {
+    const stem = cw.slice(0, 4)
+    return candidates.some(c => c.length > 4 && c.includes(stem))
+  })
 }
 
 // ── Main check function ───────────────────────────────────────────────────────

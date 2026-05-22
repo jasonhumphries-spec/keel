@@ -477,7 +477,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
     <>
       <div onClick={onClose} style={{ display: isOpen ? 'block' : 'none', position: 'fixed', inset: 0, background: 'var(--color-overlay)', zIndex: 300 }} />
 
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 480, background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', zIndex: 301, display: 'flex', flexDirection: 'column', transform: isOpen ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.25s ease', boxShadow: '-8px 0 32px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, width: 480, maxHeight: '100vh', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderTop: 'none', borderRight: 'none', borderBottomLeftRadius: 'var(--radius-lg)', zIndex: 301, display: 'flex', flexDirection: 'column', transform: isOpen ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.25s ease', boxShadow: '-8px 0 32px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
 
         {item && (
           <>
@@ -519,7 +519,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             </div>
 
             {/* Scrollable body */}
-            <div style={{ flex: 1, overflowY: 'auto' }}>
+            <div style={{ flex: '0 1 auto', overflowY: 'auto', minHeight: 0 }}>
 
               {/* Payment details — shown prominently if item has a payment signal */}
               {itemSignals.filter(s => s.type === 'payment').map(sig => {
@@ -704,23 +704,26 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                           title={label}
                           style={{
                             flex: 1,
-                            padding: '10px 4px 8px',
+                            padding: '5px 10px',
                             borderRadius: 'var(--radius-md)',
-                            border: `1.5px solid ${isActive ? colour : 'var(--color-border)'}`,
-                            background: isActive ? `${colour}18` : 'transparent',
+                            border: `1px solid ${isActive ? colour : 'var(--color-border)'}`,
+                            background: isActive ? `${colour}1a` : 'transparent',
                             cursor: 'pointer',
                             display: 'flex',
-                            flexDirection: 'column',
+                            flexDirection: 'row',
                             alignItems: 'center',
+                            justifyContent: 'center',
                             gap: 6,
                             transition: 'all 0.15s',
                           }}
                         >
                           {/* Priority dot */}
                           <div style={{
-                            width: 10, height: 10, borderRadius: '50%',
-                            background: isActive ? colour : 'var(--color-border)',
-                            transition: 'background 0.15s',
+                            width: 7, height: 7, borderRadius: '50%',
+                            background: isActive ? colour : 'var(--color-text-muted)',
+                            opacity: isActive ? 1 : 0.45,
+                            transition: 'all 0.15s',
+                            flexShrink: 0,
                           }} />
                           {/* Label */}
                           <span style={{
