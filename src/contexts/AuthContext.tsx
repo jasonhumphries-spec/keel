@@ -96,9 +96,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     import('firebase/firestore').then(({ doc, onSnapshot }) => {
       import('@/lib/firebase').then(({ db }) => {
         const unsub = onSnapshot(doc(db, `users/${user.uid}`), snap => {
-          const ts = snap.data()?.lastBackgroundScanAt
+          const data = snap.data()
+          const ts   = data?.lastBackgroundScanAt
           if (ts?.toDate) setLastBackgroundScanned(ts.toDate())
-          setIsMonitoring(snap.data()?.autoScanEnabled === true)
+          // Truthful 'monitoring': autoScanEnabled is on AND the Gmail watch hasn't expired.
+          // Gmail watches expire at most 7 days; the renew CF runs every 5 days, but if
+          // either fails the flag would lie. Cross-check against watchExpiry timestamp.
+          const enabled  = data?.autoScanEnabled === true
+          const expiryMs = (data?.watchExpiry as any)?.toMillis?.() ?? 0
+          const watchAlive = enabled && expiryMs > Date.now()
+          setIsMonitoring(watchAlive)
+          // If autoScanEnabled is on but the watch has expired, the background pipeline is
+          // silently dead — surface that as a re-auth/re-arm prompt so the user can fix it.
+          if (enabled && expiryMs > 0 && expiryMs <= Date.now()) setNeedsReauth(true)
         })
         return unsub
       })
@@ -255,7 +265,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       clearInterval(messageTimer)
       if (res.status === 401) {
-        // Gmail token expired — surface a clear re-auth message rather than generic failure
+        // Gmail token expired — flip the needsReauth flag so SessionBanner appears,
+        // and show a transient progress message too.
+        setNeedsReauth(true)
         setScanProgress({ status: 'error', processed: 0, total: 0, message: 'Session expired — please sign in again' })
         setTimeout(() => setScanProgress(IDLE), 6000)
         return
