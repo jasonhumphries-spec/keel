@@ -1137,10 +1137,17 @@ function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: K
     if (!groups.has(root)) groups.set(root, [])
     groups.get(root)!.push(items[i])
   }
-  // Items in each cluster are already in score order; preserve overall cluster order
-  // by sorting groups by head item's score.
+  // Within each cluster, sort by receivedAt desc so the most recent item is the head.
+  // Between clusters, sort by head's score so the dashboard band order is preserved.
   return Array.from(groups.values())
-    .map(list => ({ head: list[0], rest: list.slice(1) }))
+    .map(list => {
+      const sorted = [...list].sort((a, b) => {
+        const ta = a.receivedAt instanceof Date ? a.receivedAt.getTime() : 0
+        const tb = b.receivedAt instanceof Date ? b.receivedAt.getTime() : 0
+        return tb - ta
+      })
+      return { head: sorted[0], rest: sorted.slice(1) }
+    })
     .sort((a, b) => (b.head.aiImportanceScore ?? 0) - (a.head.aiImportanceScore ?? 0))
 }
 
