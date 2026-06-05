@@ -317,6 +317,30 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       }
     }
 
+    // Auto-pay override: AI sometimes scores auto-renewal / direct-debit emails high
+    // ("DEADLINE 26 May" → urgent), ignoring its own summary saying payment is automatic.
+    // If the summary contains explicit auto-pay language, force score down and status='new'
+    // so nightly expiry quietly_logs once the date passes. High-precision check on AI's
+    // own self-flagging.
+    const _summaryText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
+    const _isAutoPay = (
+      _summaryText.includes('automatically renew')   ||
+      _summaryText.includes('will automatically')    ||
+      _summaryText.includes('auto-renew')            ||
+      _summaryText.includes('autorenew')             ||
+      _summaryText.includes('direct debit')          ||
+      _summaryText.includes('standing order')        ||
+      _summaryText.includes('automatically collected') ||
+      _summaryText.includes('automatic payment')     ||
+      _summaryText.includes('automatic card charge') ||
+      _summaryText.includes('will be charged automatically')
+    )
+    if (_isAutoPay && (parsed?.aiImportanceScore ?? 0) > 0.30) {
+      console.warn(`[classifyThread] Auto-pay override: summary self-flags automatic payment — dropping score ${parsed.aiImportanceScore} → 0.18`)
+      parsed.aiImportanceScore = 0.18
+      if (parsed.status === 'awaiting_action') parsed.status = 'new'
+    }
+
     if (_isPromotional && parsed?.status !== 'quietly_logged') {
       console.warn('[classifyThread] Promotional override: AI-flagged promotional signal — forcing quietly_logged')
       parsed.signals = _sigs.filter((s: any) => {
