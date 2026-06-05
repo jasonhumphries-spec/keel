@@ -120,7 +120,7 @@ export async function classifyThread(
 
   const prompt = `You are Keel, a personal life admin AI. Classify this email thread and extract actionable signals.
 ${isUK ? 'Write all text in British English — use UK spellings throughout (e.g. "organise" not "organize", "colour" not "color", "enquire" not "inquire", "cheque" not "check", "licence" not "license").\n' : ''}
-${ownerHasReplied ? '' : 'HARD FACT — DO NOT OVERRIDE: The account owner has NEVER sent any message in this thread. They have not replied, engaged, or participated. awaiting_reply is therefore IMPOSSIBLE — it would mean the owner is waiting for a reply to a message they never sent. Use awaiting_action if the owner should consider responding, or new/quietly_logged if it is noise.\n\n'}${outboundNote}RECENCY WEIGHTING — CRITICAL: The thread below is ordered oldest-first. The final message is marked *** LATEST MESSAGE ***. Your classification, status, importance score, and ALL bullet points in aiDetailedSummary must reflect the state of the thread AS OF THAT LATEST MESSAGE. Earlier messages are background context only — do not let them override what the latest message says.
+${ownerHasReplied ? '' : 'HARD FACT: The account owner has NEVER sent any message IN THIS EMAIL THREAD. Default: awaiting_reply is IMPOSSIBLE (it would mean waiting for a reply to a message that does not exist). EXCEPTION — automated service acknowledgments: if the email is from an organisation/service confirming receipt of an application, submission, request, claim, or case the user initiated through ANOTHER channel (web form, phone call, in person) AND explicitly promises a follow-up reply ("we will respond within X days", "you will hear from us", "decision pending", "we will email you the outcome", "awaiting acceptance/rejection") — then awaiting_reply IS appropriate, because the user genuinely is waiting for a reply on something they initiated, just not via this email thread. For any other purely-inbound thread (cold outreach, marketing, alerts, newsletters), use awaiting_action or new/quietly_logged.\n\n'}${outboundNote}RECENCY WEIGHTING — CRITICAL: The thread below is ordered oldest-first. The final message is marked *** LATEST MESSAGE ***. Your classification, status, importance score, and ALL bullet points in aiDetailedSummary must reflect the state of the thread AS OF THAT LATEST MESSAGE. Earlier messages are background context only — do not let them override what the latest message says.
 - If the latest message resolves a prior question → the thread is resolved, not awaiting_reply.
 - If the latest message is from the other party → it may be the account owner's turn to act.
 - If the latest message is from the account owner → the account owner has acted; the other party may now be on the hook.
@@ -274,11 +274,38 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       }
     }
 
-    // Hard code override: if owner has never sent a message, awaiting_reply is logically impossible.
-    // The AI cannot reliably detect this from prompt rules alone — enforce it in code.
+    // Owner-never-sent override: if owner has never sent a message AND the email isn't a
+    // service acknowledgment promising a reply, awaiting_reply is illogical → force awaiting_action.
+    // EXCEPTION: service acknowledgments ("we will respond", "you will hear from us", "decision
+    // pending", "awaiting acceptance/rejection", "will email you") count as awaiting_reply
+    // because the user initiated something out-of-band and is genuinely waiting.
     if (!ownerHasReplied && parsed?.status === 'awaiting_reply') {
-      console.warn('[classifyThread] awaiting_reply overridden → awaiting_action (owner has never sent a message in this thread)')
-      parsed.status = 'awaiting_action'
+      const _ackSummary = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
+      const _looksLikeServiceAck = (
+        _ackSummary.includes('will respond')          ||
+        _ackSummary.includes('will reply')            ||
+        _ackSummary.includes('will get back')         ||
+        _ackSummary.includes('you will hear')         ||
+        _ackSummary.includes("you'll hear")           ||
+        _ackSummary.includes('will email you')        ||
+        _ackSummary.includes('will be in touch')      ||
+        _ackSummary.includes('decision pending')      ||
+        _ackSummary.includes('awaiting acceptance')   ||
+        _ackSummary.includes('awaiting rejection')    ||
+        _ackSummary.includes('await a further')       ||
+        _ackSummary.includes('await further')         ||
+        _ackSummary.includes('will provide an update') ||
+        _ackSummary.includes('application received')  ||
+        _ackSummary.includes('application has been received') ||
+        _ackSummary.includes('await the outcome')     ||
+        _ackSummary.includes('awaiting the outcome')
+      )
+      if (_looksLikeServiceAck) {
+        console.log('[classifyThread] awaiting_reply allowed for service-ack thread (no outbound message but acknowledgement of out-of-band submission)')
+      } else {
+        console.warn('[classifyThread] awaiting_reply overridden → awaiting_action (owner has never sent a message in this thread)')
+        parsed.status = 'awaiting_action'
+      }
     }
 
     // Hard proximity override: any signal due within 2 days → Urgent (≥0.85).
