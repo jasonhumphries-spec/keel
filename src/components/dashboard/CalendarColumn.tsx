@@ -175,7 +175,10 @@ function DayGroup({
     ? 'Today'
     : isTomorrow
     ? 'Tomorrow'
-    : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
+    : (d.getFullYear() === today.getFullYear()
+        ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+        : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+      ).toUpperCase()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -311,7 +314,10 @@ export function CalendarColumn({
   const lastDate = sortedDates.length > 0
     ? new Date(sortedDates[sortedDates.length - 1])
     : new Date(now.getTime() + 30 * 86400000)
-  const fmt       = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const currentYear = new Date().getFullYear()
+  const fmt = (d: Date) => d.getFullYear() === currentYear
+    ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const dateRange = `${fmt(now)} – ${fmt(lastDate)}`
   const totalCount = dedupedSignals.length
 
