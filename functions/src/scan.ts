@@ -159,7 +159,7 @@ async function runCalendarCheck(uid: string, accessToken: string): Promise<void>
 
     const signalsSnap = await db.collection(`users/${uid}/signals`)
       .where('status', '==', 'active')
-      .where('type', 'in', ['event', 'rsvp', 'deadline'])
+      .where('type', 'in', ['event', 'rsvp'])
       .where('detectedDate', '>=', Timestamp.fromDate(past))
       .where('detectedDate', '<=', Timestamp.fromDate(future))
       .get()

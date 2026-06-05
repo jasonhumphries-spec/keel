@@ -265,7 +265,7 @@ export function useCalendarSignals(daysAhead = 365) {
     const then = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
     const q = query(
       collection(db, `users/${user.uid}/signals`),
-      where('type', 'in', ['event', 'payment', 'rsvp', 'deadline']),
+      where('type', 'in', ['event', 'rsvp']),  // calendar tracks events; deadlines + payments are item-level concerns
       where('status', '==', 'active'),
       where('detectedDate', '>=', Timestamp.fromDate(now)),
       where('detectedDate', '<=', Timestamp.fromDate(then)),

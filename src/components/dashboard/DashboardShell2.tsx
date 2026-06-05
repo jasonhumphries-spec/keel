@@ -97,7 +97,7 @@ function calSignalsForBand(
   const filtered = signals
     .filter(s =>
       bandItemIds.has(s.itemId) &&
-      ['event', 'rsvp', 'deadline'].includes(s.type) &&
+      ['event', 'rsvp'].includes(s.type) &&  // deadlines tracked at item level, not on calendar
       s.detectedDate != null &&
       s.detectedDate.getTime() >= cutoffMs &&
       s.status === 'active' &&

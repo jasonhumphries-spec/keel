@@ -159,7 +159,7 @@ export async function runCalendarCheck(
   // Get active event/rsvp/deadline signals in window
   const signalsSnap = await db.collection(`users/${uid}/signals`)
     .where('status',       '==',  'active')
-    .where('type',         'in',  ['event', 'rsvp', 'deadline'])
+    .where('type',         'in',  ['event', 'rsvp'])
     .where('detectedDate', '>=',  Timestamp.fromDate(past))
     .where('detectedDate', '<=',  Timestamp.fromDate(future))
     .get()
