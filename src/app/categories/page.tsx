@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCategories } from '@/lib/hooks'
-import { doc, updateDoc, deleteDoc, setDoc, Timestamp } from 'firebase/firestore'
+import { doc, updateDoc, deleteDoc, setDoc, collection, onSnapshot, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { PageShell } from '@/components/layout/PageShell'
 import { DEFAULT_CATEGORY_DESCRIPTIONS, CATEGORY_DESCRIPTION_HINTS } from '@/lib/categoryDefaults'
@@ -136,6 +136,40 @@ export default function CategoriesPage() {
 
   const dirtyCount = items.filter(i => i.dirty).length
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+
+  // ── Ignored senders ─────────────────────────────────────────────────────
+  const [ignored, setIgnored] = useState<Array<{
+    id:            string
+    senderEmail:   string
+    senderName?:   string
+    sampleAiTitle?:string
+    addedAt?:      Date
+  }>>([])
+  useEffect(() => {
+    if (!user) return
+    const q = collection(db, `users/${user.uid}/ignoredSenders`)
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs.map(d => {
+        const data = d.data() as any
+        return {
+          id:           d.id,
+          senderEmail:  data.senderEmail ?? d.id,
+          senderName:   data.senderName,
+          sampleAiTitle:data.sampleAiTitle,
+          addedAt:      data.addedAt?.toDate?.(),
+        }
+      })
+      list.sort((a, b) => (b.addedAt?.getTime() ?? 0) - (a.addedAt?.getTime() ?? 0))
+      setIgnored(list)
+    })
+    return unsub
+  }, [user])
+
+  const removeIgnored = async (id: string) => {
+    if (!user) return
+    if (!confirm(`Stop ignoring "${id}"? Future emails from this sender will be classified normally again.`)) return
+    await deleteDoc(doc(db, `users/${user.uid}/ignoredSenders`, id))
+  }
 
   if (authLoading || !user) return null
 
@@ -496,6 +530,62 @@ export default function CategoriesPage() {
           )}
         </div>
       )}
+
+      {/* Ignored Senders */}
+      <div style={{ marginTop: 32, padding: '24px 28px', background: 'var(--color-surface)', borderRadius: 12, border: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>Ignored senders</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>
+            {ignored.length === 0 ? 'None' : `${ignored.length} sender${ignored.length === 1 ? '' : 's'}`}
+          </div>
+        </div>
+        <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-secondary)', marginBottom: 14, lineHeight: 1.5 }}>
+          Emails from these senders are quietly logged on arrival without AI classification. Add a sender from any item's "…" menu in the panel.
+        </div>
+        {ignored.length === 0 ? (
+          <div style={{ fontSize: 'var(--fs-base)', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
+            No senders ignored yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ignored.map(s => (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '8px 10px', borderRadius: 6,
+                background: 'var(--color-surface-recessed)',
+                border: '1px solid var(--color-border)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 'var(--fs-base)', fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.senderName ? `${s.senderName} · ` : ''}{s.senderEmail}
+                  </div>
+                  {s.sampleAiTitle && (
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      e.g. "{s.sampleAiTitle}"
+                    </div>
+                  )}
+                </div>
+                {s.addedAt && (
+                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                    {s.addedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </div>
+                )}
+                <button
+                  onClick={() => removeIgnored(s.id)}
+                  style={{
+                    background: 'transparent', border: '1px solid var(--color-border)',
+                    borderRadius: 4, padding: '3px 9px', cursor: 'pointer',
+                    fontSize: 'var(--fs-xs)', color: 'var(--color-text-secondary)',
+                    fontFamily: 'var(--font-dm-sans)', flexShrink: 0,
+                  }}
+                >
+                  Stop ignoring
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
     </PageShell>
   )

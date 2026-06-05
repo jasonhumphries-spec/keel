@@ -278,6 +278,16 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[Keel] Using token: ${accessToken.slice(0, 10)}…`)
 
+    // Fetch the user's ignored-senders list — emails matching get auto-quietly-logged.
+    let ignoredSenders: Set<string> = new Set()
+    try {
+      const ignSnap = await db.collection(`users/${uid}/ignoredSenders`).get()
+      ignoredSenders = new Set(ignSnap.docs.map(d => (d.data().senderEmail as string ?? d.id).toLowerCase()))
+      if (ignoredSenders.size > 0) console.log(`[Keel] ${ignoredSenders.size} ignored sender(s) loaded`)
+    } catch (e) {
+      console.warn('[Keel] failed to load ignoredSenders:', e)
+    }
+
     // Firestore operation counters for cost tracking
     let fbReads   = 0
     let fbWrites  = 0
@@ -526,6 +536,20 @@ export async function POST(req: NextRequest) {
               return msgFrom.toLowerCase().includes(accountEmail)
             })
 
+        // Bypass AI classification for ignored senders — synthetic shouldProcess=false result
+        // routes through the !shouldProcess write path with autoQuietedReason='sender_ignored'.
+        if (ignoredSenders.has(senderEmail.toLowerCase())) {
+          const synthetic = {
+            shouldProcess: false, categoryId: 'cat_other', categoryName: 'Other',
+            aiTitle: subject || senderName, aiSummary: 'Ignored sender — auto-quietly-logged.',
+            aiDetailedSummary: '', aiImportanceScore: 0.05,
+            signals: [], isRecurring: false, status: 'quietly_logged',
+            autoQuietedReason: 'sender_ignored' as const,
+            _usage: { inputTokens: 0, outputTokens: 0 },
+          }
+          await writeFeed(subject, senderName, 'quietly_logged')
+          return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification: synthetic as any }
+        }
         const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
         return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
@@ -559,6 +583,7 @@ export async function POST(req: NextRequest) {
             status:            'quietly_logged',
             importanceFlag:    false,
             aiImportanceScore: classification.aiImportanceScore || 0.1,
+            autoQuietedReason: (classification as any).autoQuietedReason ?? null,
             isOutbound:   isOutbound ?? false,
             snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
             isRecurring: classification.isRecurring || false,

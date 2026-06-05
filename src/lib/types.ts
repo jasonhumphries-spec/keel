@@ -65,7 +65,7 @@ export interface KeelItem {
   aiTitle:           string
   aiSummary:         string
   aiDetailedSummary: string
-  autoQuietedReason?: 'on_calendar' | 'promotional' | null
+  autoQuietedReason?: 'on_calendar' | 'promotional' | 'sender_ignored' | null
 }
 
 export interface KeelSignal {
@@ -128,4 +128,12 @@ export interface KeelPayment {
 export interface CategoryWithItems {
   category: KeelCategory
   items:    KeelItem[]
+}
+
+export interface IgnoredSender {
+  senderEmail:    string
+  senderName?:    string
+  sampleAiTitle?: string
+  sampleSubject?: string
+  addedAt:        Date
 }

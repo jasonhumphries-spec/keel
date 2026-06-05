@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore'
+import { doc, updateDoc, addDoc, collection, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCategories } from '@/lib/hooks'
@@ -468,6 +468,28 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
     onResolved(item)
   }
 
+  const ignoreSender = async () => {
+    if (!user || !item) return
+    const senderEmail = (item.senderEmail || '').toLowerCase().trim()
+    if (!senderEmail) return
+    // Doc ID = email (lowercased). Adding the same sender again is a harmless overwrite.
+    await setDoc(doc(db, `users/${user.uid}/ignoredSenders`, senderEmail), {
+      senderEmail,
+      senderName:    item.senderName ?? '',
+      sampleAiTitle: item.aiTitle ?? '',
+      sampleSubject: item.subject ?? '',
+      addedAt:       Timestamp.now(),
+    })
+    await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
+      status:            'quietly_logged',
+      manuallyIgnored:   true,
+      autoQuietedReason: 'sender_ignored',
+      updatedAt:         Timestamp.now(),
+    })
+    setShowMoreMenu(false)
+    onResolved(item)
+  }
+
   const itemSignals      = signals.filter(s => s.itemId === item?.itemId)
   const hasPaymentSignal = itemSignals.some(s => s.type === 'payment')
 
@@ -777,10 +799,11 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
             {showMoreMenu && (
               <div style={{ borderTop: '1px solid var(--color-border)', padding: 6, background: 'var(--color-surface)', flexShrink: 0 }}>
                 {[
-                  { label: 'Snooze 3 days', action: () => snooze(3) },
-                  { label: 'Snooze 1 week', action: () => snooze(7) },
-                  { label: 'Archive',       action: archive },
-                  { label: 'Ignore',        action: ignoreItem },
+                  { label: 'Snooze 3 days',          action: () => snooze(3) },
+                  { label: 'Snooze 1 week',          action: () => snooze(7) },
+                  { label: 'Archive',                action: archive },
+                  { label: 'Ignore this item',       action: ignoreItem },
+                  { label: 'Ignore this sender ⚠',  action: ignoreSender },
                 ].map(m => (
                   <button key={m.label} onClick={m.action} style={{ display: 'flex', width: '100%', padding: '8px 10px', borderRadius: 6, fontSize: 'var(--fs-base)', color: m.label.startsWith('Re-anal') ? 'var(--color-accent)' : 'var(--color-text-secondary)', cursor: reanalysing && m.label.startsWith('Re-anal') ? 'not-allowed' : 'pointer', background: 'transparent', border: 'none', fontFamily: 'var(--font-dm-sans)', opacity: reanalysing && m.label.startsWith('Re-anal') ? 0.5 : 1 }}>
                     {m.label}

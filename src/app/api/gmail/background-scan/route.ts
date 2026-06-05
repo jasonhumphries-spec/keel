@@ -225,6 +225,15 @@ export async function POST(req: NextRequest) {
     })
     const locale       = rootData.locale ?? 'en-GB'
     const accountEmail  = ((await db.doc(`users/${uid}/accounts/account_primary`).get()).data()?.email as string ?? '').toLowerCase()
+
+    // Load ignoredSenders for skip-before-classification.
+    let ignoredSenders: Set<string> = new Set()
+    try {
+      const ignSnap = await db.collection(`users/${uid}/ignoredSenders`).get()
+      ignoredSenders = new Set(ignSnap.docs.map(d => (d.data().senderEmail as string ?? d.id).toLowerCase()))
+    } catch (e) {
+      console.warn('[background-scan] failed to load ignoredSenders:', e)
+    }
     const isUK   = locale.startsWith('en-GB') || locale.startsWith('en-AU') || locale.startsWith('en-NZ')
 
     // ── Existing items ─────────────────────────────────────────────────────
@@ -275,6 +284,34 @@ export async function POST(req: NextRequest) {
         const threadBody  = buildThreadContext(thread)
 
         // ── S1: classifyThread — same function as manual scan ──────────────
+        // Bypass AI for ignored senders — write minimal item, increment skip.
+        if (ignoredSenders.has(senderEmail.toLowerCase())) {
+          if (!existingId) {
+            const itemId = `${threadId}_${uid}`
+            await db.doc(`users/${uid}/items/${itemId}`).set({
+              itemId, threadId, accountId: 'account_primary',
+              messageId: first.id ?? '',
+              senderName, senderEmail, subject,
+              receivedAt:        Timestamp.fromMillis(receivedAt),
+              status:            'quietly_logged',
+              aiTitle:           subject || senderName,
+              aiSummary:         'Ignored sender — auto-quietly-logged.',
+              aiDetailedSummary: '',
+              aiImportanceScore: 0.05,
+              autoQuietedReason: 'sender_ignored',
+              manuallyIgnored:   true,
+              isRecurring:       false,
+              updatedAt:         Timestamp.fromMillis(internalDate),
+              lastMessageInternalDate: internalDate,
+              lastProcessedBy:   'background',
+              createdAt:         FieldValue.serverTimestamp(),
+            })
+            fbWrites++
+          }
+          skippedItems++
+          continue
+        }
+
         const isOutbound    = senderEmail.toLowerCase() === accountEmail
         // isSelfEmail: user emailed themselves — treat as a note/reminder, always process
         const isSelfEmail   = isOutbound && messages.length === 1 &&
