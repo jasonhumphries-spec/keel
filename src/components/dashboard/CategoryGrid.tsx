@@ -1100,6 +1100,27 @@ function _sigWordsForCluster(s: string): Set<string> {
       .filter(w => w.length > 3 && !_CLUSTER_STOP_WORDS.has(w))
   )
 }
+// Senders where every email is almost certainly part of a sales/transaction stream.
+// For these, even moderate title overlap usually means the items are about the same
+// buyer/seller/listing series — relax the clustering threshold.
+const _TRANSACTIONAL_SENDER_PATTERNS = [
+  'ebay.', '@ebay',
+  'vinted.', '@vinted',
+  'paypal.', '@paypal',
+  'etsy.', '@etsy',
+  'depop.', '@depop',
+  'gumtree.', '@gumtree',
+  'stripe.', '@stripe',
+  'klarna.', '@klarna',
+  'afterpay.', '@afterpay',
+  'amazon.', '@amazon',
+  'shopify.', '@shopify',
+]
+function _isTransactionalSender(email: string): boolean {
+  const e = (email ?? '').toLowerCase()
+  return _TRANSACTIONAL_SENDER_PATTERNS.some(p => e.includes(p))
+}
+
 function _shouldCluster(a: KeelItem, b: KeelItem): boolean {
   const wa = _sigWordsForCluster(a.aiTitle || a.subject || '')
   const wb = _sigWordsForCluster(b.aiTitle || b.subject || '')
@@ -1112,14 +1133,17 @@ function _shouldCluster(a: KeelItem, b: KeelItem): boolean {
 
   const sameSender = (a.senderEmail ?? '').toLowerCase() === (b.senderEmail ?? '').toLowerCase()
                   && (a.senderEmail ?? '') !== ''
+  // Transactional senders (eBay, Vinted, PayPal, etc.) almost always have related
+  // emails about the same buyer/listing/order — use a lower Jaccard threshold for them.
+  const isTxnal = sameSender && _isTransactionalSender(a.senderEmail ?? '')
 
   // Jaccard guards against over-merging when a sender uses recurring prefix words
   // (e.g. "Dorset House School Charity Run" vs "Dorset House Year 8 Cricket Trip"
   //  share 2 words by count but only ~22% by Jaccard — clearly unrelated).
   // Absolute overlap floor prevents pathological short-title matches.
-  return sameSender
-    ? (jaccard >= 0.60 && overlap >= 3)
-    : (jaccard >= 0.75 && overlap >= 4)
+  if (isTxnal)    return jaccard >= 0.50 && overlap >= 3
+  if (sameSender) return jaccard >= 0.60 && overlap >= 3
+  return jaccard >= 0.75 && overlap >= 4
 }
 function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: KeelItem[] }> {
   if (items.length === 0) return []
