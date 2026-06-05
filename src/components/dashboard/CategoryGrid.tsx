@@ -1176,6 +1176,23 @@ function ItemCluster({
       />
     )
   }
+  // When the lead is marked done, cascade to all related items in the cluster.
+  // The lead's ItemRow handles its own Firestore write; we write the rest here.
+  const onHeadResolved = async (item: KeelItem) => {
+    onResolved(item)
+    await Promise.all(rest.map(async r => {
+      try {
+        await updateDoc(doc(db, `users/${uid}/items`, r.itemId), {
+          status:     'done',
+          resolvedAt: Timestamp.now(),
+          updatedAt:  Timestamp.now(),
+        })
+        onResolved(r)
+      } catch (e) {
+        console.warn(`[ItemCluster] cascade-done failed for ${r.itemId}:`, e)
+      }
+    }))
+  }
   return (
     <div
       onMouseEnter={() => setClusterHover(true)}
@@ -1183,7 +1200,7 @@ function ItemCluster({
     >
       <ItemRow
         item={head} isResolved={isResolvedFn(head.itemId)} signals={signals}
-        uid={uid} onItemClick={onItemClick} onResolved={onResolved}
+        uid={uid} onItemClick={onItemClick} onResolved={onHeadResolved}
         snoozingId={snoozingId} setSnoozingId={setSnoozingId}
         forceHovered={clusterHover}
       />
