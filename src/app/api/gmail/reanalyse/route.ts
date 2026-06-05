@@ -17,7 +17,8 @@ import { getFirestore, Timestamp }     from 'firebase-admin/firestore'
 import { classifyThread, buildThreadContext } from '@/lib/scanUtils'
 import { runCalendarCheck }            from '@/lib/server/calendarCheck'
 
-export const runtime = 'nodejs'
+export const runtime     = 'nodejs'
+export const maxDuration = 120  // 2 min — single-thread reanalysis is much smaller
 export const dynamic = 'force-dynamic'
 
 // ── Firebase Admin ────────────────────────────────────────────────────────────

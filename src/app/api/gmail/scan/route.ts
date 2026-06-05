@@ -5,6 +5,10 @@ import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/a
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
 
+export const runtime     = 'nodejs'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 300  // 5 min — gives time for ~100+ thread classifications
+
 // ---- Firebase Admin init ----
 function getAdminDb() {
   if (!getApps().length) {

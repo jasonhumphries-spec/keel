@@ -18,8 +18,9 @@ import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { classifyThread, decodeBody, buildThreadContext } from '@/lib/scanUtils'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+export const runtime     = 'nodejs'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 300  // 5 min — gives time for ~100+ thread classifications
 
 // ── Firebase Admin ─────────────────────────────────────────────────────────
 
