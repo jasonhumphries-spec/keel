@@ -639,12 +639,12 @@ export function CategoryCard({
                       style={{
                         fontFamily: 'var(--font-dm-mono)', fontSize: 9,
                         padding: '2px 6px', borderRadius: 4,
-                        border: '1px solid #3D7A6B',
-                        background: 'rgba(61,122,107,0.08)',
-                        color: '#3D7A6B', cursor: 'pointer',
+                        border: '1px solid var(--color-border-strong)',
+                        background: 'transparent',
+                        color: 'var(--color-text-secondary)', cursor: 'pointer',
                         fontWeight: 600, whiteSpace: 'nowrap',
                       }}>
-                      ✓ Done
+                      Mark done
                     </button>
                   )}
                   {/* Snooze button — clock icon, expands to duration picker */}
@@ -994,8 +994,9 @@ function ItemRow({
               <button onClick={handleDone} style={{
                 fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
                 padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
-                background: 'rgba(61,122,107,0.09)', color: '#3D7A6B', border: '1px solid rgba(61,122,107,0.2)',
-              }}>✓ Done</button>
+                background: 'transparent', color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-border-strong)',
+              }}>Mark done</button>
               <button onClick={() => onItemClick(item)} style={{
                 fontFamily: 'var(--font-dm-sans)', fontSize: 10, fontWeight: 500,
                 padding: '3px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap',
