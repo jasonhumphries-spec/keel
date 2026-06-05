@@ -88,11 +88,18 @@ function calSignalsForBand(
       .map(i => i.itemId),
   )
 
+  // Cutoff: yesterday-midnight (gives same-day events a grace window through to end of day)
+  const cutoff = new Date()
+  cutoff.setHours(0, 0, 0, 0)
+  cutoff.setDate(cutoff.getDate() - 1)
+  const cutoffMs = cutoff.getTime()
+
   const filtered = signals
     .filter(s =>
       bandItemIds.has(s.itemId) &&
       ['event', 'rsvp', 'deadline'].includes(s.type) &&
       s.detectedDate != null &&
+      s.detectedDate.getTime() >= cutoffMs &&
       s.status === 'active' &&
       s.calendarStatus !== 'ignored',
     )
