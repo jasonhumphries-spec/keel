@@ -140,7 +140,9 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             topicName:           PUBSUB_TOPIC,
-            labelIds:            ['INBOX'],
+            // Watch SENT too so a reply re-triggers classification — lets the AI
+            // see that the user has acted, and reclassify the item (often resolves it).
+            labelIds:            ['INBOX', 'SENT'],
             labelFilterBehavior: 'include',
           }),
         }
