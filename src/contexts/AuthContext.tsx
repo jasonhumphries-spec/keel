@@ -61,9 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result)
         const token      = credential?.accessToken ?? null
+        const tokenRes   = (result as any)._tokenResponse ?? {}
+        const refreshTok = tokenRes.oauthRefreshToken
+                        ?? tokenRes.refreshToken
+                        ?? null
         if (token && result.user) {
           setAccessToken(token)
-          await saveTokenAndScan(result.user, token)
+          await saveTokenAndScan(result.user, token, refreshTok ?? undefined)
         }
       }
     }).catch(e => console.error('Redirect result error:', e))
@@ -302,11 +306,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result      = await signInWithPopup(auth, googleProvider)
       const credential  = GoogleAuthProvider.credentialFromResult(result)
       const token       = credential?.accessToken ?? null
-      // Firebase exposes the OAuth refresh token via result.user — grab it so
-      // server-side routes can refresh the access token without the user re-signing in
-      const refreshTok  = (result.user as any).stsTokenManager?.refreshToken
-                       ?? (result as any)._tokenResponse?.refreshToken
+      // Capture Google's OAuth refresh token so backend routes can mint fresh
+      // access tokens without the user re-signing in. The right field is
+      // _tokenResponse.oauthRefreshToken (or unnamed refreshToken on older SDKs).
+      // NEVER use stsTokenManager.refreshToken — that's the Firebase Secure Token
+      // Service token for refreshing Firebase ID tokens, NOT a Google OAuth token.
+      const tokenRes    = (result as any)._tokenResponse ?? {}
+      const refreshTok  = tokenRes.oauthRefreshToken
+                       ?? tokenRes.refreshToken
                        ?? null
+      if (!refreshTok) {
+        console.warn('[Keel] Sign-in did not return a Google OAuth refresh token — backend scans will fail. Likely cause: Google reused an existing grant without re-consent. Revoke at https://myaccount.google.com/permissions and sign in again.')
+      } else {
+        console.log('[Keel] Captured Google OAuth refresh token')
+      }
       if (token && result.user) {
         setAccessToken(token)
         await saveTokenAndScan(result.user, token, refreshTok ?? undefined)
