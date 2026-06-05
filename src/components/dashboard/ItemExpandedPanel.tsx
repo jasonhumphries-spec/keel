@@ -59,7 +59,13 @@ function SignalPill({ signal, itemId, uid, item }: { signal: KeelSignal; itemId:
     awaiting: { bg: 'var(--color-surface-recessed)', border: 'var(--color-border-strong)', colour: 'var(--color-text-secondary)', label: 'Awaiting' },
   }
   const cfg = configs[signal.type] ?? configs.awaiting
-  const formatDate   = (d: Date | null) => d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : null
+  const formatDate   = (d: Date | null) => {
+    if (!d) return null
+    const cur = new Date().getFullYear()
+    return d.getFullYear() === cur
+      ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+      : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  }
   const formatAmount = (p: number | null, c: string | null) => p ? `${c === 'GBP' ? '£' : '$'}${(p / 100).toFixed(2)}` : null
   const detail = signal.detectedDate ? formatDate(signal.detectedDate) : formatAmount(signal.detectedAmount, signal.currency)
 

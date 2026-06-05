@@ -199,8 +199,11 @@ const SIGNAL_PILL_LABEL: Record<string, string> = {
 function MiniPill({ signal }: { signal: KeelSignal }) {
   const varKey = SIGNAL_PILL_VAR[signal.type] ?? 'info'
 
+  const _currentYear = new Date().getFullYear()
   const formatDate = (d: Date | null) => d
-    ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    ? (d.getFullYear() === _currentYear
+        ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+        : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))
     : null
   const formatAmount = (p: number | null, c: string | null) =>
     p ? `${c === 'GBP' ? '£' : '$'}${(p / 100).toFixed(2)}` : null
@@ -470,7 +473,9 @@ export function CategoryCard({
               ? formatAmount(paymentSig.detectedAmount, paymentSig.currency)
               : null
             const paymentDue = paymentSig?.detectedDate
-              ? paymentSig.detectedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+              ? (paymentSig.detectedDate.getFullYear() === new Date().getFullYear()
+                  ? paymentSig.detectedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                  : paymentSig.detectedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))
               : null
             const isReceipt   = (item.aiTitle || '').toLowerCase().startsWith('receipt:') ||
               (item.aiSummary || '').toLowerCase().includes('no action needed') ||
