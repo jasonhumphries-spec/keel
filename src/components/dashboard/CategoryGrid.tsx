@@ -1099,11 +1099,23 @@ function _sigWordsForCluster(s: string): Set<string> {
 function _shouldCluster(a: KeelItem, b: KeelItem): boolean {
   const wa = _sigWordsForCluster(a.aiTitle || a.subject || '')
   const wb = _sigWordsForCluster(b.aiTitle || b.subject || '')
+  if (wa.size === 0 || wb.size === 0) return false
+
   let overlap = 0
   for (const w of wa) if (wb.has(w)) overlap++
+  const union   = wa.size + wb.size - overlap
+  const jaccard = union > 0 ? overlap / union : 0
+
   const sameSender = (a.senderEmail ?? '').toLowerCase() === (b.senderEmail ?? '').toLowerCase()
                   && (a.senderEmail ?? '') !== ''
-  return sameSender ? overlap >= 2 : overlap >= 4
+
+  // Jaccard guards against over-merging when a sender uses recurring prefix words
+  // (e.g. "Dorset House School Charity Run" vs "Dorset House Year 8 Cricket Trip"
+  //  share 2 words by count but only ~22% by Jaccard — clearly unrelated).
+  // Absolute overlap floor prevents pathological short-title matches.
+  return sameSender
+    ? (jaccard >= 0.60 && overlap >= 3)
+    : (jaccard >= 0.75 && overlap >= 4)
 }
 function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: KeelItem[] }> {
   if (items.length === 0) return []
