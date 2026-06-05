@@ -1082,6 +1082,115 @@ function distributeColumns(cats: CategoryWithItems[], n: number): CategoryWithIt
  * rather than stretching full-width.
  * FYI section and mobile continue to use CategoryCard.
  */
+
+// ── Topic clustering: group items that look like they're about the same thing.
+// Same sender + 2+ shared significant title words → cluster.
+// Different senders + 4+ shared significant words → cluster (higher bar to avoid noise).
+const _CLUSTER_STOP_WORDS = new Set([
+  'the','and','for','with','from','this','that','have','will','your',
+  'their','been','were','they','about','when','where','what','which','your',
+])
+function _sigWordsForCluster(s: string): Set<string> {
+  return new Set(
+    (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+      .filter(w => w.length > 3 && !_CLUSTER_STOP_WORDS.has(w))
+  )
+}
+function _shouldCluster(a: KeelItem, b: KeelItem): boolean {
+  const wa = _sigWordsForCluster(a.aiTitle || a.subject || '')
+  const wb = _sigWordsForCluster(b.aiTitle || b.subject || '')
+  let overlap = 0
+  for (const w of wa) if (wb.has(w)) overlap++
+  const sameSender = (a.senderEmail ?? '').toLowerCase() === (b.senderEmail ?? '').toLowerCase()
+                  && (a.senderEmail ?? '') !== ''
+  return sameSender ? overlap >= 2 : overlap >= 4
+}
+function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: KeelItem[] }> {
+  if (items.length === 0) return []
+  // Union-find over item indices
+  const parent: number[] = items.map((_, i) => i)
+  const find = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] } ; return i }
+  const union = (i: number, j: number) => { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj }
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (_shouldCluster(items[i], items[j])) union(i, j)
+    }
+  }
+  const groups = new Map<number, KeelItem[]>()
+  for (let i = 0; i < items.length; i++) {
+    const root = find(i)
+    if (!groups.has(root)) groups.set(root, [])
+    groups.get(root)!.push(items[i])
+  }
+  // Items in each cluster are already in score order; preserve overall cluster order
+  // by sorting groups by head item's score.
+  return Array.from(groups.values())
+    .map(list => ({ head: list[0], rest: list.slice(1) }))
+    .sort((a, b) => (b.head.aiImportanceScore ?? 0) - (a.head.aiImportanceScore ?? 0))
+}
+
+// Wrapper that renders a cluster: head row + expandable "+N related" affordance.
+function ItemCluster({
+  head, rest, isResolvedFn, signals, uid, onItemClick, onResolved, snoozingId, setSnoozingId,
+}: {
+  head:          KeelItem
+  rest:          KeelItem[]
+  isResolvedFn:  (id: string) => boolean
+  signals:       KeelSignal[]
+  uid:           string
+  onItemClick:   (item: KeelItem) => void
+  onResolved:    (item: KeelItem) => void
+  snoozingId:    string | null
+  setSnoozingId: (id: string | null) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  if (rest.length === 0) {
+    return (
+      <ItemRow
+        item={head} isResolved={isResolvedFn(head.itemId)} signals={signals}
+        uid={uid} onItemClick={onItemClick} onResolved={onResolved}
+        snoozingId={snoozingId} setSnoozingId={setSnoozingId}
+      />
+    )
+  }
+  return (
+    <div>
+      <ItemRow
+        item={head} isResolved={isResolvedFn(head.itemId)} signals={signals}
+        uid={uid} onItemClick={onItemClick} onResolved={onResolved}
+        snoozingId={snoozingId} setSnoozingId={setSnoozingId}
+      />
+      <button
+        onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
+        style={{
+          marginLeft: 28, marginTop: -2, marginBottom: 4,
+          padding: '1px 8px',
+          background: 'transparent',
+          border: '1px solid var(--color-border)',
+          borderRadius: 10,
+          fontSize: 10.5, fontFamily: 'var(--font-dm-mono)',
+          color: 'var(--color-text-muted)',
+          cursor: 'pointer', letterSpacing: '0.02em',
+        }}
+      >
+        {expanded ? `− hide ${rest.length} related` : `+ ${rest.length} related`}
+      </button>
+      {expanded && (
+        <div style={{ paddingLeft: 14, borderLeft: '2px solid var(--color-border)', marginLeft: 16 }}>
+          {rest.map(item => (
+            <ItemRow
+              key={item.itemId} item={item}
+              isResolved={isResolvedFn(item.itemId)} signals={signals}
+              uid={uid} onItemClick={onItemClick} onResolved={onResolved}
+              snoozingId={snoozingId} setSnoozingId={setSnoozingId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ItemList({
   categoryData,
   signals,
@@ -1121,11 +1230,12 @@ export function ItemList({
               }}>
                 {category.name}
               </div>
-              {items.map(item => (
-                <ItemRow
-                  key={item.itemId}
-                  item={item}
-                  isResolved={resolvedItems.has(item.itemId)}
+              {clusterItemsByTopic(items).map(group => (
+                <ItemCluster
+                  key={group.head.itemId}
+                  head={group.head}
+                  rest={group.rest}
+                  isResolvedFn={id => resolvedItems.has(id)}
                   signals={signals}
                   uid={uid}
                   onItemClick={onItemClick}
