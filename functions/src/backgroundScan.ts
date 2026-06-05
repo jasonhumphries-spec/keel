@@ -523,12 +523,24 @@ export const nightlyItemExpiry = onSchedule(
 
           if (hasFutureDate) { skipped++; continue }
 
-          // All event dates are in the past — expire this item
+          // All signal dates are in the past — decide status by signal-type semantics:
+          // - Past EVENT signal: the event happened. Item is gone, regardless of status.
+          //   (You can't un-attend a party that's already over.)
+          // - Past DEADLINE/RSVP only + awaiting_action: user missed an action → overdue.
+          // - Past DEADLINE/RSVP only + new/awaiting_reply: informational, quiet.
+          const hasPastEventSignal = signals.some(sig => sig.type === 'event')
           const itemRef = db.doc(`users/${uid}/items/${itemDoc.id}`)
           const now     = admin.firestore.FieldValue.serverTimestamp()
 
-          if (item.status === 'new' || item.status === 'awaiting_reply') {
-            // Informational item or reply-pending item — event happened, quietly archive it
+          if (hasPastEventSignal) {
+            batch.update(itemRef, {
+              status:     'quietly_logged',
+              resolvedAt: now,
+              updatedAt:  now,
+              expiredBy:  'nightly_expiry_past_event',
+            })
+            archived++
+          } else if (item.status === 'new' || item.status === 'awaiting_reply') {
             batch.update(itemRef, {
               status:     'quietly_logged',
               resolvedAt: now,
@@ -537,7 +549,6 @@ export const nightlyItemExpiry = onSchedule(
             })
             archived++
           } else if (item.status === 'awaiting_action') {
-            // User needed to act and didn't — mark overdue
             batch.update(itemRef, {
               status:    'overdue',
               updatedAt: now,

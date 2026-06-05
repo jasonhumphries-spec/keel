@@ -212,8 +212,18 @@ async function expireItemsForUser(
 
     console.log(`[expire] expiring item ${itemDoc.id} status=${item.status} signals=${JSON.stringify(eventSignals.map(s => ({ type: s.type, date: s.detectedDate ? (s.detectedDate as Timestamp).toDate().toISOString() : null })))}`)
 
-    // All event dates are in the past — expire
-    if (item.status === 'new' || item.status === 'awaiting_reply') {
+    // All signal dates are past — see CF nightlyItemExpiry for rationale.
+    // Past EVENT → quietly_logged (gone); past deadline/rsvp only → status-based.
+    const hasPastEventSignal = eventSignals.some(s => s.type === 'event')
+    if (hasPastEventSignal) {
+      batch.update(itemDoc.ref, {
+        status:     'quietly_logged',
+        resolvedAt: FieldValue.serverTimestamp(),
+        updatedAt:  FieldValue.serverTimestamp(),
+        expiredBy:  'expire_on_scan_past_event',
+      })
+      archived++
+    } else if (item.status === 'new' || item.status === 'awaiting_reply') {
       batch.update(itemDoc.ref, {
         status:     'quietly_logged',
         resolvedAt: FieldValue.serverTimestamp(),
