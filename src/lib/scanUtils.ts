@@ -232,9 +232,9 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
 - NAMES: Never use "the user", "you", or "the account owner" in summaries or next steps. Use real first names from the thread.
 - SIGNALS — strict quality rules:
   • DATE ACCURACY (critical): Always extract the full date including the correct month and year. Do NOT assume a day number belongs to the current month — read the month explicitly from the email. If the email discusses events in June and mentions "the 16th", that is June 16th, not May 16th. If a date is ambiguous, use the month most consistent with the surrounding narrative. When no year is stated, use the next upcoming occurrence of that date from the email's received date. Always output detectedDate in YYYY-MM-DD format with the correct month.
-  • event: For confirmed, agreed, upcoming appointments or events — including informational school/activity notices where a date and time are given, even if no parental action is required. The timing information is valuable regardless of whether action is needed. Create event signals for: school trips, matches, sports days, concerts, activities, medical appointments — any confirmed event with a known date. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, or vague "sometime next week" references.
+  • event: A scheduled time slot the user attends or that happens at a specific moment — something they would BLOCK time on a calendar for. Examples: school trips, matches, sports days, concerts, activities, medical appointments, social engagements, meetings. A meeting "AT" 3pm Tuesday is an event. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, vague "sometime next week" references, or — critically — things the user must DO BY a certain time (those are deadlines, see below).
   • awaiting: ONLY when there is a genuinely open question in the most recent outbound message that has not yet been answered. If the appointment/matter is already confirmed, do NOT create an awaiting signal for it.
-  • deadline: Only for hard deadlines with real consequences if missed.
+  • deadline: A point by which the user must DO something or face a consequence — they would track this in a task list, not on a calendar. Phrases like "ship by X", "pay by X", "respond by X", "submit by X", "return by X", "reply by X", "complete by X", "register by X", "due X" → ALWAYS deadline, never event. The Ebay "ship by 8 June" reminder, the form "complete by Friday", the rebate "redeem by 30 April" — all deadlines, never events. If a signal description naturally begins with a verb of action followed by "by" or "before" + date, it is a deadline.
   • payment: Only for actual money due or paid.
   • rsvp: Only for genuine RSVP requests that haven't yet been responded to.
 - Payment amounts: exact pence. £45.99 = 4599. Never null if amount visible.
@@ -304,6 +304,19 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       const d = (s?.description ?? '').toLowerCase()
       return d.includes('promotional') || d.includes('offer valid')
     })
+    // Type sanity: if a signal is labelled 'event' but its description starts with
+    // an action verb + "by"/"before" (ship by, pay by, submit by, etc.), that's a
+    // deadline, not a calendar event. Reclassify so calendar views stop surfacing them.
+    if (Array.isArray(parsed?.signals)) {
+      const ACTION_BY = /\b(ship|submit|pay|return|reply|respond|complete|register|send|deliver|redeem|file|cancel|renew|confirm)\s+(by|before)\b/i
+      for (const s of parsed.signals) {
+        if (s?.type === 'event' && typeof s.description === 'string' && ACTION_BY.test(s.description)) {
+          console.warn(`[classifyThread] Reclassifying event → deadline: "${s.description}"`)
+          s.type = 'deadline'
+        }
+      }
+    }
+
     if (_isPromotional && parsed?.status !== 'quietly_logged') {
       console.warn('[classifyThread] Promotional override: AI-flagged promotional signal — forcing quietly_logged')
       parsed.signals = _sigs.filter((s: any) => {
