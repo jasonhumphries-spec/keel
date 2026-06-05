@@ -766,6 +766,7 @@ function ItemRow({
   onResolved,
   snoozingId,
   setSnoozingId,
+  forceHovered = false,
 }: {
   item:          KeelItem
   isResolved:    boolean
@@ -775,8 +776,10 @@ function ItemRow({
   onResolved:    (item: KeelItem) => void
   snoozingId:    string | null
   setSnoozingId: (id: string | null) => void
+  forceHovered?: boolean
 }) {
-  const [hovered, setHovered]         = useState(false)
+  const [hoveredLocal, setHovered] = useState(false)
+  const hovered = hoveredLocal || forceHovered
   const [calHighlighted, setCalHigh]  = useState(false)
 
   // Listen for calendar hover broadcasts
@@ -1155,7 +1158,8 @@ function ItemCluster({
   snoozingId:    string | null
   setSnoozingId: (id: string | null) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded]       = useState(false)
+  const [clusterHover, setClusterHover] = useState(false)
   if (rest.length === 0) {
     return (
       <ItemRow
@@ -1166,11 +1170,15 @@ function ItemCluster({
     )
   }
   return (
-    <div>
+    <div
+      onMouseEnter={() => setClusterHover(true)}
+      onMouseLeave={() => setClusterHover(false)}
+    >
       <ItemRow
         item={head} isResolved={isResolvedFn(head.itemId)} signals={signals}
         uid={uid} onItemClick={onItemClick} onResolved={onResolved}
         snoozingId={snoozingId} setSnoozingId={setSnoozingId}
+        forceHovered={clusterHover}
       />
       {/* L-connector + lozenge */}
       <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: -4, marginBottom: 6 }}>
