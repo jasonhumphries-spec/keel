@@ -1175,7 +1175,7 @@ function ItemCluster({
       {/* L-connector + lozenge */}
       <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: -4, marginBottom: 6 }}>
         <div style={{
-          marginLeft: 30,
+          marginLeft: 37,
           width: 18, height: 11,
           borderLeft:   '1px solid var(--color-border)',
           borderBottom: '1px solid var(--color-border)',

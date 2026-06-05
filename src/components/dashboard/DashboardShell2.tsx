@@ -51,8 +51,10 @@ function dedupeCalSignals(
   entries: { signal: KeelSignal; item: KeelItem }[],
 ): { signal: KeelSignal; item: KeelItem }[] {
   const TYPE_PRIORITY: Record<string, number> = { event: 0, deadline: 1, rsvp: 2 }
-  const seen = new Map<string, number>() // itemId::date → best priority seen
-  return entries.filter(({ signal: s }) => {
+
+  // Step 1: per-item-per-date dedup — keep highest-priority signal type per item/day.
+  const seen = new Map<string, number>()
+  const perItem = entries.filter(({ signal: s }) => {
     const day  = s.detectedDate!.toISOString().slice(0, 10)
     const key  = `${s.itemId}::${day}`
     const prio = TYPE_PRIORITY[s.type] ?? 9
@@ -62,6 +64,40 @@ function dedupeCalSignals(
     }
     return false
   })
+
+  // Step 2: cross-item title-similarity dedup — collapse signals from different items
+  // about the same real-world event (e.g. "Dorset House School Charity Run Rescheduled"
+  // + "Dorset House Charity Run Rescheduled" both on 4 Jun → keep higher-importance).
+  const STOP = new Set(['the','and','for','with','from','your','their','this','that','have','will'])
+  const sigWords = (s: string): string[] =>
+    (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+      .filter(w => w.length > 3 && !STOP.has(w)).slice(0, 6)
+  const titlesSimilar = (a: string, b: string): boolean => {
+    const wa = new Set(sigWords(a))
+    const wb = sigWords(b)
+    if (wa.size === 0 || wb.length === 0) return false
+    const hits  = wb.filter(w => wa.has(w)).length
+    const union = wa.size + wb.length - hits
+    return union > 0 && hits / union >= 0.5  // Jaccard ≥ 50%
+  }
+
+  const kept: Array<{ signal: KeelSignal; item: KeelItem; date: string; score: number }> = []
+  for (const entry of perItem) {
+    const date  = entry.signal.detectedDate!.toISOString().slice(0, 10)
+    const title = entry.item.aiTitle ?? ''
+    const score = entry.item.aiImportanceScore ?? 0
+
+    const matchIdx = kept.findIndex(k => k.date === date && titlesSimilar(k.item.aiTitle ?? '', title))
+    if (matchIdx >= 0) {
+      if (score > kept[matchIdx].score) {
+        kept[matchIdx] = { ...entry, date, score }
+      }
+    } else {
+      kept.push({ ...entry, date, score })
+    }
+  }
+
+  return kept.map(({ signal, item }) => ({ signal, item }))
 }
 
 function calSignalsForBand(
