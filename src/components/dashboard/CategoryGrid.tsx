@@ -1172,21 +1172,33 @@ function ItemCluster({
         uid={uid} onItemClick={onItemClick} onResolved={onResolved}
         snoozingId={snoozingId} setSnoozingId={setSnoozingId}
       />
-      <button
-        onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
-        style={{
-          marginLeft: 28, marginTop: -2, marginBottom: 4,
-          padding: '1px 8px',
-          background: 'transparent',
-          border: '1px solid var(--color-border)',
-          borderRadius: 10,
-          fontSize: 10.5, fontFamily: 'var(--font-dm-mono)',
-          color: 'var(--color-text-muted)',
-          cursor: 'pointer', letterSpacing: '0.02em',
-        }}
-      >
-        {expanded ? `− hide ${rest.length} related` : `+ ${rest.length} related`}
-      </button>
+      {/* L-connector + lozenge */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: -4, marginBottom: 6 }}>
+        <div style={{
+          marginLeft: 30,
+          width: 18, height: 11,
+          borderLeft:   '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-border)',
+          borderBottomLeftRadius: 4,
+          flexShrink: 0,
+        }} />
+        <button
+          onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
+          style={{
+            marginLeft: 6, marginTop: 4,
+            padding: '1px 8px',
+            background: 'transparent',
+            border: '1px solid var(--color-border)',
+            borderRadius: 10,
+            fontSize: 10.5, fontFamily: 'var(--font-dm-mono)',
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer', letterSpacing: '0.02em',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {expanded ? `− hide ${rest.length} related` : `+ ${rest.length} related`}
+        </button>
+      </div>
       {expanded && (
         <div style={{ paddingLeft: 14, borderLeft: '2px solid var(--color-border)', marginLeft: 16 }}>
           {rest.map(item => (
