@@ -1165,6 +1165,37 @@ export function DashboardShell2() {
             </div>
           )}
 
+          {/* ── Compact "still need sorting" reminder — shows when user dismissed triage but uncat items remain ── */}
+          {uncatItems.length > 0 && triageDismissed && (
+            <div style={{ margin: '0 16px 14px', display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 14px', background: 'rgba(184,150,78,0.08)',
+              border: '1px solid rgba(184,150,78,0.30)', borderRadius: 'var(--radius-lg)' }}>
+              <div style={{ width: 26, height: 26, borderRadius: '50%',
+                background: 'rgba(184,150,78,0.18)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, color: '#7A5C1A' }}>
+                0
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  {uncatItems.length} item{uncatItems.length === 1 ? '' : 's'} still need sorting
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  These are sitting in "Other" until you categorise them.
+                </div>
+              </div>
+              <button
+                onClick={() => setCategoriseOpen(true)}
+                style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)',
+                  background: '#B8964E', color: '#fff', border: 'none',
+                  cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  fontFamily: 'var(--font-dm-sans)', whiteSpace: 'nowrap' }}
+              >
+                Sort now
+              </button>
+            </div>
+          )}
+
           {/* ── Step 2: Urgent ── */}
           <div>
           <StepRow
