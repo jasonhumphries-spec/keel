@@ -13,7 +13,7 @@ import { SettingsPanel }     from '../settings/SettingsPanel'
 import { CategoriseModal }   from './CategoriseModal'
 import { BottomNav }         from './BottomNav'
 import { DevTools }          from '../dev/DevTools'
-import { CategoryCard, ItemList, scoreToLevel, getPriorityColour } from './CategoryGrid'
+import { CategoryCard, ItemList, scoreToLevel, getPriorityColour, clusterItemsByTopic } from './CategoryGrid'
 import { SessionBanner }          from '@/components/layout/SessionBanner'
 import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
 import { CategoryFilterProvider, useCategoryFilter } from '@/contexts/CategoryFilterContext'
@@ -911,34 +911,56 @@ export function DashboardShell2() {
   }, [user, selectedItem?.itemId])
 
   // ── Priority bands ──────────────────────────────────────────────────────────
-  const urgentData  = filterByBand(filteredCategoryData, 4, 4, resolvedItems)
-  const highData    = filterByBand(filteredCategoryData, 3, 3, resolvedItems)
-  const fyiData     = filterByBand(filteredCategoryData, 1, 2, resolvedItems)
+  // ── Section assignment (cluster-aware) ──────────────────────────────────────
+  // Pre-cluster each category's items across ALL sections so that related items
+  // sharing a topic don't show up separately. Each cluster lands in ONE section
+  // based on its head's natural placement; all related items follow.
+  function _itemSection(i: KeelItem): 'urgent' | 'action' | 'awaiting' | 'high' | 'fyi' | null {
+    if (resolvedItems.has(i.itemId)) return null
+    if (i.status === 'snoozed') return null
+    const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
+    if (l === 4) return 'urgent'  // Urgent trumps status — see filterByBand
+    if (i.status === 'awaiting_action') return 'action'
+    if (i.status === 'awaiting_reply') return 'awaiting'
+    if (l === 3) return 'high'
+    if (l <= 2) return 'fyi'
+    return null
+  }
 
-  // Awaiting replies — items where user sent last message with open question
-  const awaitingData: CategoryWithItems[] = filteredCategoryData
-    .map(d => ({
-      ...d,
-      items: d.items.filter(i => {
-        if (i.status !== 'awaiting_reply') return false
-        if (resolvedItems.has(i.itemId)) return false
-        if (scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
-        return true
-      }),
-    }))
-    .filter(d => d.items.length > 0)
+  type Sec = 'urgent' | 'action' | 'awaiting' | 'high' | 'fyi'
+  const sectionBuckets: Record<Sec, Map<string, KeelItem[]>> = {
+    urgent: new Map(), action: new Map(), awaiting: new Map(), high: new Map(), fyi: new Map(),
+  }
+  const categoryById = new Map(filteredCategoryData.map(d => [d.category.categoryId, d.category]))
 
-  const actionData: CategoryWithItems[] = filteredCategoryData
-    .map(d => ({
-      ...d,
-      items: d.items.filter(i => {
-        if (i.status !== 'awaiting_action') return false
-        if (resolvedItems.has(i.itemId)) return false
-        if (scoreToLevel(i.aiImportanceScore ?? 0.5) === 4) return false
-        return true
-      }),
-    }))
-    .filter(d => d.items.length > 0)
+  for (const cat of filteredCategoryData) {
+    if (cat.items.length === 0) continue
+    const clusters = clusterItemsByTopic(cat.items)
+    for (const cluster of clusters) {
+      const sec = _itemSection(cluster.head)
+      if (sec === null) continue
+      // Whole cluster (head + rest) goes into head's section; cross-section duplicates stop here.
+      const all = [cluster.head, ...cluster.rest]
+      const list = sectionBuckets[sec].get(cat.category.categoryId) ?? []
+      list.push(...all)
+      sectionBuckets[sec].set(cat.category.categoryId, list)
+    }
+  }
+
+  function _bucketToCategoryData(bucket: Map<string, KeelItem[]>): CategoryWithItems[] {
+    const out: CategoryWithItems[] = []
+    for (const [catId, items] of bucket) {
+      const category = categoryById.get(catId)
+      if (category && items.length > 0) out.push({ category, items })
+    }
+    return out
+  }
+
+  const urgentData   = _bucketToCategoryData(sectionBuckets.urgent)
+  const actionData   = _bucketToCategoryData(sectionBuckets.action)
+  const awaitingData = _bucketToCategoryData(sectionBuckets.awaiting)
+  const highData     = _bucketToCategoryData(sectionBuckets.high)
+  const fyiData      = _bucketToCategoryData(sectionBuckets.fyi)
 
   const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
   const actionCount   = actionData.flatMap(d => d.items).length

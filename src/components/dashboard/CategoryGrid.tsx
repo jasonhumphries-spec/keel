@@ -1145,7 +1145,7 @@ function _shouldCluster(a: KeelItem, b: KeelItem): boolean {
   if (sameSender) return jaccard >= 0.60 && overlap >= 3
   return jaccard >= 0.75 && overlap >= 4
 }
-function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: KeelItem[] }> {
+export function clusterItemsByTopic(items: KeelItem[]): Array<{ head: KeelItem; rest: KeelItem[] }> {
   if (items.length === 0) return []
   // Union-find over item indices
   const parent: number[] = items.map((_, i) => i)
