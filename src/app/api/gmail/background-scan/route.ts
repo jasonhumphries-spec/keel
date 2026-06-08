@@ -414,6 +414,16 @@ export async function POST(req: NextRequest) {
     // 'new' items whose event is already on the user's calendar.
     runCalendarCheck(db, uid, accessToken).catch(e => console.warn('[CalCheck] Non-fatal error:', e))
 
+    // Fire-and-forget post-scan expiry — mirrors manual scan path so past-event items
+    // get cleaned up immediately rather than waiting for the 1am nightly run.
+    const expireUrl   = `${req.nextUrl.origin}/api/admin/expire-items`
+    const adminSecret = process.env.ADMIN_SECRET ?? ''
+    fetch(expireUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'x-keel-admin-secret': adminSecret },
+      body:    JSON.stringify({ uid }),
+    }).catch(e => console.warn('[expire-items] Non-fatal post-background-scan error:', e))
+
     return NextResponse.json({ success: true, newItems, updatedItems, skippedItems, aiCostUsd: totalAiCost, totalCostUsd: totalCost, durationMs })
 
   } catch (err: any) {
