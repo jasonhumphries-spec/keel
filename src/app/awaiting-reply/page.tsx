@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp, DocumentData } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -79,6 +80,7 @@ function AgeLegend() {
 }
 
 function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
+  const { user } = useAuth()
   const [saving, setSaving] = useState(false)
   const days = Math.floor((Date.now() - item.receivedAt.getTime()) / 86400000)
   const borderColour = days >= 6 ? '#8a3028' : days >= 3 ? '#8a6020' : 'var(--color-border)'
@@ -106,7 +108,7 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
   }
 
   const openInGmail = () =>
-    window.open(`https://mail.google.com/mail/u/0/#sent/${item.threadId}`, '_blank')
+    window.open(buildGmailThreadUrl(user?.email, item.threadId, 'sent'), '_blank')
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderLeft: `3px solid ${borderColour}`, borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>

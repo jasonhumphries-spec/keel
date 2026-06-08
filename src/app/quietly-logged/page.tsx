@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, DocumentData, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -68,6 +69,7 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
 }
 
 function LoggedItem({ item, uid, onMoved }: { item: KeelItem; uid: string; onMoved: () => void }) {
+  const { user } = useAuth()
   const [hovered,  setHovered]  = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [saving,   setSaving]   = useState(false)
@@ -85,7 +87,7 @@ function LoggedItem({ item, uid, onMoved }: { item: KeelItem; uid: string; onMov
   }
 
   const openInGmail = () => {
-    window.open(`https://mail.google.com/mail/u/0/#all/${item.threadId}`, '_blank')
+    window.open(buildGmailThreadUrl(user?.email, item.threadId, 'all'), '_blank')
   }
 
   return (

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { doc, updateDoc, addDoc, collection, setDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { useCategories } from '@/lib/hooks'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
 import { EmailPreviewDrawer } from './EmailPreviewDrawer'
@@ -833,7 +834,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                     if (isAppleMail && item.rfcMessageId) {
                       window.location.href = `message://%3C${encodeURIComponent(item.rfcMessageId)}%3E`
                     } else {
-                      window.open(`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`, '_blank')
+                      window.open(buildGmailThreadUrl(user?.email, item.threadId, 'inbox'), '_blank')
                     }
                   }
                   return <ActBtn label={label} onClick={onClick} variant="primary" />
@@ -845,7 +846,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   variant="ghost"
                 />
                 {(item.mergedThreadIds ?? []).map((tid, i) => (
-                  <ActBtn key={tid} label={`Open thread ${i + 2} in Gmail`} onClick={() => window.open(`https://mail.google.com/mail/u/0/#inbox/${tid}`, '_blank')} variant="ghost" />
+                  <ActBtn key={tid} label={`Open thread ${i + 2} in Gmail`} onClick={() => window.open(buildGmailThreadUrl(user?.email, tid, 'inbox'), '_blank')} variant="ghost" />
                 ))}
                 {hasPaymentSignal && !showPaidPanel && (
                   <ActBtn label="Mark as Paid" onClick={() => { setShowPaidPanel(true); setShowMoreMenu(false) }} variant="accent" />

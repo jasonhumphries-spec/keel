@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -172,7 +173,7 @@ function MailItem({ item, uid, userEmail, onRestored }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {hovered && (
             <>
-              <button onClick={e => { e.stopPropagation(); window.open(`https://mail.google.com/mail/u/0/#all/${item.threadId}`, '_blank') }}
+              <button onClick={e => { e.stopPropagation(); window.open(buildGmailThreadUrl(userEmail, item.threadId, 'all'), '_blank') }}
                 style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-border-strong)', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}>
                 Gmail
               </button>

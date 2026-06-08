@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import type { KeelItem } from '@/lib/types'
+import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,8 @@ function parseFrom(from: string): { name: string; email: string } {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EmailPreviewDrawer({ item, uid, onClose }: EmailPreviewDrawerProps) {
+  const { user } = useAuth()
+  const _userEmail = user?.email
   const [preview,  setPreview]  = useState<PreviewData | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
@@ -245,7 +249,7 @@ export function EmailPreviewDrawer({ item, uid, onClose }: EmailPreviewDrawerPro
               </div>
               <div style={{ marginBottom: 16 }}>{error}</div>
               <a
-                href={`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`}
+                href={buildGmailThreadUrl(_userEmail, item.threadId, 'inbox')}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: 'var(--color-accent)', textDecoration: 'underline', fontWeight: 500 }}
@@ -285,7 +289,7 @@ export function EmailPreviewDrawer({ item, uid, onClose }: EmailPreviewDrawerPro
             }}>
               <div style={{ marginBottom: 12 }}>No previewable content found in this email.</div>
               <a
-                href={`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`}
+                href={buildGmailThreadUrl(_userEmail, item.threadId, 'inbox')}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}
@@ -307,7 +311,7 @@ export function EmailPreviewDrawer({ item, uid, onClose }: EmailPreviewDrawerPro
           background:   'var(--color-surface)',
         }}>
           <a
-            href={`https://mail.google.com/mail/u/0/#inbox/${item.threadId}`}
+            href={buildGmailThreadUrl(_userEmail, item.threadId, 'inbox')}
             target="_blank"
             rel="noopener noreferrer"
             style={{

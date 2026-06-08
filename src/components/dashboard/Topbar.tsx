@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/contexts/AuthContext'
+import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { useUncategorised } from '@/lib/hooks'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -142,7 +143,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
                     → View
                   </button>
                   <button
-                    onClick={e => { e.stopPropagation(); window.open(`https://mail.google.com/mail/u/0/#all/${item.threadId}`, '_blank') }}
+                    onClick={e => { e.stopPropagation(); window.open(buildGmailThreadUrl(user?.email, item.threadId, 'all'), '_blank') }}
                     title="Open in Gmail"
                     style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 9, padding: '3px 7px', borderRadius: 4, border: '1px solid var(--color-border-strong)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
