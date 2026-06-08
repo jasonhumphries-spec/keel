@@ -254,8 +254,8 @@ function HowItWorksStep({ onNext, onBack }: { onNext: () => void; onBack: () => 
   )
 }
 
-function CategoriesStep({ onNext, onBack }: { onNext: (cats: typeof DEFAULT_CATEGORIES) => void; onBack: () => void }) {
-  const [cats, setCats]         = useState(DEFAULT_CATEGORIES)
+function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof DEFAULT_CATEGORIES; onNext: (cats: typeof DEFAULT_CATEGORIES) => void; onBack: () => void }) {
+  const [cats, setCats]         = useState(initialCats)
   const [newCat, setNewCat]       = useState('')
   const [showDescInput, setShowDescInput] = useState(false)
   const [pendingDesc, setPendingDesc]     = useState('')
@@ -784,7 +784,7 @@ export default function OnboardingPage() {
               onBack={back}
             />
           )}
-          {currentStep === 'categories'   && <CategoriesStep onNext={cats => { setCategories(cats); next() }} onBack={back} />}
+          {currentStep === 'categories'   && <CategoriesStep initialCats={categories} onNext={cats => { setCategories(cats); next() }} onBack={back} />}
           {currentStep === 'calendar'     && (
             <CalendarStep
               onNext={async (checkAll) => {
