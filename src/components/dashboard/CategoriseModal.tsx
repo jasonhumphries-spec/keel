@@ -191,7 +191,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       onClick={onClose}
     >
       <div
-        style={{ width: '100%', maxWidth: 520, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
+        style={{ width: '100%', maxWidth: 520, maxHeight: 'calc(100vh - 40px)', background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--color-border)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
