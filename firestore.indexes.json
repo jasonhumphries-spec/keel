@@ -7,6 +7,14 @@
         { "fieldPath": "autoScanEnabled", "order": "ASCENDING" },
         { "fieldPath": "watchExpiry",     "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "autoQuietedReason", "order": "ASCENDING" },
+        { "fieldPath": "status",            "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
