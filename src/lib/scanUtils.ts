@@ -368,6 +368,36 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       if (parsed.status === 'awaiting_action') parsed.status = 'new'
     }
 
+    // AI-declared-resolved override: if the AI's own next-step or summary says
+    // explicitly that no action is needed (and the thread isn't already quiet),
+    // honour that and quietly_log. AI is often inconsistent: it'll write
+    // "No further action is required" in the bullets but still set
+    // status='awaiting_action'. High-precision check on AI's own self-declaration.
+    const _resolvedText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
+    const _isResolved = (
+      _resolvedText.includes('no further action is required') ||
+      _resolvedText.includes('no further action required')   ||
+      _resolvedText.includes('no further action is needed')  ||
+      _resolvedText.includes('no action is required')        ||
+      _resolvedText.includes('no action required')           ||
+      _resolvedText.includes('no action is needed')          ||
+      _resolvedText.includes('matter is resolved')           ||
+      _resolvedText.includes('issue has been resolved')      ||
+      _resolvedText.includes('issue is resolved')            ||
+      _resolvedText.includes('all sorted')                   ||
+      _resolvedText.includes('now resolved')
+    )
+    if (_isResolved && parsed?.status !== 'quietly_logged' && parsed?.status !== 'done') {
+      console.warn(`[classifyThread] Resolved override: AI summary self-declares no action needed — forcing quietly_logged`)
+      parsed.status            = 'quietly_logged'
+      parsed.aiImportanceScore = 0.10
+      // Strip deadline/rsvp signals tied to a now-moot action (e.g., a "cancel by X"
+      // deadline that no longer applies because the user already cancelled).
+      if (Array.isArray(parsed.signals)) {
+        parsed.signals = parsed.signals.filter((s: any) => s?.type !== 'deadline' && s?.type !== 'rsvp')
+      }
+    }
+
     if (_isPromotional && parsed?.status !== 'quietly_logged') {
       console.warn('[classifyThread] Promotional override: AI-flagged promotional signal — forcing quietly_logged')
       parsed.signals = _sigs.filter((s: any) => {
