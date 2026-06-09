@@ -326,6 +326,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // NEVER use stsTokenManager.refreshToken — that's the Firebase Secure Token
       // Service token for refreshing Firebase ID tokens, NOT a Google OAuth token.
       const tokenRes    = (result as any)._tokenResponse ?? {}
+      // DIAG: log all keys + lengths so we can see where Google's refresh token actually lives.
+      console.log('[Keel DIAG] _tokenResponse keys:', Object.keys(tokenRes))
+      console.log('[Keel DIAG] field shapes:', Object.fromEntries(
+        Object.entries(tokenRes).map(([k, v]) => [
+          k,
+          typeof v === 'string' ? `string(len=${v.length}, prefix="${v.slice(0, 8)}")` : typeof v,
+        ])
+      ))
       const refreshTok  = tokenRes.oauthRefreshToken
                        ?? tokenRes.refreshToken
                        ?? null
