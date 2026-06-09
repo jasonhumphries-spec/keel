@@ -49,9 +49,21 @@ export async function POST(req: NextRequest) {
   const db = getAdminDb()
 
   try {
+    // Also peek at the root user doc to see what's driving needsReauth in the UI.
+    const rootSnap = await db.doc(`users/${uid}`).get()
+    const rootData = rootSnap.data() ?? {}
+    const watchExpiryMs = (rootData.watchExpiry as any)?.toMillis?.() ?? null
+    const root = {
+      tokenStatus:       rootData.tokenStatus ?? null,
+      tokenStatusReason: rootData.tokenStatusReason ?? null,
+      autoScanEnabled:   rootData.autoScanEnabled ?? false,
+      watchExpiry:       watchExpiryMs,
+      watchExpiryISO:    watchExpiryMs ? new Date(watchExpiryMs).toISOString() : null,
+      watchAlive:        rootData.autoScanEnabled === true && (watchExpiryMs ?? 0) > Date.now(),
+    }
     const snap = await db.doc(`users/${uid}/accounts/account_primary`).get()
     if (!snap.exists) {
-      return NextResponse.json({ error: 'Account doc not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Account doc not found', root }, { status: 404 })
     }
     const data         = snap.data()!
     const refreshToken = data.refreshToken as string | undefined
@@ -64,6 +76,7 @@ export async function POST(req: NextRequest) {
         message:             'No refresh token stored in account_primary',
         accessTokenStored:   !!accessTokenStored,
         accessTokenExpiry:   tokenExpiresAt,
+        root,
       })
     }
 
@@ -88,7 +101,7 @@ export async function POST(req: NextRequest) {
       hasToken:             true,
       tokenPrefix,
       tokenLength,
-      tokenLooksLikeOAuth:  refreshToken.startsWith('1//'),  // Google OAuth refresh tokens start with "1//"
+      tokenLooksLikeOAuth:  refreshToken.startsWith('1//'),
       googleStatus:         tokenRes.status,
       googleOk:             tokenRes.ok,
       googleBody,
@@ -96,6 +109,7 @@ export async function POST(req: NextRequest) {
       expiresIn:            googleBody.expires_in,
       accessTokenStored:    !!accessTokenStored,
       accessTokenExpiry:    tokenExpiresAt,
+      root,
     })
   } catch (err: any) {
     console.error('[check-refresh-token] error:', err)
