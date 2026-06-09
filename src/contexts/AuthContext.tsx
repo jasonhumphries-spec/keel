@@ -315,8 +315,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signIn = async () => {
+    // Direct Google OAuth flow (server-side code grant) — bypasses Firebase Auth's
+    // popup, which doesn't expose Google's refresh_token. The /api/auth/google-oauth-start
+    // endpoint redirects to Google, who redirects back to /auth/complete after consent;
+    // that page signs into Firebase and finalises token storage.
+    window.location.href = '/api/auth/google-oauth-start'
+  }
+
+  // Legacy popup-based sign-in — kept temporarily for fallback diagnostics only.
+  // Not wired to any UI; the direct OAuth flow above is what runs.
+  const legacySignIn = async () => {
     try {
-      // signInWithPopup works on mobile when triggered by direct user gesture (button tap)
       const result      = await signInWithPopup(auth, googleProvider)
       const credential  = GoogleAuthProvider.credentialFromResult(result)
       const token       = credential?.accessToken ?? null
@@ -326,14 +335,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // NEVER use stsTokenManager.refreshToken — that's the Firebase Secure Token
       // Service token for refreshing Firebase ID tokens, NOT a Google OAuth token.
       const tokenRes    = (result as any)._tokenResponse ?? {}
-      // DIAG: log all keys + lengths so we can see where Google's refresh token actually lives.
-      console.log('[Keel DIAG] _tokenResponse keys:', Object.keys(tokenRes))
-      console.log('[Keel DIAG] field shapes:', Object.fromEntries(
-        Object.entries(tokenRes).map(([k, v]) => [
-          k,
-          typeof v === 'string' ? `string(len=${v.length}, prefix="${v.slice(0, 8)}")` : typeof v,
-        ])
-      ))
       const refreshTok  = tokenRes.oauthRefreshToken
                        ?? tokenRes.refreshToken
                        ?? null
