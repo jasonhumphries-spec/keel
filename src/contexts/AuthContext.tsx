@@ -37,6 +37,8 @@ interface AuthContextType {
   lastBackgroundScanned: Date | null
   isMonitoring: boolean
   needsReauth:  boolean
+  reauthReason: 'token' | 'watch' | null
+  rearmWatch:   () => Promise<void>
   signIn:       () => Promise<void>
   signOut:      () => Promise<void>
   triggerScan:  (job?: 'onboarding' | 'manual' | 'auto') => Promise<void>
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [lastBackgroundScanned, setLastBackgroundScanned] = useState<Date | null>(null)
   const [isMonitoring,          setIsMonitoring]          = useState(false)
   const [needsReauth,  setNeedsReauth]  = useState(false)
+  const [reauthReason, setReauthReason] = useState<'token' | 'watch' | null>(null)
 
   useEffect(() => {
     // Check for redirect result first (fires after Google redirects back)
@@ -118,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const watchExpired = enabled && expiryMs > 0 && expiryMs <= Date.now()
           const tokenReauth  = data?.tokenStatus === 'reauth_needed'
           setNeedsReauth(watchExpired || tokenReauth)
+          // 'token' wins over 'watch' if both: a dead token also kills the watch effectively.
+          setReauthReason(tokenReauth ? 'token' : watchExpired ? 'watch' : null)
         })
         return unsub
       })
@@ -383,8 +388,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await firebaseSignOut(auth)
   }
 
+  const rearmWatch = async () => {
+    if (!user) return
+    try {
+      const res = await fetch('/api/inbox-watch', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ uid: user.uid, action: 'enable' }),
+      })
+      if (!res.ok) {
+        console.warn('[Keel] rearmWatch failed:', res.status)
+      }
+    } catch (e) {
+      console.warn('[Keel] rearmWatch error:', e)
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, lastBackgroundScanned, isMonitoring, needsReauth, signIn, signOut, triggerScan }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, scanProgress, lastScanned, lastBackgroundScanned, isMonitoring, needsReauth, reauthReason, rearmWatch, signIn, signOut, triggerScan }}>
       {children}
     </AuthContext.Provider>
   )
