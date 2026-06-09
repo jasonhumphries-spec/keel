@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 
-export default function AuthCompletePage() {
+function AuthCompleteInner() {
   const router = useRouter()
   const params = useSearchParams()
   const session = params.get('session')
@@ -66,7 +66,7 @@ export default function AuthCompletePage() {
   }, [session, router])
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: 12, padding: 20, fontFamily: 'var(--font-dm-sans, system-ui)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: 12, padding: 20, fontFamily: 'system-ui' }}>
       {error ? (
         <>
           <div style={{ fontSize: 16, fontWeight: 600, color: '#9C5E2B' }}>Sign-in failed</div>
@@ -82,5 +82,17 @@ export default function AuthCompletePage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function AuthCompletePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'system-ui' }}>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>Loading…</div>
+      </div>
+    }>
+      <AuthCompleteInner />
+    </Suspense>
   )
 }
