@@ -103,19 +103,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = snap.data()
           const ts   = data?.lastBackgroundScanAt
           if (ts?.toDate) setLastBackgroundScanned(ts.toDate())
-          // Backend marks tokenStatus='reauth_needed' when getValidAccessToken fails.
-          // Flip needsReauth so SessionBanner surfaces it before the user hits a 5xx via UI.
-          if (data?.tokenStatus === 'reauth_needed') setNeedsReauth(true)
-          // Truthful 'monitoring': autoScanEnabled is on AND the Gmail watch hasn't expired.
-          // Gmail watches expire at most 7 days; the renew CF runs every 5 days, but if
-          // either fails the flag would lie. Cross-check against watchExpiry timestamp.
+
+          // Monitoring: true iff autoScanEnabled AND Gmail watch is still alive.
           const enabled  = data?.autoScanEnabled === true
           const expiryMs = (data?.watchExpiry as any)?.toMillis?.() ?? 0
           const watchAlive = enabled && expiryMs > Date.now()
           setIsMonitoring(watchAlive)
-          // If autoScanEnabled is on but the watch has expired, the background pipeline is
-          // silently dead — surface that as a re-auth/re-arm prompt so the user can fix it.
-          if (enabled && expiryMs > 0 && expiryMs <= Date.now()) setNeedsReauth(true)
+
+          // needsReauth is the union of two signals:
+          //   (a) Backend stamped tokenStatus='reauth_needed' (refresh-token died)
+          //   (b) Gmail watch has lapsed while autoScanEnabled is on (silently dead pipeline)
+          // Set the boolean *directly* (not one-way to true) so a fresh sign-in clearing
+          // tokenStatus, or a freshly re-armed watch, also LOWERS the banner.
+          const watchExpired = enabled && expiryMs > 0 && expiryMs <= Date.now()
+          const tokenReauth  = data?.tokenStatus === 'reauth_needed'
+          setNeedsReauth(watchExpired || tokenReauth)
         })
         return unsub
       })
