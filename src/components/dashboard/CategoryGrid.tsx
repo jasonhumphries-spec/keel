@@ -445,7 +445,7 @@ export function CategoryCard({
               <path d={iconPath} />
             </svg>
           </span>
-          <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--color-text-primary)', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden', wordBreak: 'break-word', lineHeight: 1.3 }}>
             {category.name}
           </span>
         </div>
@@ -548,7 +548,7 @@ export function CategoryCard({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Title row — with payment amount if applicable */}
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-                    <div style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: isResolved ? '#2e6848' : 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: isResolved ? '#2e6848' : 'var(--color-text-primary)', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden', wordBreak: 'break-word', lineHeight: 1.3, flex: 1, minWidth: 0 }}>
                       {item.aiTitle || item.senderName}
                     </div>
                     {paymentAmount && (
@@ -931,7 +931,9 @@ function ItemRow({
             fontSize: 13, fontWeight: hovered || calHighlighted ? 500 : 400,
             color: isResolved ? '#2e6848' : 'var(--color-text-primary)',
             opacity: calHighlighted && !hovered ? 1 : titleOp,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            lineHeight: 1.35,
+            display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+            overflow: 'hidden', wordBreak: 'break-word',
             transition: 'opacity 0.13s',
           }}>
             {item.aiTitle || item.senderName}
