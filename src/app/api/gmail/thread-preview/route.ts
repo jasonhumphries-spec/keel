@@ -158,7 +158,19 @@ export async function GET(req: NextRequest) {
     }
 
     const db          = getAdminDb()
-    const accessToken = await getValidAccessToken(db, uid)
+    let accessToken: string
+    try {
+      accessToken = await getValidAccessToken(db, uid)
+    } catch (e: any) {
+      try {
+        await db.doc(`users/${uid}`).set({
+          tokenStatus:          'reauth_needed',
+          tokenStatusReason:    e.message ?? 'refresh-failed',
+          tokenStatusUpdatedAt: Timestamp.now(),
+        }, { merge: true })
+      } catch (_) { /* non-fatal */ }
+      throw e
+    }
 
     const gmailRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,

@@ -199,6 +199,14 @@ export async function POST(req: NextRequest) {
       // 503 signals a transient failure (token expired/revoked) rather than a bad request.
       // User needs to sign in again to get a fresh refresh token.
       console.error(`[background-scan] Token error for uid=${uid.slice(0,8)}:`, err.message)
+      // Mark account so SessionBanner shows immediately next time user opens the app.
+      try {
+        await db.doc(`users/${uid}`).set({
+          tokenStatus:          'reauth_needed',
+          tokenStatusReason:    err.message ?? 'refresh-failed',
+          tokenStatusUpdatedAt: Timestamp.now(),
+        }, { merge: true })
+      } catch (_) { /* non-fatal — surfacing is best-effort */ }
       return NextResponse.json(
         { error: `Token error — user may need to sign in again: ${err.message}` },
         { status: 503 },

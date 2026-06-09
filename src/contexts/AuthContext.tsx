@@ -103,6 +103,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = snap.data()
           const ts   = data?.lastBackgroundScanAt
           if (ts?.toDate) setLastBackgroundScanned(ts.toDate())
+          // Backend marks tokenStatus='reauth_needed' when getValidAccessToken fails.
+          // Flip needsReauth so SessionBanner surfaces it before the user hits a 5xx via UI.
+          if (data?.tokenStatus === 'reauth_needed') setNeedsReauth(true)
           // Truthful 'monitoring': autoScanEnabled is on AND the Gmail watch hasn't expired.
           // Gmail watches expire at most 7 days; the renew CF runs every 5 days, but if
           // either fails the flag would lie. Cross-check against watchExpiry timestamp.
@@ -139,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       locale:         firebaseUser.metadata ? navigator.language : 'en-GB',
       ...(refreshToken ? { refreshToken } : {}),
       tokenUpdatedAt: Timestamp.now(),
+      // Successful sign-in clears any prior reauth stamp on the account doc.
       tokenExpiresAt: Timestamp.fromMillis(Date.now() + 3600 * 1000), // 1 hour
       scopes: [
         'https://www.googleapis.com/auth/gmail.readonly',
@@ -153,6 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       lastSignIn:  Timestamp.now(),
       scanCount,
     }, { merge: true })
+
+    // Clear any prior reauth-needed flag on the root user doc.
+    try {
+      await setDoc(doc(db, `users/${uid}`), {
+        tokenStatus:          null,
+        tokenStatusReason:    null,
+        tokenStatusUpdatedAt: Timestamp.now(),
+      }, { merge: true })
+    } catch (_) { /* non-fatal */ }
+    setNeedsReauth(false)
 
     // New users go to onboarding — also auto-enable background scanning
     if (isNewUser) {

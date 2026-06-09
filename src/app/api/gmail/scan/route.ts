@@ -271,6 +271,15 @@ export async function POST(req: NextRequest) {
     } catch (e: any) {
       console.error('[Keel] Token error:', e.message)
       const isAuthErr = e.message?.includes('sign in') || e.message?.includes('refresh')
+      if (isAuthErr) {
+        try {
+          await db.doc(`users/${uid}`).set({
+            tokenStatus:          'reauth_needed',
+            tokenStatusReason:    e.message ?? 'refresh-failed',
+            tokenStatusUpdatedAt: Timestamp.now(),
+          }, { merge: true })
+        } catch (_) { /* non-fatal */ }
+      }
       return NextResponse.json(
         { error: e.message },
         { status: isAuthErr ? 401 : 500 },
