@@ -42,13 +42,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const body = await req.json().catch(() => ({}))
-  const uid  = body.uid as string | undefined
+  const body  = await req.json().catch(() => ({}))
+  const uid   = body.uid as string | undefined
+  const itemId = body.itemId as string | undefined
   if (!uid) return NextResponse.json({ error: 'Missing uid' }, { status: 400 })
 
   const db = getAdminDb()
 
   try {
+    // If itemId provided, return that item + its signals — for debugging expiry logic.
+    let itemDump: any = undefined
+    if (itemId) {
+      const iSnap = await db.doc(`users/${uid}/items/${itemId}`).get()
+      const sigSnap = await db.collection(`users/${uid}/signals`).where('itemId', '==', itemId).get()
+      itemDump = {
+        item: iSnap.exists ? {
+          status:            iSnap.data()!.status,
+          aiTitle:           iSnap.data()!.aiTitle,
+          aiImportanceScore: iSnap.data()!.aiImportanceScore,
+          receivedAt:        (iSnap.data()!.receivedAt as any)?.toDate?.()?.toISOString?.(),
+          expiredBy:         iSnap.data()!.expiredBy ?? null,
+        } : null,
+        signals: sigSnap.docs.map(d => ({
+          id:           d.id,
+          type:         d.data().type,
+          description:  d.data().description,
+          detectedDate: (d.data().detectedDate as any)?.toDate?.()?.toISOString?.() ?? null,
+          status:       d.data().status,
+        })),
+      }
+    }
+
     // Also peek at the root user doc to see what's driving needsReauth in the UI.
     const rootSnap = await db.doc(`users/${uid}`).get()
     const rootData = rootSnap.data() ?? {}
@@ -110,6 +134,7 @@ export async function POST(req: NextRequest) {
       accessTokenStored:    !!accessTokenStored,
       accessTokenExpiry:    tokenExpiresAt,
       root,
+      itemDump,
     })
   } catch (err: any) {
     console.error('[check-refresh-token] error:', err)
