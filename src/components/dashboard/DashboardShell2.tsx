@@ -114,11 +114,9 @@ function calSignalsForBand(
       .flatMap(d => d.items)
       .filter(i => {
         if (i.status === 'snoozed') return false
+        if (i.status === 'awaiting_reply') return false  // ball not in user's court — belongs in awaiting cal band
         const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
-        if (l < 4) {
-          if (i.status === 'awaiting_action') return false
-          if (i.status === 'awaiting_reply') return false
-        }
+        if (l < 4 && i.status === 'awaiting_action') return false
         return l >= minLevel && l <= maxLevel
       })
       .map(i => i.itemId),
@@ -919,9 +917,11 @@ export function DashboardShell2() {
     if (resolvedItems.has(i.itemId)) return null
     if (i.status === 'snoozed') return null
     const l = scoreToLevel(i.aiImportanceScore ?? 0.5)
-    if (l === 4) return 'urgent'  // Urgent trumps status — see filterByBand
-    if (i.status === 'awaiting_action') return 'action'
+    // awaiting_reply short-circuits urgency — ball is in the other party's court,
+    // so surfacing as "act now" is wrong even at level 4.
     if (i.status === 'awaiting_reply') return 'awaiting'
+    if (l === 4) return 'urgent'
+    if (i.status === 'awaiting_action') return 'action'
     if (l === 3) return 'high'
     if (l <= 2) return 'fyi'
     return null
@@ -962,7 +962,7 @@ export function DashboardShell2() {
   const highData     = _bucketToCategoryData(sectionBuckets.high)
   const fyiData      = _bucketToCategoryData(sectionBuckets.fyi)
 
-  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId)).length
+  const urgentCount   = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 4 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply').length
   const actionCount   = actionData.flatMap(d => d.items).length
   const awaitingCount = awaitingData.flatMap(d => d.items).length
   const highCount     = filteredCategoryData.flatMap(d => d.items).filter(i => scoreToLevel(i.aiImportanceScore ?? 0.5) === 3 && !resolvedItems.has(i.itemId) && i.status !== 'awaiting_reply' && i.status !== 'awaiting_action').length
@@ -987,7 +987,7 @@ export function DashboardShell2() {
     signals
       .filter(s => {
         const item = allItems.find(i => i.itemId === s.itemId)
-        return item?.status === 'awaiting_reply' && scoreToLevel(item.aiImportanceScore ?? 0.5) < 4 && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
+        return item?.status === 'awaiting_reply' && ['event','deadline'].includes(s.type) && s.detectedDate != null && s.calendarStatus !== 'ignored'
       })
       .sort((a, b) => a.detectedDate!.getTime() - b.detectedDate!.getTime())
       .map(s => ({ signal: s, item: allItems.find(i => i.itemId === s.itemId)! }))
