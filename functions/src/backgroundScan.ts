@@ -492,14 +492,20 @@ export const nightlyItemExpiry = onSchedule(
           const item     = itemDoc.data()
           const signals  = signalsByItem.get(itemDoc.id) ?? []
 
-          // Skip items with no event signals — they expire through other means
-          // EXCEPTION: if item has only past-dated payment/awaiting signals and is
-          // older than 30 days, quietly archive it as stale
+          // No signals → age-based stale sweep. Thresholds mirror /api/admin/expire-items:
+          //   'new'             → 7d  (transient alerts, FYIs)
+          //   'awaiting_action' → 14d (user was asked to act but nothing was date-anchored)
+          //   'awaiting_reply'  → 60d (gave them time, they never responded)
           if (signals.length === 0) {
-            // Check if item is stale — no event signal but item received > 30 days ago
-            const receivedAt = (item.receivedAt as admin.firestore.Timestamp)?.toMillis?.() ?? 0
-            const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000
-            if (item.status === 'new' && receivedAt < thirtyDaysAgoMs) {
+            const receivedMs        = (item.receivedAt as admin.firestore.Timestamp)?.toMillis?.() ?? 0
+            const sevenDaysAgoMs    = Date.now() - 7  * 24 * 60 * 60 * 1000
+            const fourteenDaysAgoMs = Date.now() - 14 * 24 * 60 * 60 * 1000
+            const sixtyDaysAgoMs    = Date.now() - 60 * 24 * 60 * 60 * 1000
+            const isStale =
+              (item.status === 'new'             && receivedMs < sevenDaysAgoMs)    ||
+              (item.status === 'awaiting_action' && receivedMs < fourteenDaysAgoMs) ||
+              (item.status === 'awaiting_reply'  && receivedMs < sixtyDaysAgoMs)
+            if (isStale) {
               const itemRef = db.doc(`users/${uid}/items/${itemDoc.id}`)
               batch.update(itemRef, {
                 status:     'quietly_logged',
