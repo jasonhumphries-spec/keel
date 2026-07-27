@@ -75,15 +75,25 @@ export async function POST(req: NextRequest) {
     const storedVersion = (stored.overridesVersion as number | undefined) ?? 0
     if (!force && storedVersion >= OVERRIDES_VERSION) { alreadyCurrent++; continue }
 
+    // If the item was previously auto-quieted by an override rule (promotional /
+    // feedback_request), start the re-run from a NEUTRAL state — otherwise a rule
+    // that was over-firing would leave items stuck in quietly_logged even after
+    // the rule is tightened. User-set autoQuietedReasons (e.g. 'manual') aren't
+    // touched.
+    const OVERRIDE_REASONS = new Set(['promotional', 'feedback_request'])
+    const wasOverrideQuieted = OVERRIDE_REASONS.has(stored.autoQuietedReason)
+    const startStatus = wasOverrideQuieted ? 'new' : stored.status
+    const startScore  = wasOverrideQuieted ? 0.5 : (stored.aiImportanceScore ?? 0.5)
+    const startAutoQuietedReason = wasOverrideQuieted ? null : stored.autoQuietedReason
+
     // Reconstruct a "parsed"-shaped object from the stored item + signals
     const parsedIn: any = {
       aiTitle:            stored.aiTitle,
       aiSummary:          stored.aiSummary,
       aiDetailedSummary:  stored.aiDetailedSummary,
-      aiImportanceScore:  stored.aiImportanceScore ?? 0.5,
-      status:             stored.status,
-      autoQuietedReason:  stored.autoQuietedReason,
-      // Signals are stored in a separate collection — read + splice them in
+      aiImportanceScore:  startScore,
+      status:             startStatus,
+      autoQuietedReason:  startAutoQuietedReason,
       signals:            [],
     }
 
@@ -100,19 +110,27 @@ export async function POST(req: NextRequest) {
 
     const from = `${stored.senderName ?? ''} <${stored.senderEmail ?? ''}>`
 
-    // Deep clone to detect actual changes without mutating original view
-    const before = JSON.parse(JSON.stringify({
-      status: parsedIn.status, score: parsedIn.aiImportanceScore, signals: parsedIn.signals,
-    }))
+    // Snapshot the currently-persisted state so we can detect if the re-run
+    // ended up differently from what's in Firestore right now. When we reset
+    // an over-quieted item to 'new' before running overrides, "stored" is the
+    // over-quieted state and "parsed" is where the new rules land it.
+    const persisted = {
+      status:            stored.status,
+      score:             stored.aiImportanceScore ?? 0.5,
+      autoQuietedReason: stored.autoQuietedReason ?? null,
+      signalsLen:        parsedIn.signals.length,
+    }
+    // Capture original signal doc-ids BEFORE overrides mutate the array.
+    const originalSigDocIds: string[] = (parsedIn.signals as Array<{ _docId?: string }>).map(s => s._docId ?? '').filter(Boolean)
     const { parsed, applied } = applyPostClassificationOverrides(parsedIn, from, ownerEmail)
 
-    // What changed? Track only status / score / signals delta.
-    const statusChanged  = parsed.status !== before.status
-    const scoreChanged   = Math.abs((parsed.aiImportanceScore ?? 0) - (before.score ?? 0)) > 0.001
-    const signalsChanged = parsed.signals.length !== before.signals.length ||
-                           parsed.signals.some((s: any, i: number) => s.type !== before.signals[i]?.type)
+    // What changed vs currently persisted state
+    const statusChanged  = parsed.status !== persisted.status
+    const scoreChanged   = Math.abs((parsed.aiImportanceScore ?? 0) - persisted.score) > 0.001
+    const reasonChanged  = (parsed.autoQuietedReason ?? null) !== persisted.autoQuietedReason
+    const signalsChanged = parsed.signals.length !== persisted.signalsLen
 
-    if (!statusChanged && !scoreChanged && !signalsChanged) {
+    if (!statusChanged && !scoreChanged && !reasonChanged && !signalsChanged) {
       // No change but bump version so next run skips this item
       if (!dryRun) await db.doc(`users/${uid}/items/${it.id}`).update({ overridesVersion: OVERRIDES_VERSION })
       continue
@@ -125,9 +143,9 @@ export async function POST(req: NextRequest) {
       samples.push({
         itemId:    it.id,
         title:     (stored.aiTitle as string ?? '').slice(0, 80),
-        oldStatus: String(before.status ?? ''),
+        oldStatus: String(persisted.status ?? ''),
         newStatus: String(parsed.status ?? ''),
-        oldScore:  Number(before.score ?? 0),
+        oldScore:  Number(persisted.score ?? 0),
         newScore:  Number(parsed.aiImportanceScore ?? 0),
         applied,
       })
@@ -135,22 +153,24 @@ export async function POST(req: NextRequest) {
 
     if (!dryRun) {
       const now = Timestamp.now()
+      // Explicitly write autoQuietedReason as null when overrides didn't set one
+      // (so a rule that fired last time and no longer fires clears its stale reason).
       await db.doc(`users/${uid}/items/${it.id}`).update({
         status:            parsed.status,
         aiImportanceScore: parsed.aiImportanceScore,
-        autoQuietedReason: parsed.autoQuietedReason ?? stored.autoQuietedReason ?? null,
+        autoQuietedReason: parsed.autoQuietedReason ?? null,
         overridesVersion:  OVERRIDES_VERSION,
         updatedAt:         now,
         overridesAppliedAt: FieldValue.serverTimestamp(),
         overridesApplied:   applied,
       })
 
-      // Signal deltas: any doc-id present before but missing after → delete.
+      // Signal deltas: any doc-id originally loaded but missing after overrides → delete.
       if (signalsChanged) {
-        const keptDocIds = new Set(parsed.signals.filter((s: any) => s._docId).map((s: any) => s._docId as string))
-        for (const s of before.signals) {
-          if (s._docId && !keptDocIds.has(s._docId)) {
-            await db.doc(`users/${uid}/signals/${s._docId}`).delete()
+        const keptDocIds = new Set((parsed.signals as any[]).filter((s: any) => s._docId).map((s: any) => s._docId as string))
+        for (const docId of originalSigDocIds) {
+          if (!keptDocIds.has(docId)) {
+            await db.doc(`users/${uid}/signals/${docId}`).delete()
           }
         }
       }
