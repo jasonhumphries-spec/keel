@@ -331,7 +331,7 @@ export async function POST(req: NextRequest) {
           const msgFrom = ((msg.payload?.headers ?? []) as any[]).find((h: any) => h.name.toLowerCase() === 'from')?.value ?? ''
           return msgFrom.toLowerCase().includes(accountEmail)
         })
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied)
+        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied, accountEmail)
         // Self-emails and outbound threads are always worth storing — never skip them
         // even if the AI returns shouldProcess=false
         if (!classification || (!classification.shouldProcess && !isOutbound)) { skippedItems++; continue }

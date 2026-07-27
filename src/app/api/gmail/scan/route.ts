@@ -559,7 +559,7 @@ export async function POST(req: NextRequest) {
           await writeFeed(subject, senderName, 'quietly_logged')
           return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification: synthetic as any }
         }
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied)
+        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied, accountEmail)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
         return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
       }
@@ -690,6 +690,9 @@ export async function POST(req: NextRequest) {
             detectedAmountPence: sig.detectedAmountPence ?? null,
             currency:            sig.currency ?? null,
             description:         sig.description,
+            // calendarWorthy: hard-consequence deadlines (legal/tax/compliance) that the user
+            // should have visibility of on their calendar. Only relevant for type='deadline'.
+            calendarWorthy:      sig.type === 'deadline' && sig.calendarWorthy === true,
             calendarStatus:      null, calendarEventId: null, targetCalendarId: null,
             status:              'active',
             createdAt:           now, updatedAt: now,

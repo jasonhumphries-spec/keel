@@ -156,13 +156,19 @@ export async function runCalendarCheck(
 
   console.log(`[CalCheck] Fetched ${allEvents.length} total calendar events`)
 
-  // Get active event/rsvp/deadline signals in window
-  const signalsSnap = await db.collection(`users/${uid}/signals`)
+  // Get active event/rsvp + calendarWorthy deadline signals in window.
+  // Ordinary deadlines are excluded — they belong on the item, not the calendar.
+  const rawSignalsSnap = await db.collection(`users/${uid}/signals`)
     .where('status',       '==',  'active')
-    .where('type',         'in',  ['event', 'rsvp'])
+    .where('type',         'in',  ['event', 'rsvp', 'deadline'])
     .where('detectedDate', '>=',  Timestamp.fromDate(past))
     .where('detectedDate', '<=',  Timestamp.fromDate(future))
     .get()
+  const filteredDocs = rawSignalsSnap.docs.filter(d => {
+    const t = d.data().type as string
+    return t !== 'deadline' || d.data().calendarWorthy === true
+  })
+  const signalsSnap = { empty: filteredDocs.length === 0, docs: filteredDocs, size: filteredDocs.length }
 
   if (signalsSnap.empty) {
     console.log(`[CalCheck] No signals to check`)

@@ -265,15 +265,22 @@ export function useCalendarSignals(daysAhead = 365) {
     const then = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
     const q = query(
       collection(db, `users/${user.uid}/signals`),
-      where('type', 'in', ['event', 'rsvp']),  // calendar tracks events; deadlines + payments are item-level concerns
+      // Calendar surfaces events, rsvps, AND hard-consequence deadlines (calendarWorthy=true)
+      // — Companies House PSC, HMRC, MOT etc. Ordinary deadlines still stay item-level.
+      where('type', 'in', ['event', 'rsvp', 'deadline']),
       where('status', '==', 'active'),
       where('detectedDate', '>=', Timestamp.fromDate(now)),
       where('detectedDate', '<=', Timestamp.fromDate(then)),
       orderBy('detectedDate', 'asc'),
     )
     const unsub = onSnapshot(q, snap => {
-      // Filter ignored client-side so card badges still see them via useAllSignals
-      setSignals(snap.docs.map(d => docToSignal(d.id, d.data())).filter(s => s.calendarStatus !== 'ignored'))
+      // Filter ignored client-side; drop non-calendarWorthy deadlines (they belong on the item, not the calendar)
+      setSignals(
+        snap.docs
+          .map(d => docToSignal(d.id, d.data()))
+          .filter(s => s.calendarStatus !== 'ignored')
+          .filter(s => s.type !== 'deadline' || (s as any).calendarWorthy === true),
+      )
       setLoading(false)
     })
     return unsub

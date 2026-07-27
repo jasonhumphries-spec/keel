@@ -63,6 +63,175 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
   cat_marketing: 'Marketing and PR — campaigns, press, agency, brand communications.',
 }
 
+// ── Post-classification overrides ──────────────────────────────────────────
+
+/**
+ * OVERRIDES_VERSION — bump whenever a deterministic override rule changes
+ * materially. Items stamped with an older version are eligible for the tier-1
+ * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
+ */
+export const OVERRIDES_VERSION = 2
+
+/**
+ * Deterministic post-classification overrides. Pure function of the AI's own
+ * output — no external API calls. Exported so admin catch-up endpoints can
+ * re-run this over stored items when the override logic evolves.
+ *
+ * Overrides applied (in order):
+ *   1. Proximity — signal within 2 days → bump score to Urgent
+ *   2. Event → deadline reclassification for "verb + by/before" descriptions
+ *   3. Auto-pay — self-declared direct debit / auto-renew → low urgency, new
+ *   4. Resolved — AI self-declares no action needed → quietly_logged
+ *   5. Payment-made — self-declared paid → awaiting_action → new
+ *   6. Self-consistency — NEXT STEP actor mismatch → flip status
+ *   7. Promotional — self-declared / marketing subdomain → quietly_logged, strip signals
+ */
+export function applyPostClassificationOverrides(
+  parsedIn:   any,
+  from:       string,
+  ownerEmail: string = '',
+): { parsed: any; applied: string[] } {
+  const parsed  = parsedIn
+  const applied: string[] = []
+
+  // 1. Proximity override
+  const _nowMs     = Date.now()
+  const _twoDaysMs = 2 * 24 * 60 * 60 * 1000
+  const _sigs      = Array.isArray(parsed?.signals) ? parsed.signals : []
+  const _imminent  = _sigs.some((s: any) => {
+    if (!s?.detectedDate) return false
+    const ms = new Date(s.detectedDate).getTime()
+    return ms > _nowMs && ms - _nowMs <= _twoDaysMs
+  })
+  if (_imminent && (parsed?.aiImportanceScore ?? 0) < 0.85) {
+    parsed.aiImportanceScore = 0.88
+    applied.push('proximity')
+  }
+
+  // 2. Event → deadline reclassification
+  if (Array.isArray(parsed?.signals)) {
+    const ACTION_BY = /\b(ship|submit|pay|return|reply|respond|complete|register|send|deliver|redeem|file|cancel|renew|confirm)\s+(by|before)\b/i
+    for (const s of parsed.signals) {
+      if (s?.type === 'event' && typeof s.description === 'string' && ACTION_BY.test(s.description)) {
+        s.type = 'deadline'
+        applied.push('event-to-deadline')
+      }
+    }
+  }
+
+  const _summaryText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
+
+  // 3. Auto-pay override
+  const _isAutoPay = (
+    _summaryText.includes('automatically renew')     ||
+    _summaryText.includes('will automatically')      ||
+    _summaryText.includes('auto-renew')              ||
+    _summaryText.includes('autorenew')               ||
+    _summaryText.includes('direct debit')            ||
+    _summaryText.includes('standing order')          ||
+    _summaryText.includes('automatically collected') ||
+    _summaryText.includes('automatic payment')       ||
+    _summaryText.includes('automatic card charge')   ||
+    _summaryText.includes('will be charged automatically')
+  )
+  if (_isAutoPay && (parsed?.aiImportanceScore ?? 0) > 0.30) {
+    parsed.aiImportanceScore = 0.18
+    if (parsed.status === 'awaiting_action') parsed.status = 'new'
+    applied.push('auto-pay')
+  }
+
+  // 4. Resolved override
+  const _NO_ACTION_RE = /\bno\s+(?:further|immediate|additional|specific|more)?\s*action\s+(?:is\s+|will be\s+)?(?:required|needed|necessary)\b/
+  const _isResolved = (
+    _NO_ACTION_RE.test(_summaryText)                    ||
+    _summaryText.includes('matter is resolved')         ||
+    _summaryText.includes('issue has been resolved')    ||
+    _summaryText.includes('issue is resolved')          ||
+    _summaryText.includes('all sorted')                 ||
+    _summaryText.includes('now resolved')               ||
+    _summaryText.includes('informational only')         ||
+    _summaryText.includes('for information only')       ||
+    _summaryText.includes('for your information only')  ||
+    _summaryText.includes('heads-up only')              ||
+    _summaryText.includes('heads up only')              ||
+    _summaryText.includes('just an update')             ||
+    _summaryText.includes('fully closed')               ||
+    _summaryText.includes('thread is closed')           ||
+    _summaryText.includes('nothing to do here')         ||
+    _summaryText.includes('nothing further to do')
+  )
+  if (_isResolved && parsed?.status !== 'quietly_logged' && parsed?.status !== 'done') {
+    parsed.status            = 'quietly_logged'
+    parsed.aiImportanceScore = 0.10
+    if (Array.isArray(parsed.signals)) {
+      parsed.signals = parsed.signals.filter((s: any) => s?.type !== 'deadline' && s?.type !== 'rsvp')
+    }
+    applied.push('resolved')
+  }
+
+  // 5. Payment-made override
+  const _PAID_RE = /\b(?:has|have|already|now)\s+(?:been\s+)?paid\b|\b(?:signed up and|have signed up and)\s+paid\b|\bpayment\s+(?:has been|was)\s+(?:made|received|processed)\b|\breceipt\s+(?:for|attached|enclosed)\b|\bpaid\s+(?:on|in full)\b/
+  if (_PAID_RE.test(_summaryText) && parsed?.status === 'awaiting_action') {
+    parsed.status = 'new'
+    if ((parsed?.aiImportanceScore ?? 0) > 0.35) parsed.aiImportanceScore = 0.25
+    applied.push('payment-made')
+  }
+
+  // 6. Self-consistency override
+  if (ownerEmail && typeof parsed?.aiDetailedSummary === 'string') {
+    const _detailed  = parsed.aiDetailedSummary as string
+    const _nextMatch = _detailed.match(/NEXT STEP:\s*([^•\n]+)/i)
+    if (_nextMatch) {
+      const _nextStep = _nextMatch[1].trim()
+      const _ownerFirst = (ownerEmail.toLowerCase().split('@')[0]?.split(/[._-]/)[0] ?? '').toLowerCase()
+      const _actorRe    = new RegExp(`^(?:the\\s+)?(${_ownerFirst})\\b[^.]*\\b(needs to|must|should|has to|will|need to|is required to|is expected to|is on the hook)`, 'i')
+      const _ownerIsActor = _ownerFirst.length >= 3 && _actorRe.test(_nextStep)
+      const _otherActorRe = /^([A-Z][a-z]+)\b[^.]*\b(needs to|must|should|has to|will|is expected to)/
+      const _otherMatch   = _nextStep.match(_otherActorRe)
+      const _otherIsActor = !!_otherMatch && _otherMatch[1].toLowerCase() !== _ownerFirst
+
+      if (_otherIsActor && parsed.status === 'awaiting_action') {
+        parsed.status = 'awaiting_reply'
+        if ((parsed?.aiImportanceScore ?? 0) > 0.65) parsed.aiImportanceScore = 0.55
+        applied.push('self-consistency:action-to-reply')
+      } else if (_ownerIsActor && parsed.status === 'awaiting_reply') {
+        parsed.status = 'awaiting_action'
+        applied.push('self-consistency:reply-to-action')
+      }
+    }
+  }
+
+  // 7. Promotional override — fires on any of AI signal / summary self-flag / marketing subdomain
+  const _senderEmail     = (from.match(/<([^>]+)>/)?.[1] ?? from).toLowerCase()
+  const _senderLocalPart = _senderEmail.split('@')[0] ?? ''
+  const MARKETING_LOCAL_PARTS = ['rewards', 'news', 'newsletter', 'offers', 'promo', 'promos', 'promotions', 'deals', 'marketing', 'announce', 'campaign', 'campaigns']
+  const _senderIsMarketing = MARKETING_LOCAL_PARTS.some(p =>
+    _senderLocalPart === p || _senderLocalPart.startsWith(`${p}.`) || _senderLocalPart.startsWith(`${p}-`)
+  )
+  const _summarySelfFlagsPromo = (
+    /promotional (email|offer|message|campaign)/.test(_summaryText)                   ||
+    /(promo|voucher|discount) code/.test(_summaryText)                                ||
+    /\b(offer valid|special offer|limited time|limited-time|don't miss|dont miss)\b/.test(_summaryText) ||
+    /\b(?:up to )?£?\d+%?\s*(off|discount|back|credit(?:s)?)\b/.test(_summaryText)    ||
+    /\b(reward|voucher)\s+(?:for|of|worth)\b/.test(_summaryText)
+  )
+  const _signalSaysPromo = _sigs.some((s: any) => {
+    const d = (s?.description ?? '').toLowerCase()
+    return d.includes('promotional') || d.includes('offer valid')
+  })
+  const _isPromotional = _signalSaysPromo || _summarySelfFlagsPromo || _senderIsMarketing
+  if (_isPromotional && parsed?.status !== 'quietly_logged') {
+    parsed.signals = _sigs.filter((s: any) => s?.type === 'event' || s?.type === 'awaiting')
+    parsed.status            = 'quietly_logged'
+    parsed.aiImportanceScore = 0.12
+    parsed.autoQuietedReason = 'promotional'
+    applied.push('promotional')
+  }
+
+  parsed.overridesVersion = OVERRIDES_VERSION
+  return { parsed, applied }
+}
+
 // ── classifyThread ─────────────────────────────────────────────────────────
 
 /**
@@ -87,6 +256,7 @@ export async function classifyThread(
   isUK:            boolean = true,
   isOutbound:      boolean = false,
   ownerHasReplied: boolean = true,  // false = owner has NEVER sent a message in this thread
+  ownerEmail:      string = '',      // owner's email — used by post-processing overrides
 ): Promise<ClassificationResult | null> {
   const categoryList = categories
     .map(c => {
@@ -235,6 +405,7 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
   • event: A scheduled time slot the user attends or that happens at a specific moment — something they would BLOCK time on a calendar for. Examples: school trips, matches, sports days, concerts, activities, medical appointments, social engagements, meetings. A meeting "AT" 3pm Tuesday is an event. Do NOT create event signals for: rejected/declined options, past events, purely hypothetical future dates, vague "sometime next week" references, or — critically — things the user must DO BY a certain time (those are deadlines, see below).
   • awaiting: ONLY when there is a genuinely open question in the most recent outbound message that has not yet been answered. If the appointment/matter is already confirmed, do NOT create an awaiting signal for it.
   • deadline: A point by which the user must DO something or face a consequence — they would track this in a task list, not on a calendar. Phrases like "ship by X", "pay by X", "respond by X", "submit by X", "return by X", "reply by X", "complete by X", "register by X", "due X" → ALWAYS deadline, never event. The Ebay "ship by 8 June" reminder, the form "complete by Friday", the rebate "redeem by 30 April" — all deadlines, never events. If a signal description naturally begins with a verb of action followed by "by" or "before" + date, it is a deadline.
+  • calendarWorthy (boolean, deadline signals only): set true for LEGAL, REGULATORY, TAX, COMPLIANCE, or OFFICIAL HARD-CONSEQUENCE deadlines that a user would sensibly block their calendar for. Examples: Companies House filings/PSC verification, HMRC self-assessment / VAT / corporation tax, MOT expiry, insurance renewals, licence renewals, court dates, immigration deadlines, PAYE/payroll cut-offs. NOT calendar-worthy: reply-by dates for social invitations, promotional offer expiries, everyday task deadlines like "return borrowed book by Friday", "ship eBay item by X". Default: false. Emit true only when missing the deadline has an objective legal/financial consequence.
   • payment: Only for actual money due or paid.
   • rsvp: Only for genuine RSVP requests that haven't yet been responded to.
   • MANDATORY STRUCTURED EXTRACTION: If status is "awaiting_action" AND your CURRENT STATE or NEXT STEP bullets reference a specific date, deadline, day, or time window (e.g. "collect by Friday", "pickup at 3:30 PM on 1 July", "reply before the 15th", "return by end of month") — you MUST emit a corresponding event / deadline / rsvp signal with that date in detectedDate. Do NOT describe a date in prose without a matching structured signal. Downstream calendar and expiry systems rely on signals, not summary text, to know when the action is time-anchored. Truly open-ended actions (e.g. "reply to this LinkedIn message when convenient") don't need a signal — this rule only applies when a specific date is referenced.
@@ -309,108 +480,8 @@ CRITICAL — CALENDAR ≠ RSVP: The fact that an event appears in the user's Goo
       }
     }
 
-    // Hard proximity override: any signal due within 2 days → Urgent (≥0.85).
-    // AI consistently under-scores response deadlines vs payment deadlines regardless of prompting.
-    const _nowMs     = Date.now()
-    const _twoDaysMs = 2 * 24 * 60 * 60 * 1000
-    const _sigs      = Array.isArray(parsed?.signals) ? parsed.signals : []
-    const _imminent  = _sigs.some((s: any) => {
-      if (!s?.detectedDate) return false
-      const ms = new Date(s.detectedDate).getTime()
-      return ms > _nowMs && ms - _nowMs <= _twoDaysMs
-    })
-    if (_imminent && (parsed?.aiImportanceScore ?? 0) < 0.85) {
-      console.warn(`[classifyThread] Proximity override: signal within 2 days, bumping ${parsed.aiImportanceScore} → 0.88`)
-      parsed.aiImportanceScore = 0.88
-    }
-
-    // Promotional override: AI sometimes creates payment/deadline signals for marketing
-    // emails despite the prompt rule. If the AI itself labels a signal as promotional in
-    // its description, strip the bogus signals and force quietly_logged. High-precision
-    // check — the AI's own admission of promotional intent.
-    const _isPromotional = _sigs.some((s: any) => {
-      const d = (s?.description ?? '').toLowerCase()
-      return d.includes('promotional') || d.includes('offer valid')
-    })
-    // Type sanity: if a signal is labelled 'event' but its description starts with
-    // an action verb + "by"/"before" (ship by, pay by, submit by, etc.), that's a
-    // deadline, not a calendar event. Reclassify so calendar views stop surfacing them.
-    if (Array.isArray(parsed?.signals)) {
-      const ACTION_BY = /\b(ship|submit|pay|return|reply|respond|complete|register|send|deliver|redeem|file|cancel|renew|confirm)\s+(by|before)\b/i
-      for (const s of parsed.signals) {
-        if (s?.type === 'event' && typeof s.description === 'string' && ACTION_BY.test(s.description)) {
-          console.warn(`[classifyThread] Reclassifying event → deadline: "${s.description}"`)
-          s.type = 'deadline'
-        }
-      }
-    }
-
-    // Auto-pay override: AI sometimes scores auto-renewal / direct-debit emails high
-    // ("DEADLINE 26 May" → urgent), ignoring its own summary saying payment is automatic.
-    // If the summary contains explicit auto-pay language, force score down and status='new'
-    // so nightly expiry quietly_logs once the date passes. High-precision check on AI's
-    // own self-flagging.
-    const _summaryText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
-    const _isAutoPay = (
-      _summaryText.includes('automatically renew')   ||
-      _summaryText.includes('will automatically')    ||
-      _summaryText.includes('auto-renew')            ||
-      _summaryText.includes('autorenew')             ||
-      _summaryText.includes('direct debit')          ||
-      _summaryText.includes('standing order')        ||
-      _summaryText.includes('automatically collected') ||
-      _summaryText.includes('automatic payment')     ||
-      _summaryText.includes('automatic card charge') ||
-      _summaryText.includes('will be charged automatically')
-    )
-    if (_isAutoPay && (parsed?.aiImportanceScore ?? 0) > 0.30) {
-      console.warn(`[classifyThread] Auto-pay override: summary self-flags automatic payment — dropping score ${parsed.aiImportanceScore} → 0.18`)
-      parsed.aiImportanceScore = 0.18
-      if (parsed.status === 'awaiting_action') parsed.status = 'new'
-    }
-
-    // AI-declared-resolved override: if the AI's own next-step or summary says
-    // explicitly that no action is needed (and the thread isn't already quiet),
-    // honour that and quietly_log. AI is often inconsistent: it'll write
-    // "No further action is required" in the bullets but still set
-    // status='awaiting_action'. High-precision check on AI's own self-declaration.
-    const _resolvedText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
-    const _isResolved = (
-      _resolvedText.includes('no further action is required') ||
-      _resolvedText.includes('no further action required')   ||
-      _resolvedText.includes('no further action is needed')  ||
-      _resolvedText.includes('no action is required')        ||
-      _resolvedText.includes('no action required')           ||
-      _resolvedText.includes('no action is needed')          ||
-      _resolvedText.includes('matter is resolved')           ||
-      _resolvedText.includes('issue has been resolved')      ||
-      _resolvedText.includes('issue is resolved')            ||
-      _resolvedText.includes('all sorted')                   ||
-      _resolvedText.includes('now resolved')
-    )
-    if (_isResolved && parsed?.status !== 'quietly_logged' && parsed?.status !== 'done') {
-      console.warn(`[classifyThread] Resolved override: AI summary self-declares no action needed — forcing quietly_logged`)
-      parsed.status            = 'quietly_logged'
-      parsed.aiImportanceScore = 0.10
-      // Strip deadline/rsvp signals tied to a now-moot action (e.g., a "cancel by X"
-      // deadline that no longer applies because the user already cancelled).
-      if (Array.isArray(parsed.signals)) {
-        parsed.signals = parsed.signals.filter((s: any) => s?.type !== 'deadline' && s?.type !== 'rsvp')
-      }
-    }
-
-    if (_isPromotional && parsed?.status !== 'quietly_logged') {
-      console.warn('[classifyThread] Promotional override: AI-flagged promotional signal — forcing quietly_logged')
-      parsed.signals = _sigs.filter((s: any) => {
-        const d = (s?.description ?? '').toLowerCase()
-        if (s.type === 'payment'  && (d.includes('promotional') || d.includes('offer'))) return false
-        if (s.type === 'deadline' && d.includes('offer valid'))                          return false
-        return true
-      })
-      parsed.status              = 'quietly_logged'
-      parsed.aiImportanceScore   = 0.12
-      parsed.autoQuietedReason   = 'promotional'
-    }
+    const overrideResult = applyPostClassificationOverrides(parsed, from, ownerEmail)
+    parsed = overrideResult.parsed
 
         return {
       ...parsed,
