@@ -70,7 +70,7 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * materially. Items stamped with an older version are eligible for the tier-1
  * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
  */
-export const OVERRIDES_VERSION = 5
+export const OVERRIDES_VERSION = 6
 
 /**
  * Deterministic post-classification overrides. Pure function of the AI's own
@@ -169,18 +169,12 @@ export function applyPostClassificationOverrides(
     applied.push('resolved')
   }
 
-  // 5. Payment-made override
-  const _PAID_RE = /\b(?:has|have|already|now)\s+(?:been\s+)?paid\b|\b(?:signed up and|have signed up and)\s+paid\b|\bpayment\s+(?:has been|was)\s+(?:made|received|processed)\b|\breceipt\s+(?:for|attached|enclosed)\b|\bpaid\s+(?:on|in full)\b/
-  if (_PAID_RE.test(_summaryText) && parsed?.status === 'awaiting_action') {
-    parsed.status = 'new'
-    if ((parsed?.aiImportanceScore ?? 0) > 0.35) parsed.aiImportanceScore = 0.25
-    applied.push('payment-made')
-  }
-
-  // 6. Self-consistency override — high-precision only. Fires when the NEXT STEP
-  // uses explicit "the account owner is waiting" language, OR names a HUMAN actor
-  // (two capitalised words like "Steven Friel"). Avoids false-firing on org/product
-  // names like "LinkedIn", "Gmail", "Companies House".
+  // 5. Self-consistency override — decides who has the ball. Runs BEFORE payment-made
+  // and other downgraders so items where the ball is in the counterparty's court
+  // land in awaiting_reply (not 'new') even if payment has been made.
+  // High-precision only: fires when the NEXT STEP uses explicit "the account owner is
+  // waiting" language, OR names a HUMAN actor (two capitalised words like "Steven Friel").
+  // Avoids false-firing on org/product names like "LinkedIn", "Gmail", "Companies House".
   if (ownerEmail && typeof parsed?.aiDetailedSummary === 'string') {
     const _detailed  = parsed.aiDetailedSummary as string
     const _nextMatch = _detailed.match(/NEXT STEP:\s*([^•\n]+)/i)
@@ -189,14 +183,9 @@ export function applyPostClassificationOverrides(
       const _nextLower  = _nextStep.toLowerCase()
       const _ownerFirst = (ownerEmail.toLowerCase().split('@')[0]?.split(/[._-]/)[0] ?? '').toLowerCase()
 
-      // Owner-is-actor: NEXT STEP starts with owner's first name + action verb.
       const _ownerActorRe = new RegExp(`^(?:the\\s+)?${_ownerFirst}\\b[^.]*\\b(needs to|must|should|has to|will|need to|is required to|is expected to|is on the hook)`, 'i')
       const _ownerIsActor = _ownerFirst.length >= 3 && _ownerActorRe.test(_nextStep)
 
-      // Other-party-is-actor: fire ONLY if one of these is true —
-      //   a) explicit passive-owner language: "waiting for X", "awaiting X's", "pending X's response"
-      //   b) NEXT STEP starts with a two-word HUMAN name (Firstname Lastname) + action verb,
-      //      and the first token is NOT the owner
       const _passiveOwnerRe = /\b(waiting for|awaiting|expecting|pending)\s+([A-Z][a-z]+|[a-z]+)/
       const _humanActorRe   = /^([A-Z][a-z]+)\s+([A-Z][a-z]+)\b[^.]*\b(needs to|must|should|has to|will (?:need to|have to|be required)|is expected to)/
       const _passiveMatch   = _passiveOwnerRe.test(_nextLower)
@@ -213,6 +202,16 @@ export function applyPostClassificationOverrides(
         applied.push('self-consistency:reply-to-action')
       }
     }
+  }
+
+  // 6. Payment-made override — only touches items still in awaiting_action AFTER
+  // self-consistency. So if the ball is really in the counterparty's court, payment-made
+  // won't hide the item as 'new' — it stays as awaiting_reply.
+  const _PAID_RE = /\b(?:has|have|already|now)\s+(?:been\s+)?paid\b|\b(?:signed up and|have signed up and)\s+paid\b|\bpayment\s+(?:has been|was)\s+(?:made|received|processed)\b|\breceipt\s+(?:for|attached|enclosed)\b|\bpaid\s+(?:on|in full)\b/
+  if (_PAID_RE.test(_summaryText) && parsed?.status === 'awaiting_action') {
+    parsed.status = 'new'
+    if ((parsed?.aiImportanceScore ?? 0) > 0.35) parsed.aiImportanceScore = 0.25
+    applied.push('payment-made')
   }
 
   // 7a. Feedback/Review-request override — sibling to promotional. M&S "review your polo shirt",

@@ -75,15 +75,26 @@ export async function POST(req: NextRequest) {
     const storedVersion = (stored.overridesVersion as number | undefined) ?? 0
     if (!force && storedVersion >= OVERRIDES_VERSION) { alreadyCurrent++; continue }
 
-    // If the item was previously auto-quieted by an override rule (promotional /
-    // feedback_request), start the re-run from a NEUTRAL state — otherwise a rule
-    // that was over-firing would leave items stuck in quietly_logged even after
-    // the rule is tightened. User-set autoQuietedReasons (e.g. 'manual') aren't
-    // touched.
-    const OVERRIDE_REASONS = new Set(['promotional', 'feedback_request'])
+    // If the item was previously touched by a reversible override (promotional /
+    // feedback_request / payment-made / auto-pay), start the re-run from a
+    // NEUTRAL state — otherwise a rule that was over-firing or a mis-ordered rule
+    // would leave items stuck in stale status even after the rule is tightened
+    // or the ordering fixed. User-set autoQuietedReasons (e.g. 'manual') aren't touched.
+    const OVERRIDE_REASONS   = new Set(['promotional', 'feedback_request'])
+    const REVERSIBLE_RULES   = new Set(['payment-made', 'auto-pay', 'self-consistency:action-to-reply', 'self-consistency:reply-to-action'])
     const wasOverrideQuieted = OVERRIDE_REASONS.has(stored.autoQuietedReason)
-    const startStatus = wasOverrideQuieted ? 'new' : stored.status
-    const startScore  = wasOverrideQuieted ? 0.5 : (stored.aiImportanceScore ?? 0.5)
+    const priorApplied       = Array.isArray(stored.overridesApplied) ? stored.overridesApplied as string[] : []
+    const hadReversibleOverride = priorApplied.some(r => REVERSIBLE_RULES.has(r))
+    const shouldReset        = wasOverrideQuieted || hadReversibleOverride
+
+    // Neutral baseline for reset items: awaiting_action + 0.7 is a safe assumption —
+    // if that's wrong the current pass's overrides will move it to the right bucket.
+    const startStatus = shouldReset
+      ? (wasOverrideQuieted ? 'new' : 'awaiting_action')
+      : stored.status
+    const startScore  = shouldReset
+      ? (wasOverrideQuieted ? 0.5 : 0.70)
+      : (stored.aiImportanceScore ?? 0.5)
     const startAutoQuietedReason = wasOverrideQuieted ? null : stored.autoQuietedReason
 
     // Reconstruct a "parsed"-shaped object from the stored item + signals
