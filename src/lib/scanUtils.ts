@@ -70,7 +70,7 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * materially. Items stamped with an older version are eligible for the tier-1
  * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
  */
-export const OVERRIDES_VERSION = 6
+export const OVERRIDES_VERSION = 7
 
 /**
  * Deterministic post-classification overrides. Pure function of the AI's own
@@ -119,7 +119,9 @@ export function applyPostClassificationOverrides(
     }
   }
 
-  const _summaryText = ((parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
+  // Include aiTitle in the check text — items like "AIRDO Flight ADO024 Feedback Request"
+  // encode the intent in the title, and the summary may paraphrase without the exact phrase.
+  const _summaryText = ((parsed?.aiTitle ?? '') + ' ' + (parsed?.aiSummary ?? '') + ' ' + (parsed?.aiDetailedSummary ?? '')).toLowerCase()
 
   // 3. Auto-pay override
   const _isAutoPay = (
@@ -222,13 +224,16 @@ export function applyPostClassificationOverrides(
   const _feedbackHints = (
     /\b(leave|write|submit|post)\s+(us\s+)?(a|an?|your)\s+(review|rating|feedback|comment)\b/.test(_summaryText) ||
     /\b(share|tell us|let us know)\s+(your|about your)\s+(experience|feedback|thoughts|opinion|review)\b/.test(_summaryText) ||
-    /\brate\s+your\s+(stay|experience|purchase|delivery|order|visit|trip|journey|meal|driver)\b/.test(_summaryText) ||
+    /\brate\s+your\s+(stay|experience|purchase|delivery|order|visit|trip|journey|meal|driver|flight)\b/.test(_summaryText) ||
     /\bhow (was|did)\s+(your|we do|it go)\b/.test(_summaryText)                                                     ||
     /\b(nps|net promoter score|customer satisfaction survey|satisfaction survey)\b/.test(_summaryText)              ||
     /\bwe(?:'d|['’]d| would)\s+love\s+to\s+hear\b/.test(_summaryText)                                         ||
     /\byour (feedback|review|opinion|rating) (matters|counts|helps|is important|would help)\b/.test(_summaryText)   ||
-    /\breview\s+(request|reminder|invitation)\b/.test(_summaryText)                                                 ||
-    /\b(feedback|review)\s+(request|reminder|invitation)\b/.test(_summaryText)
+    /\b(?:feedback|review)\s+(request|reminder|invitation|questionnaire|survey)\b/.test(_summaryText)               ||
+    // "seeking/requesting/asking for customer feedback" — direct ask for feedback on a completed service
+    /\b(seek(?:ing)?|request(?:ing)?|ask(?:ing)? for|invite(?: you)? to (?:provide|share|give)|would like|are asking)\s+(?:your\s+|customer\s+|passenger\s+|guest\s+|user\s+)?(feedback|review|rating|comments|thoughts on)\b/.test(_summaryText) ||
+    // "complete our questionnaire/survey" + the word feedback nearby — likely a review request, not a legit form
+    (/\bcomplete\s+(?:our|the|a|this)\s+(questionnaire|survey|form|feedback form)\b/.test(_summaryText) && /\b(feedback|review|rating|experience|opinion)\b/.test(_summaryText))
   )
   if (_feedbackHints && parsed?.status !== 'quietly_logged') {
     parsed.status            = 'quietly_logged'

@@ -34,7 +34,7 @@ function getAdminDb() {
   return getFirestore()
 }
 
-const DEFAULT_STATUSES = ['new', 'awaiting_action', 'awaiting_reply', 'quietly_logged']
+const DEFAULT_STATUSES = ['new', 'awaiting_action', 'awaiting_reply', 'quietly_logged', 'overdue']
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get('x-keel-admin-secret')
