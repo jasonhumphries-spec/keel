@@ -70,7 +70,7 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * materially. Items stamped with an older version are eligible for the tier-1
  * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
  */
-export const OVERRIDES_VERSION = 7
+export const OVERRIDES_VERSION = 8
 
 /**
  * Deterministic post-classification overrides. Pure function of the AI's own
@@ -255,7 +255,10 @@ export function applyPostClassificationOverrides(
     /promotional (email|offer|message|campaign)/.test(_summaryText)                   ||
     /(promo|voucher|discount) code/.test(_summaryText)                                ||
     /\b(offer valid|special offer|limited time|limited-time|don't miss|dont miss)\b/.test(_summaryText) ||
-    /\b(?:up to )?£?\d+%?\s*(off|discount|back|credit(?:s)?)\b/.test(_summaryText)    ||
+    // % off / £ off / £ discount — "back" and "credit" removed: they match legit
+    // financial language ("£648 credit", "£50 back"). Only "off" and "discount"
+    // (paired with amount/percent) are unambiguous discount language.
+    /\b(?:up to )?£?\d+%?\s*(off|discount)\b/.test(_summaryText)                      ||
     /\b(reward|voucher)\s+(?:for|of|worth)\b/.test(_summaryText)
   )
   const _signalSaysPromo = _sigs.some((s: any) => {
