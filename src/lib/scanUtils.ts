@@ -70,7 +70,7 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * materially. Items stamped with an older version are eligible for the tier-1
  * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
  */
-export const OVERRIDES_VERSION = 3
+export const OVERRIDES_VERSION = 4
 
 /**
  * Deterministic post-classification overrides. Pure function of the AI's own
@@ -215,7 +215,28 @@ export function applyPostClassificationOverrides(
     }
   }
 
-  // 7. Promotional override — fires on any of AI signal / summary self-flag / marketing subdomain
+  // 7a. Feedback/Review-request override — sibling to promotional. M&S "review your polo shirt",
+  // TripAdvisor "rate your stay", Amazon "how was your delivery", NPS surveys etc. Auto-quiets
+  // so they never enter the categorise queue and never surface as urgent/action.
+  const _feedbackHints = (
+    /\b(leave|write|share|submit|complete)\s+(a\s+)?(review|feedback|rating|survey)/.test(_summaryText) ||
+    /\b(rate|review|feedback on)\s+(your|the|our)\b/.test(_summaryText)                                ||
+    /\bhow (was|did)\s+(your|the)\b/.test(_summaryText)                                                ||
+    /\b(nps|net promoter score|customer satisfaction|satisfaction survey)\b/.test(_summaryText)        ||
+    /\b(share your (experience|thoughts|opinion))\b/.test(_summaryText)                                ||
+    /\bwe(?:'d|['’]d| would)\s+love\s+to\s+hear\b/.test(_summaryText)                             ||
+    /\byour (feedback|review|opinion|rating) (matters|counts|helps|is important)\b/.test(_summaryText)
+  )
+  if (_feedbackHints && parsed?.status !== 'quietly_logged') {
+    parsed.status            = 'quietly_logged'
+    parsed.aiImportanceScore = 0.10
+    parsed.autoQuietedReason = 'feedback_request'
+    // Strip deadline/rsvp signals — "please review within 7 days" style artificial urgency
+    parsed.signals = (parsed.signals ?? []).filter((s: any) => s?.type === 'event' || s?.type === 'awaiting')
+    applied.push('feedback-request')
+  }
+
+  // 7b. Promotional override — fires on any of AI signal / summary self-flag / marketing subdomain
   const _senderEmail     = (from.match(/<([^>]+)>/)?.[1] ?? from).toLowerCase()
   const _senderLocalPart = _senderEmail.split('@')[0] ?? ''
   const MARKETING_LOCAL_PARTS = ['rewards', 'news', 'newsletter', 'offers', 'promo', 'promos', 'promotions', 'deals', 'marketing', 'announce', 'campaign', 'campaigns']

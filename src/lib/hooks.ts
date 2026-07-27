@@ -389,8 +389,13 @@ export function useUncategorised() {
     let latestAll: KeelItem[] = []
 
     const applyFilter = () => {
+      // Skip items already auto-quieted by a post-classification override
+      // (promotional, feedback_request, etc.) — they should never appear in the
+      // "To Categorise" queue: the classifier has already decided they belong nowhere.
       setItems(latestAll.filter(i =>
-        DEFAULT_CATS.has(i.categoryId) && !_classifiedThisSession.has(i.itemId)
+        DEFAULT_CATS.has(i.categoryId) &&
+        !_classifiedThisSession.has(i.itemId) &&
+        !(i as any).autoQuietedReason
       ))
     }
 
