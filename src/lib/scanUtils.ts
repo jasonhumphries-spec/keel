@@ -70,7 +70,7 @@ export const BUILTIN_DESCRIPTIONS: Record<string, string> = {
  * materially. Items stamped with an older version are eligible for the tier-1
  * "re-apply overrides" catch-up (no AI call needed) run by the admin endpoint.
  */
-export const OVERRIDES_VERSION = 2
+export const OVERRIDES_VERSION = 3
 
 /**
  * Deterministic post-classification overrides. Pure function of the AI's own
@@ -177,20 +177,34 @@ export function applyPostClassificationOverrides(
     applied.push('payment-made')
   }
 
-  // 6. Self-consistency override
+  // 6. Self-consistency override — high-precision only. Fires when the NEXT STEP
+  // uses explicit "the account owner is waiting" language, OR names a HUMAN actor
+  // (two capitalised words like "Steven Friel"). Avoids false-firing on org/product
+  // names like "LinkedIn", "Gmail", "Companies House".
   if (ownerEmail && typeof parsed?.aiDetailedSummary === 'string') {
     const _detailed  = parsed.aiDetailedSummary as string
     const _nextMatch = _detailed.match(/NEXT STEP:\s*([^•\n]+)/i)
     if (_nextMatch) {
-      const _nextStep = _nextMatch[1].trim()
+      const _nextStep   = _nextMatch[1].trim()
+      const _nextLower  = _nextStep.toLowerCase()
       const _ownerFirst = (ownerEmail.toLowerCase().split('@')[0]?.split(/[._-]/)[0] ?? '').toLowerCase()
-      const _actorRe    = new RegExp(`^(?:the\\s+)?(${_ownerFirst})\\b[^.]*\\b(needs to|must|should|has to|will|need to|is required to|is expected to|is on the hook)`, 'i')
-      const _ownerIsActor = _ownerFirst.length >= 3 && _actorRe.test(_nextStep)
-      const _otherActorRe = /^([A-Z][a-z]+)\b[^.]*\b(needs to|must|should|has to|will|is expected to)/
-      const _otherMatch   = _nextStep.match(_otherActorRe)
-      const _otherIsActor = !!_otherMatch && _otherMatch[1].toLowerCase() !== _ownerFirst
 
-      if (_otherIsActor && parsed.status === 'awaiting_action') {
+      // Owner-is-actor: NEXT STEP starts with owner's first name + action verb.
+      const _ownerActorRe = new RegExp(`^(?:the\\s+)?${_ownerFirst}\\b[^.]*\\b(needs to|must|should|has to|will|need to|is required to|is expected to|is on the hook)`, 'i')
+      const _ownerIsActor = _ownerFirst.length >= 3 && _ownerActorRe.test(_nextStep)
+
+      // Other-party-is-actor: fire ONLY if one of these is true —
+      //   a) explicit passive-owner language: "waiting for X", "awaiting X's", "pending X's response"
+      //   b) NEXT STEP starts with a two-word HUMAN name (Firstname Lastname) + action verb,
+      //      and the first token is NOT the owner
+      const _passiveOwnerRe = /\b(waiting for|awaiting|expecting|pending)\s+([A-Z][a-z]+|[a-z]+)/
+      const _humanActorRe   = /^([A-Z][a-z]+)\s+([A-Z][a-z]+)\b[^.]*\b(needs to|must|should|has to|will (?:need to|have to|be required)|is expected to)/
+      const _passiveMatch   = _passiveOwnerRe.test(_nextLower)
+      const _humanMatch     = _nextStep.match(_humanActorRe)
+      const _humanIsOtherParty = !!_humanMatch && _humanMatch[1].toLowerCase() !== _ownerFirst
+      const _otherIsActor   = _passiveMatch || _humanIsOtherParty
+
+      if (_otherIsActor && parsed.status === 'awaiting_action' && !_ownerIsActor) {
         parsed.status = 'awaiting_reply'
         if ((parsed?.aiImportanceScore ?? 0) > 0.65) parsed.aiImportanceScore = 0.55
         applied.push('self-consistency:action-to-reply')
