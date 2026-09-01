@@ -37,6 +37,7 @@ export interface ClassificationResult {
   isRecurring: boolean
   status:      string
   autoQuietedReason?: 'promotional' | null
+  quietedBy?:         string | null
   _usage?:     { inputTokens: number; outputTokens: number }
 }
 
@@ -165,6 +166,7 @@ export function applyPostClassificationOverrides(
   if (_isResolved && parsed?.status !== 'quietly_logged' && parsed?.status !== 'done') {
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.10
+    parsed.quietedBy         = 'rule:resolved'
     if (Array.isArray(parsed.signals)) {
       parsed.signals = parsed.signals.filter((s: any) => s?.type !== 'deadline' && s?.type !== 'rsvp')
     }
@@ -239,6 +241,7 @@ export function applyPostClassificationOverrides(
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.10
     parsed.autoQuietedReason = 'feedback_request'
+    parsed.quietedBy         = 'rule:feedback_request'
     // Strip deadline/rsvp signals — "please review within 7 days" style artificial urgency
     parsed.signals = (parsed.signals ?? []).filter((s: any) => s?.type === 'event' || s?.type === 'awaiting')
     applied.push('feedback-request')
@@ -271,6 +274,7 @@ export function applyPostClassificationOverrides(
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.12
     parsed.autoQuietedReason = 'promotional'
+    parsed.quietedBy         = 'rule:promotional'
     applied.push('promotional')
   }
 

@@ -439,11 +439,23 @@ Five commits of override tuning have never reached two thirds of the data.
 7 sender_ignored, plus 19 on a second account. The other **5,111 have no recorded
 reason at all**.
 
-That is a provenance gap, not a mystery: `nightlyItemExpiry` and the expire-items route
-both set `quietly_logged` without stamping a reason, and AI-classified quiets don't
-stamp either. So we cannot distinguish *"the model judged this noise"* from *"this
-expired normally"* from *"a rule fired"*. Until every quiet transition records its
-cause, the precision of the quiet rules cannot be measured at all.
+That is a provenance gap. **Correction to an earlier draft of this section:** the
+expiry paths were never silent — `nightlyItemExpiry` and the expire-items route both
+already stamp `expiredBy` (`nightly_expiry_stale`, `expire_on_scan_past_event`, …).
+What was missing was a *unified* field and any marker at all on the model's own quiets,
+so the recon's first pass read only `autoQuietedReason` and reported everything else as
+unattributed. The real unattributed population is smaller than 5,111; re-running the
+recon now that it reads all three fields will give the true figure.
+
+The gap that remains is real: three partial markers, no single answer to *"who
+silenced this?"*, and nothing at all when the model quiets an item at scan time.
+
+**Fixed (2026-09-01):** a `quietedBy` field now stamps every route to
+`quietly_logged` — `ai`, `rule:*`, `expiry:*`, `user:*`. It is deliberately separate
+from `autoQuietedReason`, which only ever names an override rule and is load-bearing
+for `useRecentPromotionalOffers`, `restore-cal-quieted` and `reapply-overrides`;
+repurposing it would have broken those. The recon falls back to `autoQuietedReason` and
+`expiredBy` so the pre-provenance corpus stays attributable.
 
 **3. One account's scoring is uncalibrated.** uid Zwq… has 1,420 of 2,042 items in
 band 3 (High) — 70%. A band that holds 70% of everything carries no information.

@@ -479,7 +479,8 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
   const ignoreItem = async () => {
     if (!user || !item) return
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
-      status: 'quietly_logged', manuallyIgnored: true, updatedAt: Timestamp.now(),
+      status: 'quietly_logged', manuallyIgnored: true,
+      quietedBy: 'user:ignored_item', updatedAt: Timestamp.now(),
     })
     void logFeedback(user.uid, 'ignored_item', 'expanded_panel', item, undefined, signals)
     setShowMoreMenu(false)
@@ -502,6 +503,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       status:            'quietly_logged',
       manuallyIgnored:   true,
       autoQuietedReason: 'sender_ignored',
+      quietedBy:         'user:ignored_sender',
       updatedAt:         Timestamp.now(),
     })
     void logFeedback(user.uid, 'ignored_sender', 'expanded_panel', item, { senderEmail }, signals)

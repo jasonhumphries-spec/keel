@@ -84,7 +84,14 @@ function corpusShape(items) {
     byBand[band] = (byBand[band] ?? 0) + 1
     if (it.status === 'quietly_logged') {
       quietTotal++
-      const r = it.autoQuietedReason ?? '(none — AI or manual)'
+      // quietedBy is the unified cause. Fall back to the two older partial markers
+      // so the pre-provenance corpus is still attributable: autoQuietedReason names
+      // an override rule, expiredBy names a lifecycle expiry. Anything left really
+      // is unattributed — almost certainly the model's own call at scan time.
+      const r = it.quietedBy
+        ?? (it.autoQuietedReason ? `rule:${it.autoQuietedReason}` : null)
+        ?? (it.expiredBy ? `expiry(legacy):${it.expiredBy}` : null)
+        ?? '(unattributed)'
       byQuietReason[r] = (byQuietReason[r] ?? 0) + 1
     }
   }

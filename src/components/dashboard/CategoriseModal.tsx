@@ -141,7 +141,8 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
     setSaving(true)
     try {
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
-        status: 'quietly_logged', updatedAt: Timestamp.now(),
+        status: 'quietly_logged', quietedBy: 'user:categorise_skip',
+        updatedAt: Timestamp.now(),
       })
       void logFeedback(user.uid, 'categorise_skipped', 'categorise_modal', item)
       const newIgnored = new Set([...ignored, item.itemId])

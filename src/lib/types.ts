@@ -65,8 +65,38 @@ export interface KeelItem {
   aiTitle:           string
   aiSummary:         string
   aiDetailedSummary: string
-  autoQuietedReason?: 'on_calendar' | 'promotional' | 'sender_ignored' | null
+  autoQuietedReason?: 'on_calendar' | 'promotional' | 'sender_ignored' | 'feedback_request' | null
+
+  /**
+   * Why this item is quiet — the single field that answers "who silenced this?".
+   *
+   * Deliberately separate from `autoQuietedReason`, which only ever names an
+   * override rule and is load-bearing for existing queries (useRecentPromotionalOffers,
+   * restore-cal-quieted, reapply-overrides). `quietedBy` covers EVERY route to
+   * quietly_logged, including the two that previously left no unified trace: the
+   * model's own judgement, and lifecycle expiry.
+   *
+   * Without this, "the model judged it noise", "it expired normally" and "a rule
+   * fired" are indistinguishable, and no quiet rule's precision can be measured.
+   * See docs/relevance-brain-design.md §9.2.1.
+   */
+  quietedBy?: QuietedBy | null
 }
+
+/** Cause of a quietly_logged transition. Prefix = who decided. */
+export type QuietedBy =
+  | 'ai'                        // the model classified it quiet; no rule fired
+  | 'rule:resolved'
+  | 'rule:promotional'
+  | 'rule:feedback_request'
+  | 'rule:on_calendar'
+  | 'rule:sender_ignored'
+  | 'expiry:stale'              // aged out without ever being actioned
+  | 'expiry:past_event'         // the event it described has happened
+  | 'expiry:past_deadline'
+  | 'user:ignored_item'
+  | 'user:ignored_sender'
+  | 'user:categorise_skip'
 
 export interface KeelSignal {
   signalId:        string

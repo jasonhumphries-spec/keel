@@ -186,6 +186,7 @@ async function expireItemsForUser(
           resolvedAt: FieldValue.serverTimestamp(),
           updatedAt:  FieldValue.serverTimestamp(),
           expiredBy:  'expire_on_scan_stale',
+          quietedBy:  'expiry:stale',
         })
         archived++
         batchCount++
@@ -221,6 +222,7 @@ async function expireItemsForUser(
         resolvedAt: FieldValue.serverTimestamp(),
         updatedAt:  FieldValue.serverTimestamp(),
         expiredBy:  'expire_on_scan_past_event',
+        quietedBy:  'expiry:past_event',
       })
       archived++
     } else if (item.status === 'new' || item.status === 'awaiting_reply') {
@@ -229,6 +231,7 @@ async function expireItemsForUser(
         resolvedAt: FieldValue.serverTimestamp(),
         updatedAt:  FieldValue.serverTimestamp(),
         expiredBy:  'expire_on_scan',
+        quietedBy:  'expiry:past_deadline',
       })
       archived++
     } else if (item.status === 'awaiting_action') {

@@ -230,6 +230,9 @@ export async function POST(req: NextRequest) {
       update.aiImportanceScore = classification.aiImportanceScore ?? item.aiImportanceScore
     }
     update.autoQuietedReason = (classification as any).autoQuietedReason ?? null
+    update.quietedBy = (update.status ?? item.status) === 'quietly_logged'
+      ? ((classification as any).quietedBy ?? 'ai')
+      : null
 
     if (!preserveCategory && classification.categoryId) {
       update.categoryId   = classification.categoryId

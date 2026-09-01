@@ -288,6 +288,7 @@ export async function runCalendarCheck(
       downgradeBatch.update(db.doc(`users/${uid}/items/${itemId}`), {
         aiImportanceScore:  0.45,
         autoQuietedReason:  'on_calendar',
+        quietedBy:          'rule:on_calendar',
         updatedAt:          ts,
       })
       downgraded++

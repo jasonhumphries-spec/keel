@@ -38,6 +38,7 @@ interface Parsed {
   aiDetailedSummary:  string
   signals?:           Sig[]
   autoQuietedReason?: string
+  quietedBy?:         string
   overridesVersion?:  number
 }
 
@@ -326,6 +327,48 @@ describe('feedback-request', () => {
   it('REGRESSION dc7b50b: fires on "seeking your feedback" phrasing', () => {
     const { applied } = run(mk({ aiSummary: 'The airline is seeking your feedback on the flight.' }))
     expect(applied).toContain('feedback-request')
+  })
+})
+
+// ── Quiet provenance ───────────────────────────────────────────────────────
+//
+// Every route to quietly_logged must name its cause, or no quiet rule's precision
+// can ever be measured — the model's judgement, lifecycle expiry and a rule firing
+// are otherwise indistinguishable in the data. See docs §9.2.1.
+
+describe('quietedBy provenance', () => {
+  it('stamps rule:resolved', () => {
+    const { parsed } = run(mk({ aiSummary: 'No further action is required.' }))
+    expect(parsed.quietedBy).toBe('rule:resolved')
+  })
+
+  it('stamps rule:feedback_request', () => {
+    const { parsed } = run(mk({ aiSummary: 'Please rate your stay with us.' }))
+    expect(parsed.quietedBy).toBe('rule:feedback_request')
+  })
+
+  it('stamps rule:promotional', () => {
+    const { parsed } = run(mk({ aiSummary: 'Get 20% off your next order.' }))
+    expect(parsed.quietedBy).toBe('rule:promotional')
+  })
+
+  it('leaves quietedBy unset when no rule quiets the item', () => {
+    // The scan routes fall back to 'ai' in this case — the override function must
+    // not claim a quiet it did not cause.
+    const { parsed } = run(mk())
+    expect(parsed.quietedBy).toBeUndefined()
+  })
+
+  it('every quieting override sets a cause', () => {
+    for (const summary of [
+      'No further action is required.',
+      'Please rate your stay with us.',
+      'Get 20% off your next order.',
+    ]) {
+      const { parsed } = run(mk({ aiSummary: summary }))
+      expect(parsed.status).toBe('quietly_logged')
+      expect(parsed.quietedBy).toMatch(/^rule:/)
+    }
   })
 })
 
