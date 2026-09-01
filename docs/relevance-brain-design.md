@@ -414,7 +414,57 @@ Both are characterised in tests rather than corrected. Changing them alters live
 classification, and there is no golden set yet to show the change is an improvement —
 which is the whole argument of §4.1. Fix them once they can be measured.
 
-**Still to do in Stage 1:** the golden set and the eval harness over it.
+### 9.2.1 Recon findings — 2026-09-01
+
+Running the harvest against production (5,871 items, 3 accounts) invalidated two
+assumptions in this document. Recorded here because they change what Stage 1 is for.
+
+**1. The overrides reach roughly a third of the corpus.**
+
+`overridesVersion` stamp coverage: **0/283, 0/2042, 1569/3546**.
+
+`classifyThread` in `src/lib/scanUtils.ts` applies the overrides internally, so the
+Vercel scan routes get them. `functions/src/scan.ts` — the Cloud Function behind
+onboarding and long scans — carries its own inlined `classifyThread` with **none** of
+them. Two of the three accounts have therefore never had a single override applied.
+The distribution matches exactly: only the account that also receives incremental
+Vercel scans has meaningful rule-attributed quiets.
+
+Five commits of override tuning have never reached two thirds of the data.
+
+**2. Overrides account for ~3% of quieting.**
+
+90% of all items (5,291 of 5,871) are `quietly_logged`. Of those, only **180** carry an
+`autoQuietedReason` — 104 promotional, 33 feedback_request, 17 on_calendar,
+7 sender_ignored, plus 19 on a second account. The other **5,111 have no recorded
+reason at all**.
+
+That is a provenance gap, not a mystery: `nightlyItemExpiry` and the expire-items route
+both set `quietly_logged` without stamping a reason, and AI-classified quiets don't
+stamp either. So we cannot distinguish *"the model judged this noise"* from *"this
+expired normally"* from *"a rule fired"*. Until every quiet transition records its
+cause, the precision of the quiet rules cannot be measured at all.
+
+**3. One account's scoring is uncalibrated.** uid Zwq… has 1,420 of 2,042 items in
+band 3 (High) — 70%. A band that holds 70% of everything carries no information.
+
+**4. The harvest yields 22 usable labels, not 200.** `marked_done` was 90% of the
+original 227 and is non-discriminating (everything actionable is eventually done).
+Excluded by default. §4.1's assumption — that a golden set can be harvested from
+implicit judgement — does not survive contact with the data. The harvest is a *seed*;
+the set has to be deliberately labelled.
+
+### 9.2.2 Revised Stage 1 order
+
+1. **Fix the duplicate classifier** so overrides reach every item (already in flight).
+2. **Stamp provenance on every quiet transition** — expiry, AI, rule. Cheap, and
+   nothing downstream is measurable without it.
+3. **Then label.** The 180 rule-quieted items are small enough to review in full rather
+   than sample, giving exact precision per rule; add a stratified sample of the
+   no-reason quiets to test whether the model over-quiets.
+
+Measuring the rules before (1) and (2) would measure a third of the corpus and call it
+the whole.
 
 ### 9.3 On the feedback box
 

@@ -61,6 +61,36 @@ function label(it) {
   return null
 }
 
+/**
+ * Weak labels are excluded from the golden set by default.
+ *
+ * marked_done is the big one: everything actionable eventually gets marked done,
+ * so it says nothing about whether the priority was right or whether the item
+ * should have surfaced. At 90% of harvestable labels it would dominate the set and
+ * make any eval score ~95% while measuring nothing. Pass --include-weak to override.
+ */
+const INCLUDE_WEAK = process.argv.includes('--include-weak')
+const usable = (lb) => lb && (INCLUDE_WEAK || lb.strength !== 'weak')
+
+/** Corpus shape — sizes the hand-labelling task that the harvest cannot replace. */
+function corpusShape(items) {
+  const byStatus = {}, byQuietReason = {}, byBand = {}
+  let quietTotal = 0, stamped = 0
+  for (const it of items) {
+    byStatus[it.status ?? 'undefined'] = (byStatus[it.status ?? 'undefined'] ?? 0) + 1
+    if (it.overridesVersion !== undefined) stamped++
+    const s = it.aiImportanceScore ?? 0.5
+    const band = s >= 0.85 ? '4 urgent' : s >= 0.70 ? '3 high' : s >= 0.40 ? '2 med' : '1 low'
+    byBand[band] = (byBand[band] ?? 0) + 1
+    if (it.status === 'quietly_logged') {
+      quietTotal++
+      const r = it.autoQuietedReason ?? '(none — AI or manual)'
+      byQuietReason[r] = (byQuietReason[r] ?? 0) + 1
+    }
+  }
+  return { byStatus, byQuietReason, byBand, quietTotal, stamped }
+}
+
 const users = await db.collection('users').get()
 const totals = { items: 0, labelled: 0 }
 const bySource = {}
@@ -70,7 +100,8 @@ for (const u of users.docs) {
   if (snap.size === 0) continue
 
   const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  const labelled = items.map(it => ({ it, lb: label(it) })).filter(x => x.lb)
+  const labelled = items.map(it => ({ it, lb: label(it) })).filter(x => usable(x.lb))
+  const shape = corpusShape(items)
   totals.items += items.length
   totals.labelled += labelled.length
   for (const { lb } of labelled) bySource[lb.source] = (bySource[lb.source] ?? 0) + 1
@@ -90,7 +121,13 @@ for (const u of users.docs) {
     console.log(`    overturned auto-quiets: ${JSON.stringify(overturned)}`)
 
   console.log(`    coverage: aiDetailedSummary=${labelled.filter(x => x.it.aiDetailedSummary).length}`
-            + `  overridesVersion=${labelled.filter(x => x.it.overridesVersion !== undefined).length}`)
+            + `  overridesVersion stamped (whole corpus)=${shape.stamped}/${items.length}`)
+
+  console.log(`    status     : ${Object.entries(shape.byStatus).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}`).join('  ')}`)
+  console.log(`    score band : ${Object.entries(shape.byBand).sort().map(([k,v])=>`${k}=${v}`).join('  ')}`)
+  console.log(`    quietly_logged=${shape.quietTotal}, by reason:`)
+  for (const [k, v] of Object.entries(shape.byQuietReason).sort((a,b)=>b[1]-a[1]))
+    console.log(`        ${String(v).padStart(5)}  ${k}`)
 
   if (MODE === 'build') {
     const sigSnap = await db.collection(`users/${u.id}/signals`).get()
