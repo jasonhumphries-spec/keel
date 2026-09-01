@@ -1,7 +1,7 @@
 # Design Document — The Relevance Brain
 ## Learning what matters to each user
 
-**Status:** Stage 0 implemented (2026-09-01). Stages 1–4 proposed.
+**Status:** Stage 0 complete, Stage 1 in progress (2026-09-01). Stages 2–4 proposed.
 **Last Updated:** 2026-09-01
 **Owner:** Jason Humphries
 **Related:** [PRD.md](PRD.md) §Vision, [architecture.txt](architecture.txt) §Scan Architecture
@@ -331,7 +331,7 @@ which Keel reads and writes. One-directional, separate instance. Not now.
 | Stage | Work | Why this order |
 |---|---|---|
 | **0** ✅ | Evidence log (L4) — *shipped* | Changes no behaviour, costs nothing, but **you cannot learn from data you never recorded**. Every week of delay is a week of labels lost. A few lines at each existing `updateDoc` site in `ItemExpandedPanel.tsx` and `CategoryGrid.tsx`. |
-| **1** | Golden set + eval harness + vitest | Nothing after this is safe to ship without it. Run as a local script in `src/scripts/` — it is a dev tool, not a product feature. |
+| **1** ◐ | Golden set + eval harness + vitest — *vitest + override suite done; golden set next* | Nothing after this is safe to ship without it. Run as a local script in `src/scripts/` — it is a dev tool, not a product feature. |
 | **2** | Split the score (L1/L2) | Makes relevance separable, shrinks the prompt, converts overrides into tested functions. |
 | **3** | Historical backfill → priors (L3) | Bootstraps relevance from data already in Gmail. |
 | **4** | Narrative profile + reflection (L5) | The slow loop. Last, because it is the only part that can regress silently. |
@@ -380,7 +380,43 @@ access denied throughout. Run it after any rules change and before deploying.
 This is the first automated test in the repository. Stage 1's harness should build on it
 rather than beside it.
 
-### 9.2 On the feedback box
+### 9.2 Stage 1 progress — the override suite
+
+`vitest` is in (`npm test`), and `src/lib/__tests__/scanUtils.overrides.test.ts` pins
+`applyPostClassificationOverrides` with 53 tests. That function was the right first
+target: it is pure, it needs no AI call, and it is where every regression in the recent
+commit history happened.
+
+Tests marked REGRESSION cite the commit whose bug they lock down — `7903287`
+(accounting language wrongly read as a discount), `fe7b00b` (self-consistency must run
+before payment-made), `99c65eb` and `dc7b50b` (feedback-request precision).
+
+**The suite was mutation-tested**, because a green suite proves nothing on its own.
+Five bugs were reintroduced one at a time; every one was caught:
+
+| Reintroduced bug | Tests failed |
+|---|---|
+| `7903287` promo regex accepting `back\|credit` | 3 |
+| proximity losing its past-date guard | 1 |
+| feedback-request weakened to the bare verb "review" | 3 |
+| event→deadline reclassification disabled | 3 |
+| payment-made allowed to clobber self-consistency | 1 (the `fe7b00b` test) |
+
+**One finding, deliberately not fixed.** The actor-detection heuristic stands in "two
+capitalised words" for "is a person". `5c0428e` stopped it firing on single-word org
+names (LinkedIn), but two-word ones still read as human: *"Companies House needs to
+process the filing"* flips the item to `awaiting_reply`. Same class for "Royal Mail",
+"Land Registry", "Student Finance". Related: `_passiveOwnerRe` offers
+`([A-Z][a-z]+|[a-z]+)` but is tested against a lowercased string, so the capitalised
+alternative is unreachable and any noun after "waiting for" matches.
+
+Both are characterised in tests rather than corrected. Changing them alters live
+classification, and there is no golden set yet to show the change is an improvement —
+which is the whole argument of §4.1. Fix them once they can be measured.
+
+**Still to do in Stage 1:** the golden set and the eval harness over it.
+
+### 9.3 On the feedback box
 
 The open feedback box is the most obvious feature and the least valuable evidence source.
 Users rarely complete it, and when they do they explain badly.

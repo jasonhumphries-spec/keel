@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:rules": "firebase emulators:exec --only firestore --project keel-rules-check \"node src/scripts/rules-check.mjs\""
+    "test:rules": "firebase emulators:exec --only firestore --project keel-rules-check \"node src/scripts/rules-check.mjs\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "npm run test && npm run test:rules"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -28,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }
