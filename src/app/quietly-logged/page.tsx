@@ -7,6 +7,7 @@ import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, DocumentData, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
 
 function toDate(v: unknown): Date {
@@ -81,6 +82,7 @@ function LoggedItem({ item, uid, onMoved }: { item: KeelItem; uid: string; onMov
         status:    'new',
         updatedAt: Timestamp.now(),
       })
+      void logFeedback(uid, 'restored_from_quiet', 'quietly_logged', item)
       onMoved()
     } catch (e) { console.error(e) }
     finally { setSaving(false) }

@@ -7,6 +7,7 @@ import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp, DocumentData } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
 
 function toDate(v: unknown): Date {
@@ -91,6 +92,7 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
       await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
         status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
       })
+      void logFeedback(uid, 'marked_done', 'awaiting_reply', item)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }
@@ -103,6 +105,7 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
         snoozedUntil: Timestamp.fromMillis(Date.now() + 7 * 86400000),
         updatedAt: Timestamp.now(),
       })
+      void logFeedback(uid, 'snoozed', 'awaiting_reply', item, { days: 7 })
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }

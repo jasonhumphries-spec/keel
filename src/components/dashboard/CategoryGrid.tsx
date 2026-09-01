@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import { useDashboardData } from '@/lib/hooks'
+import { logFeedback, priorityAction } from '@/lib/feedbackLog'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
 import { useCategoryFilter } from '@/contexts/CategoryFilterContext'
@@ -72,6 +73,8 @@ function PriorityDot({ item }: { item: KeelItem }) {
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         aiImportanceScore: band, manualPriority: true, updatedAt: Timestamp.now(),
       })
+      void logFeedback(user.uid, priorityAction(item.aiImportanceScore, band), 'category_grid', item,
+        { fromScore: item.aiImportanceScore ?? null, toScore: band })
     } catch (err) { console.error(err) }
     finally { setSaving(false) }
   }
@@ -83,6 +86,7 @@ function PriorityDot({ item }: { item: KeelItem }) {
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       manualPriority: false, updatedAt: Timestamp.now(),
     })
+    void logFeedback(user.uid, 'priority_reset', 'category_grid', item)
   }
 
   return (
@@ -285,6 +289,8 @@ function CalendarBadge({
     e.stopPropagation()
     if (!signal.detectedDate) return
     window.open(buildCalendarUrl(signal, item), '_blank')
+    void logFeedback(uid, 'calendar_added', 'category_grid', item,
+      { signalId: signal.signalId, signalType: signal.type })
     setStatus('pending')
   }
 
@@ -296,6 +302,8 @@ function CalendarBadge({
       await updateDoc(doc(db, `users/${uid}/signals`, signal.signalId), {
         calendarStatus: 'ignored', updatedAt: Timestamp.now(),
       })
+      void logFeedback(uid, 'calendar_ignored', 'category_grid', item,
+        { signalId: signal.signalId, signalType: signal.type })
       setStatus('ignored')
     } catch (err) { console.error(err) }
     finally { setActing(false) }
@@ -389,6 +397,7 @@ export function CategoryCard({
       preSnoozePriority: item.aiImportanceScore,
       updatedAt:         Timestamp.now(),
     })
+    void logFeedback(uid, 'snoozed', 'category_grid', item, { days }, signals)
   }
 
   async function handleMarkDone(e: React.MouseEvent, item: KeelItem) {
@@ -397,6 +406,7 @@ export function CategoryCard({
     await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
       status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
     })
+    void logFeedback(uid, 'marked_done', 'category_grid', item, undefined, signals)
     onResolved(item)
   }
 
@@ -408,6 +418,7 @@ export function CategoryCard({
       aiImportanceScore: (item as any).preSnoozePriority ?? item.aiImportanceScore,
       updatedAt:         Timestamp.now(),
     })
+    void logFeedback(uid, 'unsnoozed', 'category_grid', item, undefined, signals)
   }
   const iconPath = ICON_PATHS[category.icon] ?? ICON_PATHS.tag
 
@@ -811,6 +822,7 @@ function ItemRow({
     await updateDoc(doc(db, `users/${uid}/items`, item.itemId), {
       status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
     })
+    void logFeedback(uid, 'marked_done', 'category_grid', item, undefined, signals)
     onResolved(item)
   }
 
@@ -821,6 +833,7 @@ function ItemRow({
       status: 'snoozed', snoozedUntil: Timestamp.fromDate(wake),
       preSnoozePriority: item.aiImportanceScore, updatedAt: Timestamp.now(),
     })
+    void logFeedback(uid, 'snoozed', 'category_grid', item, { days }, signals)
   }
 
   const handleUnsnooze = async (e: React.MouseEvent) => {
@@ -830,6 +843,7 @@ function ItemRow({
       aiImportanceScore: item.preSnoozePriority ?? item.aiImportanceScore,
       updatedAt: Timestamp.now(),
     })
+    void logFeedback(uid, 'unsnoozed', 'category_grid', item, undefined, signals)
   }
 
   // ── Snoozed: collapsed single-row treatment ─────────────────────────────────
@@ -1214,6 +1228,7 @@ function ItemCluster({
           resolvedAt: Timestamp.now(),
           updatedAt:  Timestamp.now(),
         })
+        void logFeedback(uid, 'marked_done', 'category_grid', r, { cascaded: true, leadItemId: item.itemId }, signals)
         onResolved(r)
       } catch (e) {
         console.warn(`[ItemCluster] cascade-done failed for ${r.itemId}:`, e)

@@ -2,12 +2,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only access their own data
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
     }
 
-    // No other collections are accessible
+    // The user's own root document — profile, OAuth state, scan bookkeeping.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Application data — full client access ────────────────────────────────
+    //
+    // Enumerated deliberately rather than matched with one recursive wildcard.
+    // Firestore ORs every matching rule together, so a blanket
+    //   match /users/{userId}/{document=**} { allow read, write: if isOwner(userId); }
+    // would silently defeat the append-only and server-only rules below — the
+    // restrictive rule would match, allow nothing, and the blanket rule would
+    // grant access anyway.
+    //
+    // ADDING A NEW CLIENT-WRITTEN COLLECTION MEANS ADDING A LINE HERE.
+    match /users/{userId}/accounts/{document=**}       { allow read, write: if isOwner(userId); }
+    match /users/{userId}/categories/{document=**}     { allow read, write: if isOwner(userId); }
+    match /users/{userId}/categoryHints/{document=**}  { allow read, write: if isOwner(userId); }
+    match /users/{userId}/ignoredSenders/{document=**} { allow read, write: if isOwner(userId); }
+    match /users/{userId}/items/{document=**}          { allow read, write: if isOwner(userId); }
+    match /users/{userId}/meta/{document=**}           { allow read, write: if isOwner(userId); }
+    match /users/{userId}/outbound/{document=**}       { allow read, write: if isOwner(userId); }
+    match /users/{userId}/payments/{document=**}       { allow read, write: if isOwner(userId); }
+    match /users/{userId}/preferences/{document=**}    { allow read, write: if isOwner(userId); }
+    match /users/{userId}/scanRuns/{document=**}       { allow read, write: if isOwner(userId); }
+    match /users/{userId}/signals/{document=**}        { allow read, write: if isOwner(userId); }
+
+    // ── Evidence log — append-only ───────────────────────────────────────────
+    //
+    // See docs/relevance-brain-design.md §6.1. Events are training labels: once
+    // written they must not be edited or removed by the client, or the learned
+    // model can be rewritten from the browser. Required fields are checked so a
+    // malformed write fails loudly at the boundary rather than quietly polluting
+    // the log. The Admin SDK bypasses rules, so server-side compaction and the
+    // reflection job are unaffected.
+    match /users/{userId}/feedback/{eventId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && request.resource.data.keys().hasAll(
+                         ['action', 'source', 'itemId', 'createdAt', 'prior', 'facts'])
+                    && request.resource.data.action    is string
+                    && request.resource.data.source    is string
+                    && request.resource.data.itemId    is string
+                    && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    // ── Learned model — server-written only ──────────────────────────────────
+    //
+    // The client may read its own brain (for provenance display: "scored 0.88
+    // because…") but never write it. A client bug must not be able to corrupt
+    // a model built over months. Written exclusively by the Admin SDK.
+    match /users/{userId}/brain/{document=**}    { allow read: if isOwner(userId); allow write: if false; }
+    match /users/{userId}/priors/{document=**}   { allow read: if isOwner(userId); allow write: if false; }
+    match /users/{userId}/entities/{document=**} { allow read: if isOwner(userId); allow write: if false; }
+
+    // Evaluation data is developer-facing only — never exposed to the client.
+    match /users/{userId}/evals/{document=**}    { allow read, write: if false; }
+
+    // No other collections are accessible.
     match /{document=**} {
       allow read, write: if false;
     }

@@ -9,6 +9,7 @@ import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAllItems } from '@/lib/hooks'
 import Link from 'next/link'
+import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem, ItemStatus } from '@/lib/types'
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
@@ -84,6 +85,7 @@ function MailItem({ item, uid, userEmail, onRestored }: {
     setSaving(true)
     try {
       await updateDoc(doc(db, `users/${uid}/items`, item.itemId), { status: 'new', updatedAt: Timestamp.now() })
+      void logFeedback(uid, 'restored_from_quiet', 'all_mail', item)
       onRestored(item.itemId)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }

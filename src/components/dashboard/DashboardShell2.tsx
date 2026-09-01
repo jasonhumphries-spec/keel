@@ -17,6 +17,7 @@ import { CategoryCard, ItemList, scoreToLevel, getPriorityColour, clusterItemsBy
 import { SessionBanner }          from '@/components/layout/SessionBanner'
 import { BackgroundScanToast }    from '@/components/layout/BackgroundScanToast'
 import { CategoryFilterProvider, useCategoryFilter } from '@/contexts/CategoryFilterContext'
+import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
 
@@ -201,6 +202,8 @@ function CalBandEvent({
   const handleAdd = (e: MouseEvent) => {
     e.stopPropagation()
     window.open(buildCalendarUrl(signal, item ?? undefined), '_blank')
+    void logFeedback(uid, 'calendar_added', 'dashboard', item,
+      { signalId: signal.signalId, signalType: signal.type })
     setStatus('pending')
   }
 
@@ -212,6 +215,8 @@ function CalBandEvent({
       await updateDoc(doc(db, `users/${uid}/signals`, signal.signalId), {
         calendarStatus: 'ignored', updatedAt: Timestamp.now(),
       })
+      void logFeedback(uid, 'calendar_ignored', 'dashboard', item,
+        { signalId: signal.signalId, signalType: signal.type })
       setStatus('ignored')
     } catch (err) { console.error(err) }
     finally { setActing(false) }
@@ -890,6 +895,7 @@ export function DashboardShell2() {
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'awaiting_action', resolvedAt: null, updatedAt: Timestamp.now(),
     })
+    void logFeedback(user.uid, 'undone', 'dashboard', item)
     setSelectedItem(null)
   }, [user])
 

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:rules": "firebase emulators:exec --only firestore --project keel-rules-check \"node src/scripts/rules-check.mjs\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -19,6 +20,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

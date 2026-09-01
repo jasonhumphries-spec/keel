@@ -8,6 +8,7 @@ import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { useCategories } from '@/lib/hooks'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
 import { EmailPreviewDrawer } from './EmailPreviewDrawer'
+import { logFeedback, priorityAction } from '@/lib/feedbackLog'
 import type { KeelItem, KeelSignal } from '@/lib/types'
 
 function SignalPill({ signal, itemId, uid, item }: { signal: KeelSignal; itemId: string; uid: string; item?: KeelItem }) {
@@ -127,6 +128,8 @@ function MarkAsPaidPanel({ item, signals, onClose, onPaid }: { item: KeelItem; s
         paidAt: Timestamp.now(), method: method || null,
         notes: null, createdAt: Timestamp.now(),
       })
+      void logFeedback(user.uid, 'marked_paid', 'expanded_panel', item,
+        { amountPence, currency }, signals)
       onPaid()
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
@@ -386,6 +389,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         userNote: noteText.trim() || null, updatedAt: Timestamp.now(),
       })
+      if (noteText.trim()) void logFeedback(user.uid, 'note_added', 'expanded_panel', item, undefined, signals)
       setNoteSaved(true)
       setTimeout(() => setNoteSaved(false), 2000)
     } catch (e) { console.error('saveNote failed:', e) }
@@ -394,6 +398,13 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
   const [localScore,   setLocalScore]     = useState<number | null>(null)
   const [localManual,  setLocalManual]    = useState<boolean | null>(null)
+
+  // Attention signal: the user expanded this item. Deduped per item per session
+  // inside logFeedback — re-expanding the same item in one sitting says nothing new.
+  useEffect(() => {
+    if (item && user) void logFeedback(user.uid, 'opened', 'expanded_panel', item, undefined, signals)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.itemId, user?.uid])
 
   useEffect(() => {
     setShowPaidPanel(false)
@@ -428,6 +439,8 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
         })
       )
     } catch (e) { console.error('Hint write failed:', e) }
+    void logFeedback(user.uid, 'recategorised', 'expanded_panel', item,
+      { toCategoryId: categoryId, toCategoryName: categoryName }, signals)
     setShowMoveTo(false)
     onClose()
   }
@@ -439,6 +452,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         status: 'done', resolvedAt: Timestamp.now(), updatedAt: Timestamp.now(),
       })
+      void logFeedback(user.uid, 'marked_done', 'expanded_panel', item, undefined, signals)
       onResolved(item)   // pass full item snapshot
     } finally { setSaving(false) }
   }
@@ -449,6 +463,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'snoozed', snoozedUntil: Timestamp.fromDate(until), updatedAt: Timestamp.now(),
     })
+    void logFeedback(user.uid, 'snoozed', 'expanded_panel', item, { days }, signals)
     onResolved(item)
   }
 
@@ -457,6 +472,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'archived', updatedAt: Timestamp.now(),
     })
+    void logFeedback(user.uid, 'archived', 'expanded_panel', item, undefined, signals)
     onResolved(item)
   }
 
@@ -465,6 +481,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'quietly_logged', manuallyIgnored: true, updatedAt: Timestamp.now(),
     })
+    void logFeedback(user.uid, 'ignored_item', 'expanded_panel', item, undefined, signals)
     setShowMoreMenu(false)
     onResolved(item)
   }
@@ -487,6 +504,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
       autoQuietedReason: 'sender_ignored',
       updatedAt:         Timestamp.now(),
     })
+    void logFeedback(user.uid, 'ignored_sender', 'expanded_panel', item, { senderEmail }, signals)
     setShowMoreMenu(false)
     onResolved(item)
   }
@@ -700,6 +718,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                           await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
                             manualPriority: false, updatedAt: Timestamp.now(),
                           })
+                          void logFeedback(user.uid, 'priority_reset', 'expanded_panel', item, undefined, signals)
                         }}
                         style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-dm-mono)', color: 'var(--color-text-muted)', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 3, cursor: 'pointer', padding: '1px 5px' }}
                       >
@@ -729,6 +748,14 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                               manualPriority:    true,
                               updatedAt:         Timestamp.now(),
                             })
+                            void logFeedback(
+                              user.uid,
+                              priorityAction(item.aiImportanceScore, band),
+                              'expanded_panel',
+                              item,
+                              { fromScore: item.aiImportanceScore ?? null, toScore: band, label },
+                              signals,
+                            )
                           }}
                           title={label}
                           style={{

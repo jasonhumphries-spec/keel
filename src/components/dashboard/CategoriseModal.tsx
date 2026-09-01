@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase'
 import { useCategories } from '@/lib/hooks'
 import { markItemClassified } from '@/lib/hooks'
 import { useAuth } from '@/contexts/AuthContext'
+import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
 
 interface CategoriseModalProps {
@@ -66,6 +67,8 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         categoryId, categoryName, manualCategory: true, updatedAt: Timestamp.now(),
       })
+      void logFeedback(user.uid, 'categorised', 'categorise_modal', item,
+        { toCategoryId: categoryId, toCategoryName: categoryName })
       // Build the new assigned map synchronously so findIndex uses up-to-date state
       const newAssigned = new Map(assigned).set(item.itemId, { categoryId, categoryName })
 
@@ -85,6 +88,8 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
               autoClassifiedFrom: item.itemId,
               updatedAt: Timestamp.now(),
             })
+            void logFeedback(user.uid, 'categorised', 'categorise_modal', it,
+              { toCategoryId: categoryId, toCategoryName: categoryName, cascaded: true, leadItemId: item.itemId })
             newAssigned.set(it.itemId, { categoryId, categoryName })
             markItemClassified(it.itemId)
             autoIds.push(it.itemId)
@@ -138,6 +143,7 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
       await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
         status: 'quietly_logged', updatedAt: Timestamp.now(),
       })
+      void logFeedback(user.uid, 'categorise_skipped', 'categorise_modal', item)
       const newIgnored = new Set([...ignored, item.itemId])
       setIgnored(newIgnored)
       markItemClassified(item.itemId)
