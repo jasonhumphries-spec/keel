@@ -308,6 +308,7 @@ export async function POST(req: NextRequest) {
               aiImportanceScore: 0.05,
               autoQuietedReason: 'sender_ignored',
               quietedBy:         'rule:sender_ignored',
+              quietedFromStatus: null,
               manuallyIgnored:   true,
               isRecurring:       false,
               updatedAt:         Timestamp.fromMillis(internalDate),
@@ -358,6 +359,9 @@ export async function POST(req: NextRequest) {
           autoQuietedReason:       (classification as any).autoQuietedReason ?? null,
           quietedBy:               classification.status === 'quietly_logged'
             ? ((classification as any).quietedBy ?? 'ai')
+            : null,
+          quietedFromStatus:       classification.status === 'quietly_logged'
+            ? ((classification as any).quietedFromStatus ?? null)
             : null,
           signals:                 Array.isArray(classification.signals) ? classification.signals : [],
           isRecurring:             classification.isRecurring        ?? false,

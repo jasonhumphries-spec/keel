@@ -513,6 +513,7 @@ export const nightlyItemExpiry = onSchedule(
                 updatedAt:  admin.firestore.FieldValue.serverTimestamp(),
                 expiredBy:  'nightly_expiry_stale',
                 quietedBy:  'expiry:stale',
+                quietedFromStatus: item.status ?? null,
               })
               archived++
               batchCount++
@@ -546,6 +547,7 @@ export const nightlyItemExpiry = onSchedule(
               updatedAt:  now,
               expiredBy:  'nightly_expiry_past_event',
               quietedBy:  'expiry:past_event',
+              quietedFromStatus: item.status ?? null,
             })
             archived++
           } else if (item.status === 'new' || item.status === 'awaiting_reply') {
@@ -555,6 +557,7 @@ export const nightlyItemExpiry = onSchedule(
               updatedAt:  now,
               expiredBy:  'nightly_expiry',
               quietedBy:  'expiry:past_deadline',
+              quietedFromStatus: item.status ?? null,
             })
             archived++
           } else if (item.status === 'awaiting_action') {

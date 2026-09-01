@@ -38,6 +38,7 @@ export interface ClassificationResult {
   status:      string
   autoQuietedReason?: 'promotional' | null
   quietedBy?:         string | null
+  quietedFromStatus?: string | null
   _usage?:     { inputTokens: number; outputTokens: number }
 }
 
@@ -164,6 +165,7 @@ export function applyPostClassificationOverrides(
     _summaryText.includes('nothing further to do')
   )
   if (_isResolved && parsed?.status !== 'quietly_logged' && parsed?.status !== 'done') {
+    parsed.quietedFromStatus = parsed.status
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.10
     parsed.quietedBy         = 'rule:resolved'
@@ -238,6 +240,7 @@ export function applyPostClassificationOverrides(
     (/\bcomplete\s+(?:our|the|a|this)\s+(questionnaire|survey|form|feedback form)\b/.test(_summaryText) && /\b(feedback|review|rating|experience|opinion)\b/.test(_summaryText))
   )
   if (_feedbackHints && parsed?.status !== 'quietly_logged') {
+    parsed.quietedFromStatus = parsed.status
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.10
     parsed.autoQuietedReason = 'feedback_request'
@@ -271,6 +274,7 @@ export function applyPostClassificationOverrides(
   const _isPromotional = _signalSaysPromo || _summarySelfFlagsPromo || _senderIsMarketing
   if (_isPromotional && parsed?.status !== 'quietly_logged') {
     parsed.signals = _sigs.filter((s: any) => s?.type === 'event' || s?.type === 'awaiting')
+    parsed.quietedFromStatus = parsed.status
     parsed.status            = 'quietly_logged'
     parsed.aiImportanceScore = 0.12
     parsed.autoQuietedReason = 'promotional'

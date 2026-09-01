@@ -81,6 +81,19 @@ export interface KeelItem {
    * See docs/relevance-brain-design.md §9.2.1.
    */
   quietedBy?: QuietedBy | null
+
+  /**
+   * The status the item held immediately before it was quieted, or null if it was
+   * created quiet.
+   *
+   * `quietedBy` says who silenced it; this says what was silenced. The distinction
+   * matters most for `expiry:stale`, the single largest quiet mechanism: burying a
+   * stale `new` (informational, nobody cared) is healthy housekeeping, while burying
+   * a stale `awaiting_action` means the system judged an item actionable, the user
+   * never acted, and it was hidden on a timer — the exact failure Keel exists to
+   * prevent. Without this field the two are indistinguishable.
+   */
+  quietedFromStatus?: ItemStatus | null
 }
 
 /** Cause of a quietly_logged transition. Prefix = who decided. */

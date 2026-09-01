@@ -98,6 +98,32 @@ function corpusShape(items) {
   return { byStatus, byQuietReason, byBand, quietTotal, stamped }
 }
 
+/**
+ * Score distribution WITHIN each quiet cause.
+ *
+ * The question this answers: is a quiet mechanism burying items the system itself
+ * judged important? A time-based expiry has no relevance input at all — it fires on
+ * age alone — so if band 3/4 items are being aged out, the rule is silencing exactly
+ * the mail Keel exists to surface. aiImportanceScore survives the transition, so this
+ * is measurable from the existing corpus with no labelling.
+ */
+function bandsByCause(items) {
+  const out = {}
+  for (const it of items) {
+    if (it.status !== 'quietly_logged') continue
+    const cause = it.quietedBy
+      ?? (it.autoQuietedReason ? `rule:${it.autoQuietedReason}` : null)
+      ?? (it.expiredBy ? `expiry(legacy):${it.expiredBy}` : null)
+      ?? '(unattributed)'
+    const sc = it.aiImportanceScore ?? 0.5
+    const band = sc >= 0.85 ? 'urgent' : sc >= 0.70 ? 'high' : sc >= 0.40 ? 'med' : 'low'
+    ;(out[cause] ??= { low: 0, med: 0, high: 0, urgent: 0, n: 0 })
+    out[cause][band]++
+    out[cause].n++
+  }
+  return out
+}
+
 const users = await db.collection('users').get()
 const totals = { items: 0, labelled: 0 }
 const bySource = {}
@@ -132,9 +158,33 @@ for (const u of users.docs) {
 
   console.log(`    status     : ${Object.entries(shape.byStatus).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}=${v}`).join('  ')}`)
   console.log(`    score band : ${Object.entries(shape.byBand).sort().map(([k,v])=>`${k}=${v}`).join('  ')}`)
-  console.log(`    quietly_logged=${shape.quietTotal}, by reason:`)
-  for (const [k, v] of Object.entries(shape.byQuietReason).sort((a,b)=>b[1]-a[1]))
-    console.log(`        ${String(v).padStart(5)}  ${k}`)
+  // What was silenced, for the expiry paths — burying a stale `new` is housekeeping;
+  // burying a stale `awaiting_action` is the failure Keel exists to prevent.
+  const fromStatus = {}
+  for (const it of items) {
+    if (it.status !== 'quietly_logged') continue
+    const cause = it.quietedBy
+      ?? (it.autoQuietedReason ? `rule:${it.autoQuietedReason}` : null)
+      ?? (it.expiredBy ? `expiry(legacy):${it.expiredBy}` : null)
+      ?? '(unattributed)'
+    const from = it.quietedFromStatus ?? '(not recorded)'
+    ;(fromStatus[cause] ??= {})[from] = ((fromStatus[cause] ??= {})[from] ?? 0) + 1
+  }
+
+  const bands = bandsByCause(items)
+  console.log(`    quietly_logged=${shape.quietTotal}, by reason (score bands of what was silenced):`)
+  for (const [k, v] of Object.entries(shape.byQuietReason).sort((a,b)=>b[1]-a[1])) {
+    const b = bands[k] ?? { low:0, med:0, high:0, urgent:0, n:0 }
+    const notable = b.high + b.urgent
+    const pct = b.n ? Math.round((notable / b.n) * 100) : 0
+    console.log(`        ${String(v).padStart(5)}  ${k.padEnd(40)}`
+              + `low=${String(b.low).padStart(4)} med=${String(b.med).padStart(4)}`
+              + ` high=${String(b.high).padStart(4)} urgent=${String(b.urgent).padStart(4)}`
+              + `   high+urgent=${pct}%`)
+    const fs = fromStatus[k]
+    if (fs && !(Object.keys(fs).length === 1 && fs['(not recorded)']))
+      console.log(`               from: ${Object.entries(fs).sort((a,b)=>b[1]-a[1]).map(([s,c])=>`${s}=${c}`).join('  ')}`)
+  }
 
   if (MODE === 'build') {
     const sigSnap = await db.collection(`users/${u.id}/signals`).get()

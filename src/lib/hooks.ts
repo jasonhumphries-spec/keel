@@ -63,6 +63,7 @@ export function docToItem(id: string, d: DocumentData): KeelItem {
     aiDetailedSummary: d.aiDetailedSummary ?? '',
     autoQuietedReason: d.autoQuietedReason ?? null,
     quietedBy:         d.quietedBy ?? null,
+    quietedFromStatus: d.quietedFromStatus ?? null,
   }
 }
 

@@ -39,6 +39,7 @@ interface Parsed {
   signals?:           Sig[]
   autoQuietedReason?: string
   quietedBy?:         string
+  quietedFromStatus?: string
   overridesVersion?:  number
 }
 
@@ -357,6 +358,24 @@ describe('quietedBy provenance', () => {
     // not claim a quiet it did not cause.
     const { parsed } = run(mk())
     expect(parsed.quietedBy).toBeUndefined()
+  })
+
+  it.each([
+    ['awaiting_action', 'No further action is required.',   'rule:resolved'],
+    ['awaiting_action', 'Please rate your stay with us.',   'rule:feedback_request'],
+    ['new',             'Get 20% off your next order.',     'rule:promotional'],
+  ])('records what was silenced: %s + %s', (status, summary, cause) => {
+    const { parsed } = run(mk({ status, aiSummary: summary }))
+    expect(parsed.quietedBy).toBe(cause)
+    // quietedFromStatus captures the status the override overrode — without it,
+    // "buried an actionable item" and "tidied an informational one" look identical.
+    expect(parsed.quietedFromStatus).toBe(status)
+    expect(parsed.status).toBe('quietly_logged')
+  })
+
+  it('does not record a from-status when nothing was quieted', () => {
+    const { parsed } = run(mk())
+    expect(parsed.quietedFromStatus).toBeUndefined()
   })
 
   it('every quieting override sets a cause', () => {

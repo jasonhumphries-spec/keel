@@ -288,7 +288,9 @@ export async function runCalendarCheck(
       downgradeBatch.update(db.doc(`users/${uid}/items/${itemId}`), {
         aiImportanceScore:  0.45,
         autoQuietedReason:  'on_calendar',
-        quietedBy:          'rule:on_calendar',
+        // NB: no quietedBy — this is a score downgrade, not a quiet. Status stays
+        // 'new' so the item remains visible. Legacy items carrying
+        // autoQuietedReason='on_calendar' AND status='quietly_logged' predate this.
         updatedAt:          ts,
       })
       downgraded++

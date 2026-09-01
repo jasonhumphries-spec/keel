@@ -555,6 +555,7 @@ export async function POST(req: NextRequest) {
             signals: [], isRecurring: false, status: 'quietly_logged',
             autoQuietedReason: 'sender_ignored' as const,
             quietedBy: 'rule:sender_ignored' as const,
+            quietedFromStatus: null,
             _usage: { inputTokens: 0, outputTokens: 0 },
           }
           await writeFeed(subject, senderName, 'quietly_logged')
@@ -595,6 +596,7 @@ export async function POST(req: NextRequest) {
             aiImportanceScore: classification.aiImportanceScore || 0.1,
             autoQuietedReason: (classification as any).autoQuietedReason ?? null,
             quietedBy:         (classification as any).quietedBy ?? 'ai',
+            quietedFromStatus: (classification as any).quietedFromStatus ?? null,
             isOutbound:   isOutbound ?? false,
             snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
             isRecurring: classification.isRecurring || false,
@@ -646,6 +648,11 @@ export async function POST(req: NextRequest) {
           quietedBy: effectiveStatus === 'quietly_logged'
             ? ((classification as any).quietedBy ?? 'ai')
             : null,
+          // What was silenced: the status this item actually held, falling back to
+          // the status the override overrode when the item is newly quiet.
+          quietedFromStatus: effectiveStatus === 'quietly_logged'
+            ? (existingStatus ?? (classification as any).quietedFromStatus ?? null)
+            : null,
           // categoryId is intentionally NOT updated here — never overwrite existing category assignment
           // Repair threadId if missing (fixes future isExisting detection)
           ...(!processedThreadIds.has(threadId) ? { threadId } : {}),
@@ -672,6 +679,9 @@ export async function POST(req: NextRequest) {
           autoQuietedReason: classification.autoQuietedReason ?? null,
           quietedBy: effectiveStatus === 'quietly_logged'
             ? ((classification as any).quietedBy ?? 'ai')
+            : null,
+          quietedFromStatus: effectiveStatus === 'quietly_logged'
+            ? ((classification as any).quietedFromStatus ?? null)
             : null,
           isOutbound:        isOutbound ?? false,
           snoozedUntil:      null, linkedOutboundId: null, linkedItemId: null,
