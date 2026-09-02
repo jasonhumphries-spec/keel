@@ -58,6 +58,10 @@ export interface SenderPrior {
 
   lastInboundAt:  number | null
   lastRepliedAt:  number | null
+
+  /** The domain rate this sender was shrunk toward. Recorded so a score can be
+   *  explained rather than merely asserted — same discipline as quiet provenance. */
+  priorMean: number
 }
 
 export interface DomainPrior {
@@ -66,11 +70,17 @@ export interface DomainPrior {
   repliedThreads:    number
   smoothedReplyRate: number
   senders:           number
+  /** The user rate this domain was shrunk toward. */
+  priorMean:         number
 }
 
 export interface ReplyHistory {
   senders: SenderPrior[]
   domains: DomainPrior[]
+  /** Parameters in force, and the user rate fitted from this data. Stored with the
+   *  priors so a later run can tell whether a change came from new evidence or
+   *  from retuning. */
+  params: PriorParams & { fittedUserRate: number }
   stats: {
     threadsSeen:      number
     threadsWithOwner: number
@@ -81,20 +91,76 @@ export interface ReplyHistory {
   }
 }
 
-// ── Smoothing ──────────────────────────────────────────────────────────────
+// ── Hierarchical smoothing ─────────────────────────────────────────────────
 
 /**
- * Beta prior: mean 0.25 with weight 4 (a=1, b=3).
+ * Priors are HIERARCHICAL and per-user: sender ← domain ← user ← global.
  *
- * Chosen so the first interaction moves a sender meaningfully but not absurdly:
- * 1 inbound / 1 replied → 0.40, 5/5 → 0.67, 20/20 → 0.875. A sender needs a
- * sustained pattern before it reads as "always answered".
+ * The first version used one global beta prior with mean 0.25. Measurement killed
+ * it: the real base rate on a personal account is ~2.4% (333 replies across 13,916
+ * inbound threads over 8 months), so a 0.25 prior was an order of magnitude too
+ * high — and wrong in the worst direction, inflating every unknown sender for a
+ * system whose main job is suppressing noise.
+ *
+ * A single per-user rate is still too crude, because the population is bimodal,
+ * not unimodal. Roughly 1,250 bulk senders sit near 0% and ~150 human
+ * correspondents sit at 50–100%. A beta fitted to that mixture describes neither,
+ * and applying the 2.4% mixture mean to a new HUMAN correspondent under-scores
+ * them badly.
+ *
+ * Hence the chain. A sender is shrunk toward its DOMAIN, the domain toward the
+ * USER's own rate, and the user toward a global default until they have enough
+ * volume to speak for themselves. A first email from an unseen address at
+ * dorsethouseschool.com (22 replies / 164 threads) starts near that domain's rate,
+ * while an unseen linkedin.com address starts near zero — which is the whole point
+ * of a cold-start prior.
  */
-const PRIOR_A = 1
-const PRIOR_B = 3
+export interface PriorParams {
+  /** Fallback base rate for a user with too little history to estimate their own. */
+  globalBaseRate: number
+  /** Inbound threads before a user's own rate outweighs the global default. */
+  userWeight: number
+  /** Inbound threads before a domain's rate outweighs the user's. */
+  domainWeight: number
+  /** Inbound threads before a sender's rate outweighs its domain's. */
+  senderWeight: number
+}
 
-export function smooth(replied: number, inbound: number): number {
-  return (replied + PRIOR_A) / (inbound + PRIOR_A + PRIOR_B)
+/**
+ * globalBaseRate 0.03 is set from observation (2.4% measured, rounded up so a
+ * brand-new user is not started below any plausible real rate).
+ *
+ * The weights are policy, not estimates — they encode how much evidence is
+ * required before a level is trusted over its parent. userWeight is large because
+ * a user with only 200 threads genuinely cannot characterise themselves;
+ * senderWeight is small because a handful of replies from one person is
+ * meaningful information about that person.
+ */
+export const DEFAULT_PRIOR_PARAMS: PriorParams = {
+  globalBaseRate: 0.03,
+  userWeight:     200,
+  domainWeight:   10,
+  senderWeight:   4,
+}
+
+/**
+ * Beta-binomial posterior mean with pseudo-counts drawn from a parent prior.
+ * `weight` is the strength of that prior in units of observations.
+ */
+export function shrink(successes: number, trials: number, priorMean: number, weight: number): number {
+  return (successes + priorMean * weight) / (trials + weight)
+}
+
+/**
+ * Flat smoothing against the global default.
+ * Retained for callers with no hierarchy to hand; prefer the hierarchy.
+ */
+export function smooth(
+  replied: number,
+  inbound: number,
+  p: PriorParams = DEFAULT_PRIOR_PARAMS,
+): number {
+  return shrink(replied, inbound, p.globalBaseRate, p.userWeight / 50)
 }
 
 function median(xs: number[]): number | null {
@@ -131,6 +197,7 @@ const FAST_REPLY_MS = 4 * 60 * 60 * 1000
 export function aggregateReplyHistory(
   threads:     ThreadMeta[],
   ownerEmails: string[],
+  params:      PriorParams = DEFAULT_PRIOR_PARAMS,
 ): ReplyHistory {
   const owner = new Set(ownerEmails.map(e => e.toLowerCase().trim()).filter(Boolean))
 
@@ -172,41 +239,66 @@ export function aggregateReplyHistory(
     }
   }
 
-  const senders: SenderPrior[] = [...bySender.entries()].map(([senderEmail, a]) => ({
-    senderEmail,
-    senderDomain:       domainOf(senderEmail),
-    inboundThreads:     a.inbound,
-    repliedThreads:     a.replied,
-    replyRate:          a.inbound ? a.replied / a.inbound : 0,
-    smoothedReplyRate:  smooth(a.replied, a.inbound),
-    medianLatencyHours: median(a.latencies),
-    fastReplies:        a.fast,
-    lastInboundAt:      a.lastInboundAt,
-    lastRepliedAt:      a.lastRepliedAt,
-  })).sort((x, y) => y.inboundThreads - x.inboundThreads)
+  // Raw counts first. The hierarchy is then applied top-down: the user's own rate
+  // is fitted, domains are shrunk toward it, and senders toward their domain.
+  const raw = [...bySender.entries()].map(([senderEmail, a]) => ({
+    senderEmail, senderDomain: domainOf(senderEmail), a,
+  }))
 
+  const inboundThreads = raw.reduce((n, r) => n + r.a.inbound, 0)
+  const repliedThreads = raw.reduce((n, r) => n + r.a.replied, 0)
+
+  // LEVEL 1 — the user, shrunk toward the global default. With a full year of
+  // history this barely moves; with 50 threads it stays near the default, which is
+  // the point: a new user cannot yet characterise themselves.
+  const fittedUserRate = shrink(repliedThreads, inboundThreads, params.globalBaseRate, params.userWeight)
+
+  // LEVEL 2 — domains, shrunk toward the user's rate.
   const byDomain = new Map<string, { inbound: number; replied: number; senders: Set<string> }>()
-  for (const s of senders) {
-    let d = byDomain.get(s.senderDomain)
-    if (!d) { d = { inbound: 0, replied: 0, senders: new Set() }; byDomain.set(s.senderDomain, d) }
-    d.inbound += s.inboundThreads
-    d.replied += s.repliedThreads
-    d.senders.add(s.senderEmail)
+  for (const r of raw) {
+    let d = byDomain.get(r.senderDomain)
+    if (!d) { d = { inbound: 0, replied: 0, senders: new Set() }; byDomain.set(r.senderDomain, d) }
+    d.inbound += r.a.inbound
+    d.replied += r.a.replied
+    d.senders.add(r.senderEmail)
   }
-  const domains: DomainPrior[] = [...byDomain.entries()].map(([domain, d]) => ({
-    domain,
-    inboundThreads:    d.inbound,
-    repliedThreads:    d.replied,
-    smoothedReplyRate: smooth(d.replied, d.inbound),
-    senders:           d.senders.size,
-  })).sort((x, y) => y.inboundThreads - x.inboundThreads)
+  const domainRate = new Map<string, number>()
+  const domains: DomainPrior[] = [...byDomain.entries()].map(([domain, d]) => {
+    const rate = shrink(d.replied, d.inbound, fittedUserRate, params.domainWeight)
+    domainRate.set(domain, rate)
+    return {
+      domain,
+      inboundThreads:    d.inbound,
+      repliedThreads:    d.replied,
+      smoothedReplyRate: rate,
+      senders:           d.senders.size,
+      priorMean:         fittedUserRate,
+    }
+  }).sort((x, y) => y.inboundThreads - x.inboundThreads)
 
-  const inboundThreads = senders.reduce((n, s) => n + s.inboundThreads, 0)
-  const repliedThreads = senders.reduce((n, s) => n + s.repliedThreads, 0)
+  // LEVEL 3 — senders, shrunk toward their domain. An unseen address at a domain
+  // the user answers starts high; one at a domain they never answer starts low.
+  const senders: SenderPrior[] = raw.map(({ senderEmail, senderDomain, a }) => {
+    const prior = domainRate.get(senderDomain) ?? fittedUserRate
+    return {
+      senderEmail,
+      senderDomain,
+      inboundThreads:     a.inbound,
+      repliedThreads:     a.replied,
+      replyRate:          a.inbound ? a.replied / a.inbound : 0,
+      smoothedReplyRate:  shrink(a.replied, a.inbound, prior, params.senderWeight),
+      medianLatencyHours: median(a.latencies),
+      fastReplies:        a.fast,
+      lastInboundAt:      a.lastInboundAt,
+      lastRepliedAt:      a.lastRepliedAt,
+      priorMean:          prior,
+    }
+  }).sort((x, y) => y.inboundThreads - x.inboundThreads)
 
   return {
     senders,
     domains,
+    params: { ...params, fittedUserRate },
     stats: {
       threadsSeen:      threads.length,
       threadsWithOwner,
@@ -221,9 +313,12 @@ export function aggregateReplyHistory(
 /**
  * Merge a freshly-computed batch into stored counts.
  *
- * The backfill is cursor-resumable across invocations, so priors accumulate over
- * several runs. Counts add; derived values are recomputed from the totals rather
- * than averaged, which would drift.
+ * The backfill is cursor-resumable, so priors accumulate over several runs.
+ * Counts are the durable thing and simply add. `smoothedReplyRate` and
+ * `priorMean` cannot be merged pairwise — they depend on the whole hierarchy,
+ * which only exists once every batch has been seen — so the merged value here is
+ * provisional and is overwritten by a recompute over the full totals. Store the
+ * counts; treat the rates as derived.
  */
 export function mergeSenderPriors(a: SenderPrior | null, b: SenderPrior): SenderPrior {
   if (!a) return b
@@ -236,7 +331,9 @@ export function mergeSenderPriors(a: SenderPrior | null, b: SenderPrior): Sender
     inboundThreads:     inbound,
     repliedThreads:     replied,
     replyRate:          inbound ? replied / inbound : 0,
-    smoothedReplyRate:  smooth(replied, inbound),
+    // Provisional: recomputed hierarchically once all batches are in.
+    smoothedReplyRate:  shrink(replied, inbound, b.priorMean, DEFAULT_PRIOR_PARAMS.senderWeight),
+    priorMean:          b.priorMean,
     // Approximate: the true median needs every latency, which is not worth storing.
     // Weighted by how many replies each side contributes.
     medianLatencyHours: lat.length === 0 ? null

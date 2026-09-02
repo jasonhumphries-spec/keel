@@ -9,7 +9,8 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  aggregateReplyHistory, smooth, mergeSenderPriors, parseAddress, domainOf,
+  aggregateReplyHistory, smooth, shrink, mergeSenderPriors, parseAddress, domainOf,
+  DEFAULT_PRIOR_PARAMS,
   type ThreadMeta,
 } from '@/lib/server/replyHistory'
 
@@ -122,26 +123,123 @@ describe('latency', () => {
   })
 })
 
-describe('smoothing', () => {
-  it('stops a single interaction from reading as certainty', () => {
-    expect(smooth(1, 1)).toBeCloseTo(0.40, 2)
-    expect(smooth(0, 1)).toBeCloseTo(0.20, 2)
+describe('shrinkage', () => {
+  it('a single interaction does not read as certainty', () => {
+    // Toward a domain that replies half the time, one answered email lands
+    // between the domain rate and 1.0 — not at either.
+    const v = shrink(1, 1, 0.5, 4)
+    expect(v).toBeGreaterThan(0.5)
+    expect(v).toBeLessThan(0.7)
   })
 
-  it('converges toward the raw rate as evidence accumulates', () => {
-    expect(smooth(5, 5)).toBeCloseTo(0.67, 2)
-    expect(smooth(20, 20)).toBeCloseTo(0.875, 3)
-    expect(smooth(100, 100)).toBeGreaterThan(0.97)
+  it('converges on the observed rate as evidence accumulates', () => {
+    expect(shrink(100, 100, 0.03, 4)).toBeGreaterThan(0.96)
+    expect(shrink(0, 500, 0.5, 4)).toBeLessThan(0.01)
   })
 
   it('ranks a sustained replier above a one-off', () => {
-    const oneOff    = smooth(1, 1)
-    const sustained = smooth(9, 10)
-    expect(sustained).toBeGreaterThan(oneOff)
+    expect(shrink(9, 10, 0.03, 4)).toBeGreaterThan(shrink(1, 1, 0.03, 4))
   })
 
-  it('a never-answered bulk sender lands near the floor', () => {
-    expect(smooth(0, 50)).toBeLessThan(0.02)
+  it('with no evidence it returns the prior exactly', () => {
+    expect(shrink(0, 0, 0.14, 4)).toBeCloseTo(0.14, 10)
+  })
+
+  it('flat smooth() uses the measured global base rate, not the old 0.25', () => {
+    // The original prior was 0.25 against a measured base rate of ~2.4% — an
+    // order of magnitude too high, inflating every unknown sender.
+    expect(DEFAULT_PRIOR_PARAMS.globalBaseRate).toBeLessThan(0.05)
+    expect(smooth(0, 1)).toBeLessThan(0.05)
+  })
+})
+
+describe('hierarchy: sender <- domain <- user <- global', () => {
+  /** One replying domain, one dead domain, plus bulk volume to set the user rate. */
+  const corpus = (): ThreadMeta[] => {
+    const t: ThreadMeta[] = []
+    for (let i = 0; i < 20; i++)                       // school replies often
+      t.push(th(`s${i}`, [[`staff${i % 4}@school.org`, 0], ['jason.humphries@gmail.com', 2]]))
+    for (let i = 0; i < 200; i++)                      // newsletters never answered
+      t.push(th(`n${i}`, [[`bulk${i % 5}@spam.com`, 0]]))
+    return t
+  }
+
+  it('fits the user rate from their own data', () => {
+    const r = aggregateReplyHistory(corpus(), OWNER)
+    // 20 replied of 220 inbound ≈ 9%, shrunk toward the 3% global default.
+    expect(r.params.fittedUserRate).toBeGreaterThan(0.03)
+    expect(r.params.fittedUserRate).toBeLessThan(0.09)
+  })
+
+  it('a replying domain sits far above a dead one', () => {
+    const r = aggregateReplyHistory(corpus(), OWNER)
+    const school = r.domains.find(d => d.domain === 'school.org')!
+    const spam   = r.domains.find(d => d.domain === 'spam.com')!
+    expect(school.smoothedReplyRate).toBeGreaterThan(0.5)
+    expect(spam.smoothedReplyRate).toBeLessThan(0.02)
+  })
+
+  it('an UNSEEN address inherits its domain — the whole point of a cold-start prior', () => {
+    const base = corpus()
+    // One inbound, never answered, at each domain. Identical evidence; the only
+    // difference is which domain they belong to.
+    base.push(th('new1', [['newperson@school.org', 0]]))
+    base.push(th('new2', [['newbulk@spam.com', 0]]))
+    const r = aggregateReplyHistory(base, OWNER)
+    const atSchool = r.senders.find(s => s.senderEmail === 'newperson@school.org')!
+    const atSpam   = r.senders.find(s => s.senderEmail === 'newbulk@spam.com')!
+    expect(atSchool.smoothedReplyRate).toBeGreaterThan(atSpam.smoothedReplyRate * 5)
+    expect(atSchool.priorMean).toBeGreaterThan(atSpam.priorMean)
+  })
+
+  it('records the prior each level was shrunk toward, so a score is explainable', () => {
+    const r = aggregateReplyHistory(corpus(), OWNER)
+    for (const d of r.domains) expect(d.priorMean).toBeCloseTo(r.params.fittedUserRate, 10)
+    for (const s of r.senders) {
+      const dom = r.domains.find(d => d.domain === s.senderDomain)!
+      expect(s.priorMean).toBeCloseTo(dom.smoothedReplyRate, 10)
+    }
+  })
+
+  it('a thin user stays near the global default rather than over-fitting', () => {
+    // Three threads, all answered. A flat estimator would call this a 100% user.
+    const r = aggregateReplyHistory([
+      th('a', [['x@y.com', 0], ['jason.humphries@gmail.com', 1]]),
+      th('b', [['x@y.com', 5], ['jason.humphries@gmail.com', 6]]),
+      th('c', [['z@y.com', 0], ['jason.humphries@gmail.com', 1]]),
+    ], OWNER)
+    expect(r.params.fittedUserRate).toBeLessThan(0.08)
+  })
+
+  it('a domain with little history inherits the USER rate, not the global default', () => {
+    // Caught by mutation testing: the earlier corpus had a fitted user rate close
+    // to the 3% global default, so shrinking domains to global instead of to the
+    // user was indistinguishable. A user who replies to most things must pull
+    // their thin domains UP with them — that is the whole purpose of the level.
+    const chatty: ThreadMeta[] = []
+    for (let i = 0; i < 400; i++)
+      chatty.push(th(`c${i}`, [[`p${i % 40}@friends.com`, 0], ['jason.humphries@gmail.com', 1]]))
+    chatty.push(th('thin', [['someone@newdomain.com', 0]]))   // 1 inbound, unanswered
+
+    const r = aggregateReplyHistory(chatty, OWNER)
+    expect(r.params.fittedUserRate).toBeGreaterThan(0.5)
+
+    const thin = r.domains.find(d => d.domain === 'newdomain.com')!
+    // Shrunk toward the user's own high rate, so far above the 3% global default.
+    expect(thin.smoothedReplyRate).toBeGreaterThan(0.4)
+    expect(thin.priorMean).toBeCloseTo(r.params.fittedUserRate, 10)
+  })
+
+  it('parameters are reported back with the result', () => {
+    const r = aggregateReplyHistory(corpus(), OWNER, DEFAULT_PRIOR_PARAMS)
+    expect(r.params.globalBaseRate).toBe(DEFAULT_PRIOR_PARAMS.globalBaseRate)
+    expect(r.params.senderWeight).toBe(DEFAULT_PRIOR_PARAMS.senderWeight)
+  })
+
+  it('accepts overridden parameters', () => {
+    const r = aggregateReplyHistory(corpus(), OWNER,
+      { ...DEFAULT_PRIOR_PARAMS, globalBaseRate: 0.5, userWeight: 100000 })
+    expect(r.params.fittedUserRate).toBeGreaterThan(0.45)
   })
 })
 
@@ -169,8 +267,9 @@ describe('merging across resumable runs', () => {
     expect(m.inboundThreads).toBe(2)
     expect(m.repliedThreads).toBe(1)
     expect(m.replyRate).toBe(0.5)
-    // Recomputed from totals, not averaged from the two smoothed values.
-    expect(m.smoothedReplyRate).toBeCloseTo(smooth(1, 2), 6)
+    // Counts are the durable thing. The rate is provisional — it depends on the
+    // whole hierarchy and is recomputed once every batch is in.
+    expect(m.smoothedReplyRate).toBeCloseTo(shrink(1, 2, m.priorMean, DEFAULT_PRIOR_PARAMS.senderWeight), 6)
   })
 
   it('merging into nothing yields the new value', () => {
