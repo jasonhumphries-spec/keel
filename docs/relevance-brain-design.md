@@ -126,7 +126,8 @@ Actions already available and currently discarded:
 A weekly job reads the evidence log and updates two representations:
 
 **Structured priors** — numeric, Bayesian-smoothed against a prior so a single dismissal
-cannot tank a sender. Updated continuously, no LLM, cheap.
+cannot tank a sender. Updated continuously, no LLM, cheap. The smoothing is
+**hierarchical and per-user** — `sender ← domain ← user ← global` — see §5.1.
 
 **Narrative profile** — markdown, LLM-generated, injected into L1/L3 prompts:
 
@@ -190,6 +191,53 @@ after tuning.
 body decoding, no LLM. Roughly 5,000 sent messages ≈ 25,000 quota units against a
 250/user/second budget. Build it cursor-resumable across invocations and platform
 timeouts stop mattering.
+
+### 5.1 Prior parameters — measured, not chosen (2026-09-02)
+
+The first implementation used one global beta prior with mean 0.25, picked before any
+data existed. A 12-month walk over the personal account measured the real base rate at
+**2.4%** — 333 replies across 13,916 inbound threads, 8 clean monthly slices, zero
+dropped threads. The chosen prior was **~10× too high**, and wrong in the worst
+direction: it inflated every unknown sender, for a system whose main job is suppressing
+noise.
+
+A single per-user rate is still too crude. The sender population is **bimodal**: roughly
+1,250 bulk senders near 0% and ~150 human correspondents at 50–100%. A beta fitted to
+that mixture describes neither, and applying the 2.4% mixture mean to a new human
+correspondent under-scores them badly.
+
+So each level is shrunk toward its parent. What that does to real senders:
+
+| Unseen address at | Domain rate | New prior | Old flat prior |
+|---|---|---|---|
+| dorsethouseschool.com | 0.128 (22/164) | **0.102** | 0.200 |
+| bedales.org.uk | 0.172 (2/3) | **0.138** | 0.200 |
+| linkedin.com | 0.0002 (0/960) | **0.0002** | 0.200 |
+| amazon.co.uk | 0.0004 (0/588) | **0.0003** | 0.200 |
+
+A first email from an unseen school address starts ~500× above one from an unseen
+LinkedIn address, on identical evidence. Under the flat prior both started at 0.200.
+That discrimination on day one, before any feedback exists, is the entire point of a
+cold-start prior.
+
+**Parameters.** `globalBaseRate` is an estimate (0.03, from observation). The weights
+are policy — how much evidence before a level is trusted over its parent: `userWeight`
+200 (a user with 200 threads cannot yet characterise themselves), `domainWeight` 10,
+`senderWeight` 4. Each level records the `priorMean` it was shrunk toward, so a score
+can be explained rather than asserted — the same discipline as quiet provenance.
+
+**Counts are durable; rates are derived.** `smoothedReplyRate` depends on the whole
+hierarchy, so it cannot be merged pairwise across resumable runs. Store the counts and
+recompute.
+
+**Still open:** `FAST_REPLY_MS` is a hard-coded 4 hours. It should be a percentile of
+the user's own latency distribution — close correspondents on the personal account sit
+at 0.1–2h, where another user's "fast" might be a day.
+
+**Measurement caveat.** 8 of 12 monthly slices completed; the local dev server died
+during the other four. Monthly reply rate ranged 0.35%–3.93%, so the base rate may
+shift with the remaining months. It will not shift by the order of magnitude that would
+rehabilitate 0.25.
 
 ---
 
