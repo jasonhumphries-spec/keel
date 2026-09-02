@@ -24,7 +24,16 @@ import { Firestore, Timestamp } from 'firebase-admin/firestore'
  */
 export async function getValidAccessToken(
   db:  Firestore,
-  uid: string
+  uid: string,
+  /**
+   * Skip the "still valid" check and mint a new token unconditionally.
+   *
+   * The cached expiry is a claim, not a guarantee: a long-running walk can be
+   * holding a token Google has already rejected, and the stored tokenExpiresAt
+   * will still look fine. Callers that see a 401 pass force to recover instead
+   * of dropping work. Default false — the four existing callers are unaffected.
+   */
+  force = false,
 ): Promise<string | null> {
   const accountSnap = await db.doc(`users/${uid}/accounts/account_primary`).get()
   if (!accountSnap.exists) {
@@ -38,7 +47,7 @@ export async function getValidAccessToken(
   const expiresAt    = (data.tokenExpiresAt as Timestamp | undefined)?.toMillis() ?? 0
 
   // Token is valid for at least 2 more minutes — return as-is
-  if (accessToken && Date.now() < expiresAt - 120_000) {
+  if (!force && accessToken && Date.now() < expiresAt - 120_000) {
     return accessToken
   }
 
