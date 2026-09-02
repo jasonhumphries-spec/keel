@@ -1,7 +1,7 @@
 # Design Document — The Relevance Brain
 ## Learning what matters to each user
 
-**Status:** Stage 0 complete, Stage 1 in progress (2026-09-01). Stages 2–4 proposed.
+**Status:** Stage 0 complete; Stage 1 in progress; Stage 3 backfill built (2026-09-02). Stages 2 & 4 proposed.
 **Last Updated:** 2026-09-01
 **Owner:** Jason Humphries
 **Related:** [PRD.md](PRD.md) §Vision, [architecture.txt](architecture.txt) §Scan Architecture
@@ -333,7 +333,7 @@ which Keel reads and writes. One-directional, separate instance. Not now.
 | **0** ✅ | Evidence log (L4) — *shipped* | Changes no behaviour, costs nothing, but **you cannot learn from data you never recorded**. Every week of delay is a week of labels lost. A few lines at each existing `updateDoc` site in `ItemExpandedPanel.tsx` and `CategoryGrid.tsx`. |
 | **1** ◐ | Golden set + eval harness + vitest — *vitest + override suite done; golden set next* | Nothing after this is safe to ship without it. Run as a local script in `src/scripts/` — it is a dev tool, not a product feature. |
 | **2** | Split the score (L1/L2) | Makes relevance separable, shrinks the prompt, converts overrides into tested functions. |
-| **3** | Historical backfill → priors (L3) | Bootstraps relevance from data already in Gmail. |
+| **3** ◐ | Historical backfill → priors (L3) — *built, not yet run* | Bootstraps relevance from data already in Gmail. |
 | **4** | Narrative profile + reflection (L5) | The slow loop. Last, because it is the only part that can regress silently. |
 
 ### 9.1 Stage 0 as built

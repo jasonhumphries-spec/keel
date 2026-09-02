@@ -36,3 +36,6 @@ next-env.d.ts
 .env.local*
 *.bak
 *~
+
+# Frozen eval snapshots — contain real mail content, never commit
+snapshots/

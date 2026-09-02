@@ -22,7 +22,14 @@
 import { readFileSync } from 'node:fs'
 import admin from 'firebase-admin'
 
-const MODE = process.argv.includes('--build') ? 'build' : 'recon'
+const UID_ARG = (() => {
+  const i = process.argv.indexOf('--uid')
+  return i !== -1 ? process.argv[i + 1] : null
+})()
+
+const MODE = process.argv.includes('--build')  ? 'build'
+           : process.argv.includes('--whoami') ? 'whoami'
+           : 'recon'
 
 // Load .env.local into process.env without printing any values.
 for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
@@ -58,6 +65,18 @@ function label(it) {
     return { verdict: 'was_actionable', source: 'marked_paid', strength: 'medium' }
   if (it.status === 'done')
     return { verdict: 'was_actionable', source: 'marked_done', strength: 'weak' }
+
+  // The labelling target. An item the system itself scored High or Urgent, then
+  // silenced on an age threshold rather than any judgement about relevance. 64% of
+  // all High items and 37% of Urgent went this way. Whether that was right is
+  // exactly what we do not know — hence needs_review, not a verdict.
+  const band = (it.aiImportanceScore ?? 0.5) >= 0.85 ? 'urgent'
+             : (it.aiImportanceScore ?? 0.5) >= 0.70 ? 'high' : null
+  const expired = it.quietedBy?.startsWith('expiry:') || !!it.expiredBy
+  if (it.status === 'quietly_logged' && band && expired)
+    return { verdict: 'needs_review', source: 'buried_by_expiry', strength: 'unlabelled',
+             band, expiredBy: it.expiredBy ?? it.quietedBy ?? null }
+
   return null
 }
 
@@ -124,7 +143,44 @@ function bandsByCause(items) {
   return out
 }
 
-const users = await db.collection('users').get()
+const allUsers = await db.collection('users').get()
+const users = { docs: UID_ARG ? allUsers.docs.filter(d => d.id === UID_ARG) : allUsers.docs }
+if (UID_ARG && users.docs.length === 0) {
+  console.error(`no such uid: ${UID_ARG}`); process.exit(1)
+}
+if (UID_ARG) console.log(`scoped to uid ${UID_ARG}`)
+
+/** --whoami: map each uid to the account behind it. Identity only, no mail content. */
+if (MODE === 'whoami') {
+  for (const u of allUsers.docs) {
+    const root = u.data() ?? {}
+    let auth = {}
+    try {
+      const rec = await admin.auth().getUser(u.id)
+      auth = { email: rec.email, name: rec.displayName, created: rec.metadata?.creationTime,
+               lastSignIn: rec.metadata?.lastSignInTime, providers: rec.providerData?.map(p => p.providerId) }
+    } catch (e) { auth = { error: e.code ?? String(e) } }
+
+    let acct = {}
+    try {
+      const a = await db.doc(`users/${u.id}/accounts/account_primary`).get()
+      if (a.exists) acct = { accountEmail: a.data()?.emailAddress ?? a.data()?.email ?? null }
+    } catch { /* ignore */ }
+
+    const items = await db.collection(`users/${u.id}/items`).count().get()
+    console.log(`\n${u.id}`)
+    console.log(`  auth email   : ${auth.email ?? '(none)'}${auth.error ? `  [auth lookup failed: ${auth.error}]` : ''}`)
+    console.log(`  display name : ${auth.name ?? '(none)'}`)
+    console.log(`  root doc     : email=${root.email ?? '(none)'}  scanDaysBack=${root.scanDaysBack ?? '-'}`)
+    console.log(`  gmail account: ${acct.accountEmail ?? '(none)'}`)
+    console.log(`  created      : ${auth.created ?? '?'}`)
+    console.log(`  last sign-in : ${auth.lastSignIn ?? '?'}`)
+    console.log(`  providers    : ${(auth.providers ?? []).join(', ') || '-'}`)
+    console.log(`  items        : ${items.data().count}`)
+  }
+  process.exit(0)
+}
+
 const totals = { items: 0, labelled: 0 }
 const bySource = {}
 
@@ -222,6 +278,31 @@ for (const u of users.docs) {
       written++
     }
     console.log(`    WROTE ${written} entries to users/${u.id}/evals/goldenSet/entries`)
+
+    // The Firestore copy lives under users/{uid} and would be destroyed by an
+    // account rebuild — the exact event this snapshot exists to survive. Write a
+    // durable local copy too. snapshots/ is gitignored: this is real mail content.
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    mkdirSync('snapshots', { recursive: true })
+    const stamp = new Date().toISOString().slice(0, 10)
+    const file  = `snapshots/goldenset-${u.id.slice(0, 8)}-${stamp}.json`
+    writeFileSync(file, JSON.stringify({
+      uid: u.id, capturedAt: new Date().toISOString(),
+      corpusStats: { items: items.length, ...shape },
+      entries: labelled.map(({ it, lb }) => ({ itemId: it.itemId, label: lb, frozen: {
+        senderEmail: it.senderEmail ?? null, subject: it.subject ?? null,
+        receivedAt: it.receivedAt?.toDate?.()?.toISOString?.() ?? null,
+        aiTitle: it.aiTitle ?? null, aiSummary: it.aiSummary ?? null,
+        aiDetailedSummary: it.aiDetailedSummary ?? null,
+        status: it.status ?? null, aiImportanceScore: it.aiImportanceScore ?? null,
+        categoryName: it.categoryName ?? null,
+        autoQuietedReason: it.autoQuietedReason ?? null, expiredBy: it.expiredBy ?? null,
+        quietedBy: it.quietedBy ?? null, quietedFromStatus: it.quietedFromStatus ?? null,
+        overridesVersion: it.overridesVersion ?? null,
+        signals: sigsByItem[it.itemId] ?? [],
+      } })),
+    }, null, 2))
+    console.log(`    WROTE ${file}`)
   }
 }
 
