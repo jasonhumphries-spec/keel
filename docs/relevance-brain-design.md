@@ -979,3 +979,61 @@ can open, and onboarding's lives in `ScanStep`, which has not rendered when
 `CategoriesStep` needs it. Both rings were therefore static. A spinner that does not spin
 is worse than no spinner: it reads as a hang, which is precisely the impression the busy
 state exists to prevent. The keyframes are now defined where they are used.
+
+### 12.3 Mutually exclusive suggestions
+
+A live run proposed both "Hobbies & Interests" and "Art & Culture", each claiming
+3D-printing senders. Nothing downstream noticed. Two categories fighting over the same
+mail is worse than one category fewer: whichever wins, the user's filing of that mail is
+arbitrary, and it will feel arbitrary every time they look at it.
+
+Two independent structural tests, because they catch different failures:
+
+- **Shared evidence.** Suggestions that cite the same domains will literally compete for
+  the same senders. Rejected on two shared domains, or on half of the narrower
+  suggestion's basis — the second rule is what catches a narrow category ("Amazon") being
+  swallowed by a broad one ("Shopping").
+- **Shared name word.** Near-synonyms like "Food & Drink" and "Food & Groceries" cite
+  different domains but mean the same thing, so the evidence test cannot see them.
+  Filler ("and", "the", "other", "general") is excluded or every pair would clash.
+
+The prompt also now states the categories must not overlap and that no domain may be
+cited twice. That turned out to matter more than the structural filter: on the real
+account, output went from five varying suggestions with an overlapping pair to **four,
+identical across three consecutive runs, with no overlap**. Both are kept — the prompt
+instruction is not a guarantee, and the filter is what makes it one.
+
+Mutation testing was again worth it. The first two evidence tests were redundant: each
+covered what the other did, so neither rule was actually isolated and both survived being
+deleted. Rewritten so only one rule can fire in each case.
+
+## 13. Backlog
+
+### 13.1 Move an item between action sections, and learn from it
+
+Today an item's **section** — "These look urgent", "Needs your action", "Waiting for a
+reply" — is derived from its `status`, which only the classifier sets. The category can be
+changed by hand; the section cannot. So an item the classifier put in "Needs your action"
+that is really waiting on someone else has no correction available, and the user is left
+looking at something they know is filed wrong.
+
+What is needed:
+
+1. A control in the expanded item panel to move an item between sections — writing
+   `status` directly (`awaiting_action` / `awaiting_reply` / `new`), the way
+   `recategorised` already writes `categoryId`.
+2. A new `FeedbackAction`, `status_changed`, carrying the previous and new status.
+   `src/lib/feedbackLog.ts` has no such action today: the closest are `recategorised` and
+   `priority_raised` / `priority_lowered`, none of which capture this.
+
+**Why it is worth logging rather than just fixing the item.** This is one of the sharpest
+corrections available, on a par with `restored_from_quiet`. "You said the ball was with
+me; it is with them" is a direct statement that the extraction got `ballWith` wrong — the
+single field that decides the section, and one the split-scoring path derives explicitly
+(see `statusFor` in `src/lib/server/splitScoring.ts`). Collected, these say which senders
+and which phrasings the classifier consistently misreads, which is exactly the input
+Stage 4 reflection is built to consume.
+
+Note also that these corrections would be the first evidence able to falsify the split
+scorer's `ballWith` judgement against real user intent, rather than against a labelled set
+built by inspection.

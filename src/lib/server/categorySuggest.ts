@@ -108,6 +108,8 @@ List EVERY category the evidence clearly supports, up to a maximum of 5. Do not 
 
 Judge each candidate on whether a reasonable person would want that mail filed separately, not on whether it is the most interesting thing in the summary.
 
+The categories must not overlap. Each sender in the summary should belong in at most one of your suggestions — if two candidates would compete for the same mail, merge them or drop the weaker one. Do not cite the same domain under two different categories.
+
 Return ONLY a JSON array, no prose:
 [{"name": "Short Name", "description": "One line describing what belongs here.", "evidence": "why, citing domains and counts"}]`
 }
@@ -161,7 +163,61 @@ export function parseCategorySuggestions(text: string, existing: string[] = []):
     out.push({ name, description, evidence })
     if (out.length >= 5) break
   }
-  return out
+  return dedupeSuggestions(out)
+}
+
+/**
+ * Domain-like tokens cited in an evidence string, e.g. "amazon.co.uk (42), etsy (3)".
+ *
+ * Used to detect two suggestions competing for the same mail. The evidence field is
+ * generated prose, so this is a heuristic — but the domains in it are copied from the
+ * summary rather than invented, which makes them reliable enough to compare.
+ */
+export function evidenceDomains(evidence: string): Set<string> {
+  const found = (evidence ?? '').toLowerCase().match(/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+/g) ?? []
+  return new Set(found)
+}
+
+const NAME_STOP = new Set(['and', 'the', 'for', 'with', 'other', 'general', 'misc', 'stuff'])
+
+function nameWords(name: string): Set<string> {
+  return new Set(
+    (name ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length >= 4 && !NAME_STOP.has(w)),
+  )
+}
+
+/**
+ * Drop suggestions that compete with one already accepted.
+ *
+ * The model is asked not to overlap, and mostly complies — but a live run produced
+ * "Hobbies & Interests" and "Art & Culture" both claiming 3D-printing senders, and
+ * nothing downstream noticed. Two categories fighting over the same mail is worse than
+ * one fewer category: whichever wins, the user's filing is arbitrary.
+ *
+ * Two independent tests, because they catch different failures. Shared evidence catches
+ * suggestions that will literally compete for the same senders; a shared name word
+ * catches near-synonyms ("Food & Drink" vs "Food & Groceries") that cite different
+ * domains but mean the same thing.
+ */
+export function dedupeSuggestions(list: CategorySuggestion[]): CategorySuggestion[] {
+  const kept: Array<{ s: CategorySuggestion; domains: Set<string>; words: Set<string> }> = []
+
+  for (const s of list) {
+    const domains = evidenceDomains(s.evidence)
+    const words   = nameWords(s.name)
+
+    const clashes = kept.some(k => {
+      if ([...words].some(w => k.words.has(w))) return true
+      const shared = [...domains].filter(d => k.domains.has(d)).length
+      if (shared >= 2) return true
+      const smaller = Math.min(domains.size, k.domains.size)
+      return smaller > 0 && shared / smaller >= 0.5
+    })
+
+    if (!clashes) kept.push({ s, domains, words })
+  }
+  return kept.map(k => k.s)
 }
 
 /** Stable id for a suggested category, so re-running does not duplicate it. */
