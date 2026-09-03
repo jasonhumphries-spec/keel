@@ -105,6 +105,56 @@ function docToOutbound(id: string, d: DocumentData): KeelOutbound {
 
 // ---- Hooks ----
 
+const tickers = new Map<number, { subs: Set<(n: number) => void>; id: ReturnType<typeof setInterval> }>()
+
+/**
+ * One timer per interval length, shared by every subscriber.
+ *
+ * useNow is called per row in the item grids, so a timer each would mean
+ * hundreds of them. Sharing also means every caller on the same interval ticks
+ * from the same value, so two rows can never disagree about what day it is.
+ */
+function subscribeToTick(intervalMs: number, cb: (n: number) => void): () => void {
+  let ticker = tickers.get(intervalMs)
+  if (!ticker) {
+    const subs = new Set<(n: number) => void>()
+    const id = setInterval(() => {
+      const n = Date.now()
+      subs.forEach(f => f(n))
+    }, intervalMs)
+    ticker = { subs, id }
+    tickers.set(intervalMs, ticker)
+  }
+  ticker.subs.add(cb)
+
+  return () => {
+    const current = tickers.get(intervalMs)
+    if (!current) return
+    current.subs.delete(cb)
+    if (current.subs.size === 0) {
+      clearInterval(current.id)
+      tickers.delete(intervalMs)
+    }
+  }
+}
+
+/**
+ * A timestamp that ticks, so relative times stay honest.
+ *
+ * Reading Date.now() straight out of a render is impure: the value freezes at
+ * whatever moment React happened to render, and never moves until something
+ * unrelated re-renders the component. That is why "2 days ago" could sit on
+ * screen well into day three. This makes the clock an explicit, changing input.
+ *
+ * Pick an interval proportional to the unit displayed — a day counter does not
+ * need to be recomputed every second.
+ */
+export function useNow(intervalMs = 60_000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => subscribeToTick(intervalMs, setNow), [intervalMs])
+  return now
+}
+
 export function useCounts() {
   const { user } = useAuth()
   const [counts, setCounts] = useState({

@@ -5,7 +5,7 @@ import { doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
-import { useDashboardData } from '@/lib/hooks'
+import { useDashboardData, useNow } from '@/lib/hooks'
 import { logFeedback, priorityAction } from '@/lib/feedbackLog'
 import type { KeelItem, KeelSignal, CategoryWithItems } from '@/lib/types'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
@@ -791,6 +791,7 @@ function ItemRow({
 }) {
   const [hoveredLocal, setHovered] = useState(false)
   const hovered = hoveredLocal || forceHovered
+  const now = useNow(60_000)
   const [calHighlighted, setCalHigh]  = useState(false)
 
   // Listen for calendar hover broadcasts
@@ -811,8 +812,10 @@ function ItemRow({
   const restSig   = getRestingSignal(item, itemSigs)
   const dateStr   = item.receivedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
-  // "New" badge — item created within last 3 hours
-  const ageMs        = Date.now() - (item.createdAt?.getTime?.() ?? 0)
+  // "New" badge — item created within last 3 hours. Ticks so the badge actually
+  // expires; read straight from Date.now() it would persist until an unrelated
+  // re-render happened to recompute it.
+  const ageMs        = now - (item.createdAt?.getTime?.() ?? 0)
   const isJustIn     = ageMs < 60 * 60 * 1000         // < 1 hour
   const isRecentNew  = ageMs < 3 * 60 * 60 * 1000     // < 3 hours
   const newLabel     = isJustIn ? 'Just in' : 'New'

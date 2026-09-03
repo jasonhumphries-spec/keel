@@ -7,21 +7,21 @@ import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
 import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { docToItem } from '@/lib/hooks'
+import { docToItem, useNow } from '@/lib/hooks'
 import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
 
-function formatRelative(date: Date): string {
-  const diff  = Math.floor((Date.now() - date.getTime()) / 86400000)
-  const hours = Math.floor((Date.now() - date.getTime()) / 3600000)
+function formatRelative(date: Date, now: number): string {
+  const diff  = Math.floor((now - date.getTime()) / 86400000)
+  const hours = Math.floor((now - date.getTime()) / 3600000)
   if (hours < 1)  return 'Less than an hour ago'
   if (hours < 24) return `${hours}h ago`
   if (diff === 1) return 'Yesterday'
   return `${diff} days ago`
 }
 
-function AgeDays({ date }: { date: Date }) {
-  const days  = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000))
+function AgeDays({ date, now }: { date: Date; now: number }) {
+  const days  = Math.max(0, Math.floor((now - date.getTime()) / 86400000))
   const colour = days >= 6 ? '#8a3028' : days >= 3 ? '#8a6020' : '#9aa2a6'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0, minWidth: 48, paddingTop: 2 }}>
@@ -49,10 +49,10 @@ function AgeLegend() {
   )
 }
 
-function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
+function AwaitingItem({ item, uid, now }: { item: KeelItem; uid: string; now: number }) {
   const { user } = useAuth()
   const [saving, setSaving] = useState(false)
-  const days = Math.floor((Date.now() - item.receivedAt.getTime()) / 86400000)
+  const days = Math.floor((now - item.receivedAt.getTime()) / 86400000)
   const borderColour = days >= 6 ? '#8a3028' : days >= 3 ? '#8a6020' : 'var(--color-border)'
 
   const markDone = async () => {
@@ -88,7 +88,7 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderLeft: `3px solid ${borderColour}`, borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '13px 15px' }}>
 
-        <AgeDays date={item.receivedAt} />
+        <AgeDays date={item.receivedAt} now={now} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 }}>
@@ -104,7 +104,7 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
             {item.aiSummary}
           </div>
           <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', marginTop: 5 }}>
-            Sent {formatRelative(item.receivedAt)}
+            Sent {formatRelative(item.receivedAt, now)}
           </div>
         </div>
 
@@ -129,6 +129,8 @@ export default function AwaitingReplyPage() {
   const router = useRouter()
   const [items, setItems]   = useState<KeelItem[]>([])
   const [loading, setLoading] = useState(true)
+  // One clock for the whole list — day counts do not need per-card timers.
+  const now = useNow(60_000)
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/')
@@ -194,7 +196,7 @@ export default function AwaitingReplyPage() {
             <>
               <AgeLegend />
               {items.map(item => (
-                <AwaitingItem key={item.itemId} item={item} uid={user.uid} />
+                <AwaitingItem key={item.itemId} item={item} uid={user.uid} now={now} />
               ))}
             </>
           )}

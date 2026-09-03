@@ -5,7 +5,7 @@ import { doc, updateDoc, addDoc, collection, setDoc, Timestamp } from 'firebase/
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { buildGmailThreadUrl } from '@/lib/gmailUrl'
-import { useCategories } from '@/lib/hooks'
+import { useCategories, useNow } from '@/lib/hooks'
 import { buildCalendarUrl } from '@/lib/calendarUtils'
 import { EmailPreviewDrawer } from './EmailPreviewDrawer'
 import { logFeedback, priorityAction } from '@/lib/feedbackLog'
@@ -325,6 +325,7 @@ interface ItemExpandedPanelProps {
 export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolved, onUndo }: ItemExpandedPanelProps) {
   const { user, accessToken } = useAuth()
   const { categories } = useCategories()
+  const now = useNow(60_000)
   const [showPaidPanel, setShowPaidPanel] = useState(false)
   const [showMoreMenu,  setShowMoreMenu]  = useState(false)
   const [showMoveTo,    setShowMoveTo]    = useState(false)
@@ -459,6 +460,9 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
   const snooze = async (days = 3) => {
     if (!user || !item) return
+    // Runs on click, not during render: the snooze must start from the moment
+    // the user acted, so a ticking clock would be wrong here.
+    // eslint-disable-next-line react-hooks/purity
     const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
     await updateDoc(doc(db, `users/${user.uid}/items`, item.itemId), {
       status: 'snoozed', snoozedUntil: Timestamp.fromDate(until), updatedAt: Timestamp.now(),
@@ -518,7 +522,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
 
   const formatDate   = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
   const relativeTime = (d: Date) => {
-    const days = Math.floor((Date.now() - d.getTime()) / 86400000)
+    const days = Math.floor((now - d.getTime()) / 86400000)
     if (days === 0) return 'Today'
     if (days === 1) return 'Yesterday'
     return `${days} days ago`
@@ -581,7 +585,7 @@ export function ItemExpandedPanel({ item, signals, isResolved, onClose, onResolv
                   ? sig.detectedDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
                   : null
                 const daysUntil = sig.detectedDate
-                  ? Math.ceil((sig.detectedDate.getTime() - Date.now()) / 86400000)
+                  ? Math.ceil((sig.detectedDate.getTime() - now) / 86400000)
                   : null
 
                 return (
