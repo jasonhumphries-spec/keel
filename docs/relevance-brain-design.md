@@ -622,6 +622,12 @@ asked about — there is no evidence they matter.
 vanishing. Ranked by v2, the ~86 that mattered cluster at the top. One glance a month
 recovers what the timer currently costs.
 
+**Where the labels live.** Two independent copies, because one is not a backup:
+`users/{uid}/evals/goldenSet/entries` (verdict merged onto the frozen thread text, so
+each entry is re-runnable on its own) and `snapshots/goldenset-labels-*.json`
+(gitignored — real mail metadata — but survives both the database and the review
+artifact being deleted). Restore either with `npm run eval:save-labels`.
+
 **How it gets measured.** The 371 labels are the eval. A change to the ranking is
 scored with `npm run eval:llm` against them before it ships — the first time this project
 can answer "did that help?" with a number rather than an anecdote.

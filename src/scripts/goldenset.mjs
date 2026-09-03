@@ -33,6 +33,7 @@ const MODE = process.argv.includes('--build')      ? 'build'
            : process.argv.includes('--eval-content') ? 'eval-content'
            : process.argv.includes('--eval-llm')  ? 'eval-llm'
            : process.argv.includes('--show-review') ? 'show-review'
+           : process.argv.includes('--save-labels') ? 'save-labels'
            : 'recon'
 
 // Load .env.local into process.env without printing any values.
@@ -502,6 +503,64 @@ if (MODE === 'eval-rule') {
   console.log(`WRONGLY KEPT (fine to bury, rule keeps it) — ${best.fp} of ${labels.filter(l => l.verdict === 'bury').length} buriable:`)
   for (const l of labels.filter(l => l.verdict === 'bury' && scoreOf(l.from).v >= best.t).slice(0, 12))
     console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  process.exit(0)
+}
+
+/**
+ * --save-labels: give the hand-labelled verdicts a durable home.
+ *
+ * The 371 labels are the most expensive artefact this project has — hours of the
+ * user's judgement, and the eval every future change is scored against. They were
+ * living in the review artifact's database and a session-temporary scratchpad
+ * directory, one of which evaporates when the session ends.
+ *
+ * Writes two independent copies, because one is not a backup:
+ *   1. Firestore, merged into users/{uid}/evals/goldenSet/entries — the entries
+ *      already hold the frozen thread text, so the verdict completes them.
+ *   2. snapshots/goldenset-labels-<date>.json — survives the database, and survives
+ *      the artifact being deleted. Gitignored: it is real mail metadata.
+ */
+if (MODE === 'save-labels') {
+  const { readdirSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs')
+  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const uid = UID_ARG
+  if (!uid || !dir) { console.error('--save-labels needs --uid and --labels <dir>'); process.exit(1) }
+
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+  console.log(`read ${labels.length} labels from ${dir}`)
+
+  const col = db.collection(`users/${uid}/evals/goldenSet/entries`)
+  let merged = 0, created = 0
+  for (let i = 0; i < labels.length; i += 400) {
+    const chunk = labels.slice(i, i + 400)
+    const existing = await Promise.all(chunk.map(l => col.doc(l.itemId).get()))
+    const batch = db.batch()
+    chunk.forEach((l, k) => {
+      if (existing[k].exists) merged++; else created++
+      batch.set(col.doc(l.itemId), {
+        itemId: l.itemId,
+        humanLabel: {
+          verdict: l.verdict, band: l.band, at: l.at ?? null,
+          source: 'buried-mail-review artifact, hand-labelled 2026-09-02',
+        },
+      }, { merge: true })
+    })
+    await batch.commit()
+  }
+  console.log(`Firestore: ${merged} merged into existing entries, ${created} new`)
+
+  mkdirSync('snapshots', { recursive: true })
+  const stamp = new Date().toISOString().slice(0, 10)
+  const file = `snapshots/goldenset-labels-${stamp}.json`
+  const counts = labels.reduce((a, l) => ({ ...a, [l.verdict]: (a[l.verdict] ?? 0) + 1 }), {})
+  writeFileSync(file, JSON.stringify({
+    uid, savedAt: new Date().toISOString(), n: labels.length, counts,
+    provenance: 'Hand-labelled in the buried-mail-review artifact. Question asked: '
+      + '"It sat unactioned, so Keel hid it. Would you have wanted to see this?"',
+    labels,
+  }, null, 2))
+  console.log(`local:     ${file}  (${labels.length} labels, ${JSON.stringify(counts)})`)
   process.exit(0)
 }
 
