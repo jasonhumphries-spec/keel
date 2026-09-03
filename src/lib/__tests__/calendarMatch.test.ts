@@ -10,7 +10,8 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  eventParticipants, participantEvidence, titleOverlapScore,
+  eventParticipants, participantEvidence, titleOverlapScore, titlesMatch,
+  buildCorpus, participantRarity, wordRarity,
   scoreCandidate, pickCalendarEvent, type CalEventLike,
 } from '@/lib/server/calendarCheck'
 
@@ -208,5 +209,107 @@ describe('what it must NOT match', () => {
 
   it('survives an event with no usable start date', () => {
     expect(scoreCandidate(ctx(), { summary: 'Broken', start: {} })).toBeNull()
+  })
+})
+
+describe('distinctiveness — evidence is worth what it discriminates', () => {
+  // The failure this was built from. An email from a COLLEAGUE about an Itron
+  // conference on 1 Oct was confidently attached to an "L+G Sync Up" on 9 Sept, on
+  // three agreeing signals: the colleague attends nearly every event, the item title
+  // carried the company's own name, and that name appears in many of the user's events.
+  // Three signals agreed because all three match almost anything.
+  // A realistic working calendar: a colleague on many company meetings, plus the
+  // ordinary unrelated events every calendar carries. The mix matters — an earlier
+  // version of this fixture put the company name in EVERY event, which drove its
+  // distinctiveness to zero and made even the correct match fail. That is a property of
+  // that fixture, not of any real calendar, and tuning the thresholds to satisfy it
+  // would have made the matcher worse.
+  const OTHER = ['Dentist appointment', 'School pickup', 'Physio', 'Haircut', 'Team lunch',
+                 'Gym induction', 'Parents evening', 'Car service', 'Optician', 'Book club']
+  const busyCalendar = (): CalEventLike[] => {
+    const out: CalEventLike[] = []
+    for (let i = 0; i < 20; i++) {
+      out.push(ev(`Resonant Grid working session ${i}`, new Date(2026, 8, 1 + i).toISOString(),
+                  ['michael@resonant-grid.com'], 'michael@resonant-grid.com'))
+    }
+    OTHER.forEach((t, i) => out.push(ev(t, new Date(2026, 8, 2 + i).toISOString(), ['someone@elsewhere.org'])))
+    OTHER.forEach((t, i) => out.push(ev(`${t} follow-up`, new Date(2026, 9, 2 + i).toISOString(), ['other@elsewhere.org'])))
+    out.push(ev('Resonant Grid | L+G - Sync Up', '2026-09-09T18:00:00Z',
+                ['michael@resonant-grid.com', 'joseph1.guo@landisgyr.com'], 'joseph1.guo@landisgyr.com'))
+    return out
+  }
+
+  it('REFUSES a match built on a colleague and the company’s own name', () => {
+    const hit = pickCalendarEvent({
+      senderEmail: 'michael@resonant-grid.com',
+      texts: ['Itron Inspire conference', 'Resonant Grid Regulatory Intelligence Follow-up'],
+      sigDate: new Date('2026-10-01T00:00:00Z'),
+    }, busyCalendar())
+    expect(hit?.confident ?? false).toBe(false)
+  })
+
+  it('still finds the rare correspondent in the same busy calendar', () => {
+    // The fix must not work by simply refusing more. An address seen once, on an event
+    // whose distinctive word is shared, is exactly what the matcher exists to catch.
+    const hit = pickCalendarEvent({
+      senderEmail: 'joseph1.guo@landisgyr.com',
+      texts: ['Proposed meeting with Joseph Guo', 'Resonant Grid & L+G Developer Agreement Meeting'],
+      sigDate: new Date('2026-09-02T00:00:00Z'),
+    }, busyCalendar())
+    expect(hit).not.toBeNull()
+    expect(hit!.event.summary).toBe('Resonant Grid | L+G - Sync Up')
+    expect(hit!.confident).toBe(true)
+  })
+
+  it('does not COUNT a ubiquitous attendee as independent evidence', () => {
+    // Tested directly on the signals array rather than through an outcome. Mutation
+    // testing showed every end-to-end case was being refused by the score floor
+    // instead, so the rule this exists for was going unexercised. The floor is
+    // defensive — it is what stops a colleague from ever being the second signal that
+    // tips an otherwise-thin match into "already on your calendar".
+    const cal = busyCalendar()
+    const target = cal.find(e => e.summary === 'Resonant Grid | L+G - Sync Up')!
+    const c = buildCorpus(cal)
+
+    const ubiquitous = scoreCandidate({
+      senderEmail: 'michael@resonant-grid.com',
+      texts: ['Resonant Grid | L+G - Sync Up'],
+      sigDate: new Date('2026-09-09T00:00:00Z'),
+    }, target, undefined, c)!
+    expect(ubiquitous.signals).not.toContain('participant:exact')
+
+    const rare = scoreCandidate({
+      senderEmail: 'joseph1.guo@landisgyr.com',
+      texts: ['Resonant Grid | L+G - Sync Up'],
+      sigDate: new Date('2026-09-09T00:00:00Z'),
+    }, target, undefined, c)!
+    expect(rare.signals).toContain('participant:exact')
+  })
+
+  it('rates a ubiquitous attendee far below a rare one', () => {
+    const c = buildCorpus(busyCalendar())
+    expect(participantRarity('michael@resonant-grid.com', c))
+      .toBeLessThan(participantRarity('joseph1.guo@landisgyr.com', c))
+  })
+
+  it('rates the user’s own company name far below a distinctive one', () => {
+    const c = buildCorpus(busyCalendar())
+    expect(wordRarity('resonant', c)).toBeLessThan(wordRarity('landisgyr', c))
+  })
+})
+
+describe('the legacy short-title rule', () => {
+  it('no longer lets a two-word calendar entry match anything sharing one word', () => {
+    // "Resonant Grid intro and meeting proposal" (a VC introduction) was being asserted
+    // to be "ResonantGrid/CHK/EXA meeting" purely on the word "meeting".
+    expect(titlesMatch('Resonant Grid intro and meeting proposal', 'ResonantGrid/CHK/EXA meeting')).toBe(false)
+  })
+
+  it('still matches when both titles really are short', () => {
+    expect(titlesMatch('Dentist', 'Dentist appointment')).toBe(true)
+  })
+
+  it('still matches on two shared words regardless of length', () => {
+    expect(titlesMatch('Bedales Senior Welcome Evening', 'Bedales Block 3 Evening')).toBe(true)
   })
 })

@@ -842,3 +842,41 @@ score floor rather than the signal-count rule, and the ambiguity case never reac
 margin test at all — both rules the tests claimed to cover were untested. Rewritten with
 dates and scores chosen so each rule is the only thing that can refuse the match. Six
 mutations now caught, none surviving.
+
+### 11.1 Distinctiveness — the first real run got it wrong
+
+Deployed, the participant matcher found three matches where there had been none. One was
+right and one was a confident false positive, which is the worse failure: an email from a
+COLLEAGUE about an Itron conference on 1 Oct was attached to an "L+G Sync Up" on 9 Sept,
+on three agreeing signals. All three were worthless. The colleague attends nearly every
+event in the calendar; the item title carried the company's own name; and that name
+appears in many of the user's events. Three signals agreed because all three match
+almost anything.
+
+The principle that was missing: **evidence is worth what it discriminates.**
+
+Every signal is now scaled by its rarity in the user's own calendar — an address seen on
+one event is strong, one seen on fifty is nearly meaningless; a title word unique to one
+event is strong, the user's own company name is not. Below a rarity floor a signal may
+still nudge the ranking but may not count towards the two-independent-signals rule. This
+is inverse-document-frequency reasoning over a corpus of one calendar, which is the only
+corpus that matters: distinctiveness is a property of *that* calendar, not of English.
+
+It also subsumes three special cases that would otherwise need hand-coding — internal
+senders, freemail domains, and company names in titles are all just low-rarity signals.
+
+On the real data: Itron drops out entirely, and the correct Joseph Guo match survives at
+0.654.
+
+**A pre-existing bug surfaced alongside it.** `titlesMatch`'s "short title rule" took the
+*shorter* of the two titles, which does not say what its comment says: any two-word
+calendar entry matched a title of any length on one shared word. "Resonant Grid intro and
+meeting proposal" — a VC introduction — was asserted to be "ResonantGrid/CHK/EXA meeting"
+on the strength of the word "meeting". Both sides must now be short.
+
+**On the fixture.** The first version of the busy-calendar fixture put the company name in
+every event, driving its distinctiveness to zero and failing the *correct* match. That is
+a property of the fixture, not of any real calendar; the fix was to make the fixture
+realistic rather than to loosen the thresholds. Separately, mutation testing showed the
+participant rarity floor was never actually exercised — every end-to-end case was refused
+by the score floor first — so it is now asserted directly on the signals array.

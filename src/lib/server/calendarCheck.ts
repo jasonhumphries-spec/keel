@@ -26,8 +26,15 @@ export function titlesMatch(a: string, b: string): boolean {
   // Standard rule: 2+ significant word overlap
   if (hits.length >= 2) return true
 
-  // Short title rule: both titles are very short and share a word
-  if (shorter <= 2 && hits.length >= 1) return true
+  // Short title rule: both titles are very short and share a word.
+  //
+  // This used to take the SHORTER side, which does not say what the comment says: it
+  // let ANY two-word calendar entry match a title of any length on one shared word.
+  // Observed consequence — "Resonant Grid intro and meeting proposal" (from a VC, about
+  // an introduction) was asserted to be "ResonantGrid/CHK/EXA meeting", on the strength
+  // of the word "meeting". Both sides must be short for "short" to mean anything.
+  const longest = Math.max(wa.size, wb.length)
+  if (longest <= 2 && hits.length >= 1) return true
 
   // High-entropy single word rule: one matching word of 8+ chars is sufficient.
   // "STONERYHENGE", "orthodontist", "portmandental" — these are so distinctive
@@ -178,14 +185,72 @@ export function participantEvidence(senderEmail: string, e: CalEventLike): 'exac
  * "meeting", and a boolean match cannot express that difference. Used to choose
  * BETWEEN candidates, which is where a yes/no answer is useless.
  */
-export function titleOverlapScore(a: string, b: string): number {
+export function titleOverlapScore(a: string, b: string, corpus?: MatchCorpus): number {
   const wa = new Set(sigWords(a))
   const wb = sigWords(b)
   if (!wa.size || !wb.length) return 0
   const hits = wb.filter(w => wa.has(w))
   if (!hits.length) return 0
-  const weight = hits.reduce((n, w) => n + (w.length >= 8 ? 2 : 1), 0)
+  // Long words count double, and every word is scaled by how rare it is in this
+  // person's calendar — sharing "landisgyr" is evidence, sharing their own company
+  // name is not.
+  const weight = hits.reduce((n, w) => n + (w.length >= 8 ? 2 : 1) * wordRarity(w, corpus), 0)
   return Math.min(1, weight / Math.max(wa.size, wb.length))
+}
+
+/**
+ * How distinctive a piece of evidence is, measured against the calendar itself.
+ *
+ * WHY THIS IS NECESSARY. Without it the matcher produced a confident, wrong answer on
+ * its first real run: an email about an Itron conference on 1 Oct was attached to an
+ * "L+G Sync Up" on 9 Sept, on three agreeing signals. All three were worthless. The mail
+ * came from a COLLEAGUE, who is an attendee on nearly every event in the calendar, and
+ * its title contained the company's own name, which appears in many of those events
+ * too. Three signals agreed because all three match almost anything.
+ *
+ * So evidence is weighted by what it discriminates. An address on one event in the
+ * window is strong; an address on fifty is nearly meaningless. A shared word that
+ * appears in one event title is strong; the user's own company name, appearing in
+ * twenty, is not. This is ordinary inverse-document-frequency reasoning, applied to a
+ * corpus of one person's calendar — which is the only corpus that matters, because
+ * distinctiveness is a property of THEIR calendar, not of English.
+ *
+ * It also removes the need to special-case internal senders, freemail domains or
+ * company names: each of those is just a low-rarity signal, and falls out for free.
+ */
+export interface MatchCorpus {
+  totalEvents: number
+  /** Events each address appears on, as organiser or attendee. */
+  senderFreq:  Map<string, number>
+  /** Events each significant title word appears in. */
+  wordFreq:    Map<string, number>
+}
+
+export function buildCorpus(events: CalEventLike[]): MatchCorpus {
+  const senderFreq = new Map<string, number>()
+  const wordFreq   = new Map<string, number>()
+  for (const e of events) {
+    for (const p of eventParticipants(e)) senderFreq.set(p, (senderFreq.get(p) ?? 0) + 1)
+    for (const w of new Set(sigWords(e.summary ?? ''))) wordFreq.set(w, (wordFreq.get(w) ?? 0) + 1)
+  }
+  return { totalEvents: events.length, senderFreq, wordFreq }
+}
+
+/**
+ * 1.0 for an address seen once, decaying as it appears on more events.
+ * A colleague on fifty events contributes almost nothing.
+ */
+export function participantRarity(email: string, corpus?: MatchCorpus): number {
+  if (!corpus) return 1
+  const freq = corpus.senderFreq.get(normEmail(email)) ?? 0
+  return Math.min(1, 3 / (2 + Math.max(freq, 1)))
+}
+
+/** 1.0 for a word unique to one event title, falling towards 0 for ubiquitous ones. */
+export function wordRarity(word: string, corpus?: MatchCorpus): number {
+  if (!corpus || corpus.totalEvents < 4) return 1
+  const df = corpus.wordFreq.get(word) ?? 0
+  return Math.log(1 + corpus.totalEvents / (1 + df)) / Math.log(1 + corpus.totalEvents)
 }
 
 /**
@@ -208,6 +273,13 @@ const W_DATE               = 0.20
 const CONFIDENT_SCORE  = 0.55
 const PROBABLE_SCORE   = 0.35
 const MIN_SIGNALS      = 2
+/**
+ * Below these, a signal contributes score but is not INDEPENDENT evidence.
+ * A colleague who attends everything, or the user's own company name, can nudge a
+ * ranking; neither may help satisfy MIN_SIGNALS.
+ */
+const RARITY_FLOOR       = 0.34
+const TITLE_SIGNAL_FLOOR = 0.15
 const CONFIDENT_MARGIN = 0.12
 /** Days either side of the signal's date to consider. */
 export const MATCH_WINDOW_DAYS = 30
@@ -240,6 +312,7 @@ export function scoreCandidate(
   ctx: CalMatchContext,
   e: CalEventLike,
   windowDays = MATCH_WINDOW_DAYS,
+  corpus?: MatchCorpus,
 ): ScoredCandidate | null {
   const d = eventDate(e)
   if (!d) return null
@@ -251,16 +324,23 @@ export function scoreCandidate(
   const signals: string[] = []
   let score = 0
 
-  const pe = participantEvidence(ctx.senderEmail, e)
-  if (pe === 'exact')  { score += W_PARTICIPANT_EXACT;  signals.push('participant:exact') }
-  if (pe === 'domain') { score += W_PARTICIPANT_DOMAIN; signals.push('participant:domain') }
+  // Every signal is scaled by how much it discriminates. A signal that is common
+  // across this calendar can still contribute score, but it must not be counted as
+  // INDEPENDENT evidence — that is what let three worthless agreements produce a
+  // confident wrong answer.
+  const pe    = participantEvidence(ctx.senderEmail, e)
+  const pRare = participantRarity(ctx.senderEmail, corpus)
+  if (pe === 'exact')  { score += W_PARTICIPANT_EXACT  * pRare }
+  if (pe === 'domain') { score += W_PARTICIPANT_DOMAIN * pRare }
+  if (pe && pRare >= RARITY_FLOOR) signals.push(`participant:${pe}`)
 
-  const title = Math.max(0, ...ctx.texts.map(t => (t ? titleOverlapScore(t, calTitle) : 0)))
-  if (title > 0) { score += title * W_TITLE; signals.push('title') }
+  const title = Math.max(0, ...ctx.texts.map(t => (t ? titleOverlapScore(t, calTitle, corpus) : 0)))
+  if (title > 0) { score += title * W_TITLE }
+  if (title >= TITLE_SIGNAL_FLOOR) signals.push('title')
 
   if (ctx.senderEmail && calTitle && senderMatchesCalTitle(ctx.senderEmail, calTitle)) {
-    score += W_SENDER_IN_TITLE
-    signals.push('sender-in-title')
+    score += W_SENDER_IN_TITLE * pRare
+    if (pRare >= RARITY_FLOOR) signals.push('sender-in-title')
   }
 
   // Date proximity decays across the window. It contributes score always, but only
@@ -284,9 +364,13 @@ export function pickCalendarEvent(
   ctx: CalMatchContext,
   events: CalEventLike[],
   windowDays = MATCH_WINDOW_DAYS,
+  corpus?: MatchCorpus,
 ): { event: CalEventLike; confident: boolean; signals: string[]; score: number } | null {
+  // Distinctiveness is measured against the whole calendar, not just the candidates in
+  // the window — a colleague is no less ubiquitous for being busy next week.
+  const c = corpus ?? buildCorpus(events)
   const scored = events
-    .map(e => scoreCandidate(ctx, e, windowDays))
+    .map(e => scoreCandidate(ctx, e, windowDays, c))
     .filter((c): c is ScoredCandidate => c !== null && c.score >= PROBABLE_SCORE)
     .sort((a, b) => b.score - a.score || a.dayGap - b.dayGap)
 
