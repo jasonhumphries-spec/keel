@@ -275,6 +275,9 @@ export function useAllItems(limitCount = 300) {
   return { items, loading }
 }
 
+/** Synthetic category for items with no valid one. Never written to Firestore. */
+export const UNSORTED_CATEGORY_ID = 'cat_unsorted'
+
 export function useDashboardData(): { categoryData: CategoryWithItems[]; loading: boolean } {
   const { categories, loading: catLoading } = useCategories()
   const { items, loading: itemLoading }     = useActiveItems()
@@ -286,6 +289,41 @@ export function useDashboardData(): { categoryData: CategoryWithItems[]; loading
       .filter(item => item.categoryId === cat.categoryId)
       .sort((a, b) => b.aiImportanceScore - a.aiImportanceScore),
   }))
+
+  // Anything not in a known category goes in a synthetic bucket rather than nowhere.
+  //
+  // Buckets are built by iterating CATEGORIES, so an item whose categoryId is empty or
+  // points at a category that no longer exists lands in no bucket at all and is simply
+  // invisible — no error, no count, no empty state. That is the worst way to lose mail,
+  // because nothing tells you it happened. It arises during onboarding before categories
+  // are written, after a category is deleted, and on every item the split-scoring path
+  // produces, which deliberately returns categoryId: ''.
+  //
+  // The bucket is synthetic and never written to Firestore: it exists only so the items
+  // are on screen, in their proper urgency section, where they can be triaged.
+  const known   = new Set(categories.map(c => c.categoryId))
+  const orphans = items
+    .filter(item => !item.categoryId || !known.has(item.categoryId))
+    .sort((a, b) => b.aiImportanceScore - a.aiImportanceScore)
+
+  if (orphans.length > 0) {
+    categoryData.push({
+      category: {
+        categoryId: UNSORTED_CATEGORY_ID,
+        name:        'Unsorted',
+        description: 'Not yet filed under a category',
+        icon:        'tag',
+        parentId:    null,
+        order:       9999,
+        archived:    false,
+        archivedAt:  null,
+        createdAt:   new Date(0),
+        updatedAt:   new Date(0),
+        itemCount:   orphans.length,
+      },
+      items: orphans,
+    })
+  }
 
   return { categoryData, loading }
 }
