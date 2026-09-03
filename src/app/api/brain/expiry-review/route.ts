@@ -15,8 +15,12 @@
  * path did the burying, can be re-run safely, and back-fills anything missed while it
  * was not running.
  *
- * Body: { uid, limit?, dryRun? }
- * Auth: ADMIN_SECRET via x-admin-secret.
+ * POST { uid, limit?, dryRun? } — one user, x-admin-secret. For manual runs.
+ * GET                            — every user, called by the nightly cron.
+ *
+ * The two verbs exist because Vercel Cron issues a GET and cannot set custom
+ * headers: it sends `Authorization: Bearer $CRON_SECRET` and nothing else. It also
+ * has no idea which uid to pass, so the scheduled path sweeps all users.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -40,14 +44,8 @@ if (getApps().length === 0) {
 }
 const db = getFirestore()
 
-export async function POST(req: NextRequest) {
-  if (req.headers.get('x-admin-secret') !== process.env.ADMIN_SECRET) {
-    return NextResponse.json({ error: 'unauthorised' }, { status: 401 })
-  }
-
-  const { uid, limit = 50, dryRun = false } = await req.json()
-  if (!uid) return NextResponse.json({ error: 'uid required' }, { status: 400 })
-
+/** Review one user's buried items. Shared by the manual and scheduled paths. */
+async function reviewUser(uid: string, limit: number, dryRun: boolean) {
   // Single-field query, then filter in memory. A composite index on
   // status+quietedBy+score+reviewedAt would need deploying and buys nothing at this
   // volume — the measured rate is ~31 qualifying items a month.
@@ -74,15 +72,15 @@ export async function POST(req: NextRequest) {
     .slice(0, limit)
 
   if (dryRun) {
-    return NextResponse.json({
-      dryRun: true, wrote: 'nothing',
+    return {
+      uid, dryRun: true, wrote: 'nothing',
       staleQuieted: snap.size,
       awaitingReview: pending.length,
       wouldReview: candidates.length,
       sample: candidates.slice(0, 10).map(c => ({
         itemId: c.id, score: c.aiImportanceScore, title: c.aiTitle, from: c.senderEmail,
       })),
-    })
+    }
   }
 
   let reviewed = 0, open = 0
@@ -108,10 +106,58 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  return {
+    uid,
     reviewed, open, buriedButOpen: open,
     failed: failures.length,
     failures: failures.slice(0, 5),
     remaining: Math.max(0, pending.length - reviewed),
+  }
+}
+
+export async function POST(req: NextRequest) {
+  if (req.headers.get('x-admin-secret') !== process.env.ADMIN_SECRET) {
+    return NextResponse.json({ error: 'unauthorised' }, { status: 401 })
+  }
+  const { uid, limit = 50, dryRun = false } = await req.json()
+  if (!uid) return NextResponse.json({ error: 'uid required' }, { status: 400 })
+  return NextResponse.json(await reviewUser(uid, limit, dryRun))
+}
+
+/**
+ * Scheduled sweep. Runs after the nightly expiry so the items it buried are
+ * reviewed the same night rather than sitting invisible until the next run.
+ *
+ * Vercel sets `Authorization: Bearer $CRON_SECRET` automatically when that env var
+ * exists. x-admin-secret is also accepted so the sweep can be triggered by hand.
+ */
+export async function GET(req: NextRequest) {
+  const bearer = req.headers.get('authorization')
+  const cronOk = !!process.env.CRON_SECRET && bearer === `Bearer ${process.env.CRON_SECRET}`
+  const adminOk = req.headers.get('x-admin-secret') === process.env.ADMIN_SECRET
+  if (!cronOk && !adminOk) {
+    return NextResponse.json({ error: 'unauthorised' }, { status: 401 })
+  }
+
+  const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'
+  const limit  = Number(req.nextUrl.searchParams.get('limit') ?? 50)
+
+  const users = await db.collection('users').get()
+  const results: Array<Record<string, unknown>> = []
+  for (const u of users.docs) {
+    try {
+      results.push(await reviewUser(u.id, limit, dryRun))
+    } catch (e) {
+      // One user's failure must not abort the sweep for everyone else.
+      results.push({ uid: u.id, error: String(e).slice(0, 120) })
+    }
+  }
+  const n = (k: string) => results.reduce((t, r) => t + (Number(r[k]) || 0), 0)
+  return NextResponse.json({
+    users: users.size,
+    reviewed: n('reviewed'),
+    open: n('open'),
+    failed: n('failed'),
+    results,
   })
 }

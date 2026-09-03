@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/brain/expiry-review",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
