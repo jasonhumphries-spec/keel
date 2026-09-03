@@ -572,6 +572,50 @@ building the box.
 
 ---
 
+## 9.4 Stage 2 — the split, and what the shadow run showed (2026-09-03)
+
+`src/lib/scoring.ts` (L2) and `src/lib/extraction.ts` (L1) split the single-pass
+classifier in two: the model reports objective facts, code computes the score. Every
+threshold was **ported, not redesigned** — making current behaviour testable and
+changing it at once would be impossible to evaluate.
+
+**Porting found a contradiction in the prompt.** One rule reads *"Event, appointment,
+commitment, or deadline due TODAY or TOMORROW — proximity alone justifies Urgent"*
+(0.88–0.92). Another reads *"Upcoming confirmed event within 7 days — even if no
+action required … today/tomorrow = 0.78"* (High). Both use **"a match tomorrow"** as
+their example and give different answers. Resolved toward the more specific rule: what
+makes something Urgent is a required action, not a nearby date. That ambiguity has
+presumably been producing inconsistent scores for months, and no test could catch it
+while it lived in prose.
+
+**Shadow run over all 371 labelled items** (`npm run eval:shadow`, nothing written,
+nothing switched):
+
+| | old prompt | split |
+|---|---|---|
+| mean score, should have stayed (86) | 0.754 | **0.788** |
+| mean score, fine to bury (285) | 0.776 | **0.543** |
+| **separation** | **−0.022** | **+0.245** |
+
+Band agreement with the current prompt is only **44%** — the split disagrees often.
+That is the point, because **the current prompt's separation is negative**: across the
+items a human labelled, it scores the ones that mattered *very slightly lower* than the
+ones that did not. Its ranking within this set carries no information at all. The split
+separates them by 0.245.
+
+**Caveats that keep this honest.** Extraction ran over the old prompt's *summaries*,
+not raw threads — a lossy paraphrase — so agreement here is a lower bound on what the
+split would do with real text. And all 371 items are High/Urgent by construction, so
+this measures ranking *within* a compressed band, not across the whole corpus. It is
+strong evidence the split is better where it was measured, not proof it is better
+everywhere.
+
+**Obligation mix extracted:** `action_required` 168, `informational` 64, `overdue` 62,
+`response_due` 32, `resolved` 16, `receipt` 14, `scheduled` 8, `payment_due` 7.
+
+**Not switched.** The live classifier is unchanged. Switching needs a comparison over
+raw threads across all bands, not just the buried High/Urgent ones.
+
 ## 10. The stale-expiry fix — measured, then specified (2026-09-02)
 
 ### 10.1 What the labels say
