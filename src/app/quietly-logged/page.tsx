@@ -4,43 +4,12 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { buildGmailThreadUrl } from '@/lib/gmailUrl'
+import { docToItem } from '@/lib/hooks'
 import { PageShell } from '@/components/layout/PageShell'
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, DocumentData, Timestamp } from 'firebase/firestore'
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
-
-function toDate(v: unknown): Date {
-  if (!v) return new Date()
-  if (v instanceof Timestamp) return v.toDate()
-  if (v instanceof Date) return v
-  return new Date(v as string)
-}
-
-function docToItem(id: string, d: DocumentData): KeelItem {
-  return {
-    itemId: id, messageId: d.messageId ?? '', threadId: d.threadId ?? '',
-    accountId: d.accountId ?? '', senderEmail: d.senderEmail ?? '',
-    senderName: d.senderName ?? '', subject: d.subject ?? '',
-    receivedAt: toDate(d.receivedAt), categoryId: d.categoryId ?? '',
-    categoryName: d.categoryName ?? '', subcategoryId: d.subcategoryId ?? null,
-    subcategoryName: d.subcategoryName ?? null, status: d.status ?? 'quietly_logged',
-    importanceFlag: d.importanceFlag ?? false, aiImportanceScore: d.aiImportanceScore ?? 0,
-    snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
-    isRecurring: d.isRecurring ?? false, fromTrackedReply: false, trackedReplyId: null,
-    createdAt: toDate(d.createdAt), updatedAt: toDate(d.updatedAt), resolvedAt: null,
-    participants: d.participants ?? [],
-    aiTitle:   d.aiTitle ?? d.subject ?? '',
-    aiSummary: d.aiSummary ?? '',
-    aiDetailedSummary: d.aiDetailedSummary ?? '',
-    manualPriority:    d.manualPriority ?? false,
-    manuallyIgnored:   d.manuallyIgnored ?? false,
-    userNote:          d.userNote ?? null,
-    preSnoozePriority: d.preSnoozePriority ?? null,
-    isOutbound:        d.isOutbound ?? false,
-    mergedThreadIds:   d.mergedThreadIds ?? [],
-  }
-}
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })

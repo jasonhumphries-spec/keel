@@ -32,6 +32,7 @@ const MODE = process.argv.includes('--build')      ? 'build'
            : process.argv.includes('--eval-rule')  ? 'eval-rule'
            : process.argv.includes('--eval-content') ? 'eval-content'
            : process.argv.includes('--eval-llm')  ? 'eval-llm'
+           : process.argv.includes('--show-review') ? 'show-review'
            : 'recon'
 
 // Load .env.local into process.env without printing any values.
@@ -501,6 +502,22 @@ if (MODE === 'eval-rule') {
   console.log(`WRONGLY KEPT (fine to bury, rule keeps it) — ${best.fp} of ${labels.filter(l => l.verdict === 'bury').length} buriable:`)
   for (const l of labels.filter(l => l.verdict === 'bury' && scoreOf(l.from).v >= best.t).slice(0, 12))
     console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  process.exit(0)
+}
+
+/** --show-review: what the expiry review has decided, for eyeballing the UI. */
+if (MODE === 'show-review') {
+  for (const u of users.docs) {
+    const snap = await db.collection(`users/${u.id}/items`)
+      .where('quietedBy', '==', 'expiry:stale').get()
+    const done = snap.docs.map(d => d.data()).filter(d => d.expiryReviewedAt)
+    if (done.length === 0) continue
+    console.log(`\nuid ${u.id.slice(0, 10)}…  reviewed ${done.length} of ${snap.size} stale-quieted`)
+    for (const d of done.sort((a, b) => (b.expiryReviewScore ?? 0) - (a.expiryReviewScore ?? 0))) {
+      console.log(`  ${d.expiryReviewOpen ? 'SHOWN ' : 'hidden'} score=${(d.expiryReviewScore ?? 0).toFixed(2)}  ${String(d.aiTitle).slice(0, 46)}`)
+      console.log(`          reason: ${d.expiryReviewReason}`)
+    }
+  }
   process.exit(0)
 }
 
