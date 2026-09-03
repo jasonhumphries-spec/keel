@@ -30,6 +30,7 @@ import { aiComplete } from '@/lib/aiComplete'
 import {
   buildExpiryPrompt, parseExpiryReview, needsExpiryReview,
 } from '@/lib/server/expiryReview'
+import { runBackfillSlice } from '@/lib/server/backfillRunner'
 
 export const maxDuration = 300
 
@@ -146,6 +147,21 @@ export async function GET(req: NextRequest) {
   const results: Array<Record<string, unknown>> = []
   for (const u of users.docs) {
     try {
+      // Continue any cold-start walk left unfinished by onboarding's bounded slice.
+      // One cron doing two jobs rather than two: the Hobby plan allows few, and both
+      // want the same nightly cadence.
+      if (!dryRun) {
+        const st = await db.doc(`users/${u.id}/brain/backfillState`).get()
+        if (st.exists && st.data()?.done === false) {
+          try {
+            const r = await runBackfillSlice(db, u.id, { months: 12, maxThreads: 800 })
+            console.log(`[cron] backfill continued for ${u.id.slice(0, 8)}:`,
+                        JSON.stringify((r as Record<string, unknown>).batch ?? {}))
+          } catch (e) {
+            console.warn(`[cron] backfill continuation failed for ${u.id.slice(0, 8)}:`, e)
+          }
+        }
+      }
       results.push(await reviewUser(u.id, limit, dryRun))
     } catch (e) {
       // One user's failure must not abort the sweep for everyone else.

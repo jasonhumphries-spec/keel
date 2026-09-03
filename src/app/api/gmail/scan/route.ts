@@ -6,6 +6,7 @@ import { runCalendarCheck } from '@/lib/server/calendarCheck'
 import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
 import { loadSenderPriors, lookupSenderPrior, applySenderPrior } from '@/lib/server/senderPrior'
 import { useSplitScoring, classifyThreadSplit } from '@/lib/server/splitScoring'
+import { runBackfillSlice } from '@/lib/server/backfillRunner'
 
 export const runtime     = 'nodejs'
 export const dynamic     = 'force-dynamic'
@@ -321,6 +322,29 @@ export async function POST(req: NextRequest) {
     // Stage 2 switch, per user and instantly reversible. See §9.4.
     const splitOn = await useSplitScoring(db, uid)
     if (splitOn) console.log('[Keel] split scoring ENABLED for this scan')
+
+    /**
+     * Cold start: a brand-new account has no priors, so every sender gets zero lift
+     * on the scan that matters most (§5). Kick the reply-history walk off here.
+     *
+     * Bounded on purpose. A full 12-month walk took ~14 minutes at safe concurrency,
+     * which cannot sit inside onboarding — so this runs one slice over a 3-month
+     * window, which carries most of the signal, and the cursor lets the nightly sweep
+     * finish the rest. Awaited rather than fire-and-forget because a serverless
+     * function can be killed the moment it responds.
+     */
+    const backfillState = await db.doc(`users/${uid}/brain/backfillState`).get()
+    const needsBackfill = job === 'onboarding' && !backfillState.exists
+    if (needsBackfill) {
+      try {
+        const r = await runBackfillSlice(db, uid, { months: 3, maxThreads: 300 })
+        console.log(`[Keel] cold-start backfill: ${JSON.stringify(r.batch ?? r)}`)
+      } catch (e) {
+        // Never fail onboarding over priors. Without them the classifier behaves
+        // exactly as it did before; the nightly sweep will pick the walk up.
+        console.warn('[Keel] cold-start backfill failed (non-fatal):', e)
+      }
+    }
     fbReads += catsSnap.size + hintsSnap.size + 1
 
     const locale              = accountDoc.data()?.locale ?? 'en-GB'

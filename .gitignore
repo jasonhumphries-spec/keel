@@ -34,6 +34,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local*
+# Any env file, however it was created — `vercel env pull` writes real
+# production secrets to whatever filename it is given.
+.env*
+!.env.example
 *.bak
 *~
 
