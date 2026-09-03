@@ -17,7 +17,8 @@
     "eval:rule": "node src/scripts/goldenset.mjs --eval-rule",
     "eval:llm": "node src/scripts/goldenset.mjs --eval-llm",
     "eval:save-labels": "node src/scripts/goldenset.mjs --save-labels",
-    "eval:show-review": "node src/scripts/goldenset.mjs --show-review"
+    "eval:show-review": "node src/scripts/goldenset.mjs --show-review",
+    "eval:lift": "node src/scripts/goldenset.mjs --eval-lift"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

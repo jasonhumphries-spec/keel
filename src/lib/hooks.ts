@@ -68,6 +68,9 @@ export function docToItem(id: string, d: DocumentData): KeelItem {
     expiryReviewScore:  d.expiryReviewScore  ?? null,
     expiryReviewReason: d.expiryReviewReason ?? null,
     expiryReviewedAt:   d.expiryReviewedAt ? toDate(d.expiryReviewedAt) : null,
+    senderPriorRate:    d.senderPriorRate   ?? null,
+    senderPriorSource:  d.senderPriorSource ?? null,
+    senderPriorLift:    d.senderPriorLift   ?? null,
   }
 }
 

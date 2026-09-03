@@ -34,6 +34,7 @@ const MODE = process.argv.includes('--build')      ? 'build'
            : process.argv.includes('--eval-llm')  ? 'eval-llm'
            : process.argv.includes('--show-review') ? 'show-review'
            : process.argv.includes('--save-labels') ? 'save-labels'
+           : process.argv.includes('--eval-lift')   ? 'eval-lift'
            : 'recon'
 
 // Load .env.local into process.env without printing any values.
@@ -503,6 +504,74 @@ if (MODE === 'eval-rule') {
   console.log(`WRONGLY KEPT (fine to bury, rule keeps it) — ${best.fp} of ${labels.filter(l => l.verdict === 'bury').length} buriable:`)
   for (const l of labels.filter(l => l.verdict === 'bury' && scoreOf(l.from).v >= best.t).slice(0, 12))
     console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  process.exit(0)
+}
+
+/**
+ * --eval-lift: does the sender-prior lift actually separate the two classes?
+ *
+ * Before a bounded nudge goes anywhere near live scoring, check it on the 371 labels:
+ * does it move should-have-stayed items up more than fine-to-bury items? A lift that
+ * raises both equally is noise with extra steps.
+ */
+if (MODE === 'eval-lift') {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const { loadSenderPriors, lookupSenderPrior, applySenderPrior } =
+    await import('../lib/server/senderPrior.js').catch(() => ({}))
+  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+    .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
+
+  // Re-implemented inline: the TS module cannot be imported from a plain .mjs script
+  // without a build step. Kept deliberately identical to senderPrior.ts — if these
+  // drift, this eval stops describing the shipped behaviour.
+  const snap = await db.collection(`users/${UID_ARG}/priors`).get()
+  const priors = new Map()
+  for (const d of snap.docs) {
+    const v = d.data()
+    if (v?.senderEmail) priors.set(String(v.senderEmail).toLowerCase(),
+      { rate: Number(v.smoothedReplyRate ?? 0), n: Number(v.inboundThreads ?? 0), source: 'sender' })
+  }
+  const domOf = (e) => { const i = (e ?? '').lastIndexOf('@'); return i > 0 ? e.slice(i + 1).toLowerCase() : '' }
+  const look = (email) => {
+    const e = String(email ?? '').toLowerCase().trim()
+    const x = priors.get(e); if (x) return x
+    const d = domOf(e); let n = 0, w = 0
+    if (d) for (const [k, v] of priors) if (domOf(k) === d) { n += v.n; w += v.rate * v.n }
+    return n > 0 ? { rate: w / n, n, source: 'domain' } : { rate: 0, n: 0, source: 'none' }
+  }
+  const MAX = 0.08
+  const lift = (p) => {
+    if (p.source === 'none' || p.n === 0) return 0
+    const conf = Math.min(1, p.n / 10)
+    const exc  = Math.max(0, p.rate - 0.15) / 0.85
+    return Math.min(MAX, MAX * exc * conf)
+  }
+
+  const keep = labels.filter(l => l.verdict === 'keep').map(l => lift(look(l.from)))
+  const bury = labels.filter(l => l.verdict === 'bury').map(l => lift(look(l.from)))
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1)
+  const nonZero = (a) => a.filter(x => x > 0).length
+
+  console.log(`\nlift applied to items that SHOULD HAVE STAYED (n=${keep.length}):`)
+  console.log(`   mean ${mean(keep).toFixed(4)}   lifted at all: ${nonZero(keep)} (${(100 * nonZero(keep) / keep.length).toFixed(0)}%)`)
+  console.log(`lift applied to items that were FINE TO BURY (n=${bury.length}):`)
+  console.log(`   mean ${mean(bury).toFixed(4)}   lifted at all: ${nonZero(bury)} (${(100 * nonZero(bury) / bury.length).toFixed(0)}%)`)
+  const ratio = mean(bury) > 0 ? mean(keep) / mean(bury) : Infinity
+  console.log(`\nmean lift ratio (keep : bury) = ${ratio.toFixed(2)}x`)
+  console.log(ratio > 1.3
+    ? '  -> the lift favours the right class. Weak, but pointed the right way.'
+    : '  -> the lift does NOT separate the classes. It would be noise; do not ship it.')
+
+  // How often would the nudge alone flip a band? That is the blast radius.
+  let flips = 0
+  for (const l of labels) {
+    const s = Number(l.score ?? 0)
+    const band = (x) => x >= 0.85 ? 4 : x >= 0.70 ? 3 : x >= 0.40 ? 2 : 1
+    if (band(s + lift(look(l.from))) !== band(s)) flips++
+  }
+  console.log(`\nband changes across all ${labels.length} labelled items: ${flips}`)
   process.exit(0)
 }
 

@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { classifyThread, decodeBody, buildThreadContext } from '@/lib/scanUtils'
+import { loadSenderPriors, lookupSenderPrior, applySenderPrior } from '@/lib/server/senderPrior'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 
 export const runtime     = 'nodejs'
@@ -163,10 +164,12 @@ export async function POST(req: NextRequest) {
     let fbWrites = 0
 
     // ── Load user data ─────────────────────────────────────────────────────
-    const [rootDoc, catsSnap, hintsSnap] = await Promise.all([
+    const [rootDoc, catsSnap, hintsSnap, senderPriors] = await Promise.all([
       db.doc(`users/${uid}`).get(),
       db.collection(`users/${uid}/categories`).where('archived', '==', false).get(),
       db.collection(`users/${uid}/categoryHints`).limit(50).get(),
+      // Reply-history priors (§5), loaded once and consulted in memory.
+      loadSenderPriors(db, uid),
     ])
     fbReads += 1 + catsSnap.size + hintsSnap.size
 
@@ -355,7 +358,14 @@ export async function POST(req: NextRequest) {
           aiTitle:                 classification.aiTitle           ?? subject,
           aiSummary:               classification.aiSummary         ?? '',
           aiDetailedSummary:       classification.aiDetailedSummary ?? '',
-          aiImportanceScore:       classification.aiImportanceScore ?? 0.5,
+          aiImportanceScore:       applySenderPrior(
+                                     classification.aiImportanceScore ?? 0.5,
+                                     lookupSenderPrior(senderPriors, senderEmail)).score,
+          senderPriorRate:         lookupSenderPrior(senderPriors, senderEmail).rate,
+          senderPriorSource:       lookupSenderPrior(senderPriors, senderEmail).source,
+          senderPriorLift:         applySenderPrior(
+                                     classification.aiImportanceScore ?? 0.5,
+                                     lookupSenderPrior(senderPriors, senderEmail)).lift,
           autoQuietedReason:       (classification as any).autoQuietedReason ?? null,
           quietedBy:               classification.status === 'quietly_logged'
             ? ((classification as any).quietedBy ?? 'ai')

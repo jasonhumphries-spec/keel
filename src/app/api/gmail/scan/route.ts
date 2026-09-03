@@ -4,6 +4,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/aiComplete'
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
+import { loadSenderPriors, lookupSenderPrior, applySenderPrior } from '@/lib/server/senderPrior'
 
 export const runtime     = 'nodejs'
 export const dynamic     = 'force-dynamic'
@@ -308,10 +309,13 @@ export async function POST(req: NextRequest) {
     const FB_DELETE_COST = 0.02 / 100_000   // $0.02 per 100K deletes
 
     // Load categories, hints, account, and lastScanCompletedAt in parallel
-    const [catsSnap, hintsSnap, accountDoc] = await Promise.all([
+    const [catsSnap, hintsSnap, accountDoc, senderPriors] = await Promise.all([
       db.collection(`users/${uid}/categories`).where('archived', '==', false).get(),
       db.collection(`users/${uid}/categoryHints`).limit(50).get(),
       db.doc(`users/${uid}/accounts/account_primary`).get(),
+      // Reply-history priors (§5). Loaded once per scan and consulted in memory —
+      // a per-thread read would be one Firestore hit per item on a hot path.
+      loadSenderPriors(db, uid),
     ])
     fbReads += catsSnap.size + hintsSnap.size + 1
 
@@ -640,8 +644,15 @@ export async function POST(req: NextRequest) {
           participants,
           // Only update importance score if user hasn't manually set it
           ...(!threadManualPrio.get(threadId)
-            ? { aiImportanceScore: classification.aiImportanceScore }
+            ? { aiImportanceScore: applySenderPrior(
+                  classification.aiImportanceScore,
+                  lookupSenderPrior(senderPriors, senderEmail)).score }
             : {}),
+          senderPriorRate:   lookupSenderPrior(senderPriors, senderEmail).rate,
+          senderPriorSource: lookupSenderPrior(senderPriors, senderEmail).source,
+          senderPriorLift:   applySenderPrior(
+                               classification.aiImportanceScore,
+                               lookupSenderPrior(senderPriors, senderEmail)).lift,
           // Never overwrite a terminal status (done / archived / paid) — user explicitly resolved this
           ...(!isTerminal ? { status: effectiveStatus } : {}),
           autoQuietedReason: classification.autoQuietedReason ?? null,
@@ -675,7 +686,14 @@ export async function POST(req: NextRequest) {
           subcategoryId:     null, subcategoryName: null,
           status:            effectiveStatus,
           importanceFlag:    false,
-          aiImportanceScore: classification.aiImportanceScore,
+          aiImportanceScore: applySenderPrior(
+                               classification.aiImportanceScore,
+                               lookupSenderPrior(senderPriors, senderEmail)).score,
+          senderPriorRate:   lookupSenderPrior(senderPriors, senderEmail).rate,
+          senderPriorSource: lookupSenderPrior(senderPriors, senderEmail).source,
+          senderPriorLift:   applySenderPrior(
+                               classification.aiImportanceScore,
+                               lookupSenderPrior(senderPriors, senderEmail)).lift,
           autoQuietedReason: classification.autoQuietedReason ?? null,
           quietedBy: effectiveStatus === 'quietly_logged'
             ? ((classification as any).quietedBy ?? 'ai')

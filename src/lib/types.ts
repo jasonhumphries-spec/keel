@@ -110,6 +110,19 @@ export interface KeelItem {
   /** Short why, shown beside the item in the review list. */
   expiryReviewReason?: string | null
   expiryReviewedAt?:   Date | null
+
+  /**
+   * Sender engagement at scan time — see docs/relevance-brain-design.md §5.
+   *
+   * Stored alongside the score so a priority can be explained rather than asserted,
+   * and so the lift's real-world effect stays measurable after the fact. The lift is
+   * deliberately tiny (capped at 0.08, zero band changes across 371 labelled items):
+   * sender engagement measured at 32% recall / 50% precision, and a weak signal
+   * should not behave like a strong one.
+   */
+  senderPriorRate?:   number | null
+  senderPriorSource?: 'sender' | 'domain' | 'user' | 'none' | null
+  senderPriorLift?:   number | null
 }
 
 /** Cause of a quietly_logged transition. Prefix = who decided. */

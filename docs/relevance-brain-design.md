@@ -230,6 +230,40 @@ can be explained rather than asserted — the same discipline as quiet provenanc
 hierarchy, so it cannot be merged pairwise across resumable runs. Store the counts and
 recompute.
 
+### 5.2 Wiring the priors into scoring (2026-09-03)
+
+The backfill wrote 1,554 priors and nothing read them. They are now loaded once per
+scan (a whole-collection read, consulted in memory — a per-thread lookup would be one
+Firestore read per item on a 60s Pub/Sub path) and applied as a **bounded lift** to
+`aiImportanceScore`, with `senderPriorRate`, `senderPriorSource` and `senderPriorLift`
+stored on the item so a priority can be explained rather than asserted.
+
+**Two guard rails, both from measurement.** The lift is capped at 0.08 and cannot move
+an item across more than one band: sender engagement scored 32% recall / 50% precision
+against the 371 labels (§10.2), and a weak signal must not behave like a strong one.
+And it **lifts only, never suppresses** — a reply rate is blind to `noreply@` senders,
+where the statutory obligations live, so pushing unengaged senders down would bury
+exactly the class the labels showed matters most. Evidence is also damped below ~10
+observed threads, and engagement near the 2.4% base rate earns nothing.
+
+**Measured before shipping**, against the 371 labels:
+
+| | mean lift | lifted at all |
+|---|---|---|
+| Should have stayed (86) | 0.0030 | 42% |
+| Fine to bury (285) | 0.0006 | 8% |
+
+A **4.6× ratio** in favour of the right class — the signal points the right way. But
+**zero band changes across all 371 items**: as calibrated this reorders within a band
+and changes nothing structural. That is the intended conservatism, and it is also the
+honest limit of what it buys today.
+
+**The larger win is not here.** A post-hoc nudge is the weakest possible use of this
+data. Feeding engagement into the classification prompt — so the model weighs "you
+answer this sender within the hour" while reading the thread — is where it should
+earn its keep. That is Stage 2 work, and it is not measurable until the score is split
+into extraction and valuation.
+
 **Still open:** `FAST_REPLY_MS` is a hard-coded 4 hours. It should be a percentile of
 the user's own latency distribution — close correspondents on the personal account sit
 at 0.1–2h, where another user's "fast" might be a day.
