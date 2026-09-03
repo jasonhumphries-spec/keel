@@ -82,8 +82,10 @@ function AwaitingItem({ item, uid }: { item: KeelItem; uid: string }) {
   const openInGmail = () =>
     window.open(buildGmailThreadUrl(user?.email, item.threadId, 'sent'), '_blank')
 
+  // flexShrink: 0 — parent is a flex column; without it the cards compress
+  // below their content height and overflow:hidden clips the buttons.
   return (
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderLeft: `3px solid ${borderColour}`, borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderLeft: `3px solid ${borderColour}`, borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '13px 15px' }}>
 
         <AgeDays date={item.receivedAt} />
