@@ -812,10 +812,18 @@ function ItemRow({
   const restSig   = getRestingSignal(item, itemSigs)
   const dateStr   = item.receivedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
-  // "New" badge — item created within last 3 hours. Ticks so the badge actually
-  // expires; read straight from Date.now() it would persist until an unrelated
-  // re-render happened to recompute it.
-  const ageMs        = now - (item.createdAt?.getTime?.() ?? 0)
+  // "New" badge — ticks so the badge actually expires; read straight from Date.now()
+  // it would persist until an unrelated re-render happened to recompute it.
+  //
+  // Age is the OLDER of "when the mail arrived" and "when keel first wrote the row".
+  // createdAt alone is wrong on any bulk write: a fresh onboarding creates every row
+  // in the same minute, so a March email badges as "Just in". receivedAt alone is
+  // wrong too — mail that keel only surfaces days later is not news to the app but is
+  // news to the user. Taking the older of the two is right in both cases, and in
+  // steady state the two are minutes apart so nothing changes.
+  const createdMs    = item.createdAt?.getTime?.() ?? 0
+  const receivedMs   = item.receivedAt?.getTime?.() ?? 0
+  const ageMs        = now - (receivedMs ? Math.min(createdMs || receivedMs, receivedMs) : createdMs)
   const isJustIn     = ageMs < 60 * 60 * 1000         // < 1 hour
   const isRecentNew  = ageMs < 3 * 60 * 60 * 1000     // < 3 hours
   const newLabel     = isJustIn ? 'Just in' : 'New'

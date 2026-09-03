@@ -3,6 +3,10 @@
     {
       "path": "/api/brain/expiry-review",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/brain/reflect",
+      "schedule": "0 3 * * *"
     }
   ]
 }

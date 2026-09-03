@@ -438,7 +438,15 @@ export async function POST(req: NextRequest) {
     // Fire-and-forget calendar status check — non-fatal, runs after scan completes.
     // Marks event/rsvp/deadline signals as on_cal/not_on_cal and auto-quietly-logs
     // 'new' items whose event is already on the user's calendar.
-    runCalendarCheck(db, uid, accessToken).catch(e => console.warn('[CalCheck] Non-fatal error:', e))
+    // AWAITED, not fire-and-forget. This used to be dispatched and dropped, which on a
+    // serverless runtime means it races the response: the moment the handler returns,
+    // the instance can be frozen and the check dies mid-flight. The symptom is silent
+    // and looks like a matching bug — every signal keeps calendarStatus: null, so the
+    // UI offers "Add to calendar" for events already on the calendar. Still non-fatal;
+    // a calendar failure must never fail a scan.
+    try {
+      await runCalendarCheck(db, uid, accessToken)
+    } catch (e) { console.warn('[CalCheck] Non-fatal error:', e) }
 
     // Fire-and-forget post-scan expiry — mirrors manual scan path so past-event items
     // get cleaned up immediately rather than waiting for the 1am nightly run.
