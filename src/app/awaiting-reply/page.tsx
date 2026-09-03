@@ -5,42 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { buildGmailThreadUrl } from '@/lib/gmailUrl'
 import { PageShell } from '@/components/layout/PageShell'
-import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp, DocumentData } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { docToItem } from '@/lib/hooks'
 import { logFeedback } from '@/lib/feedbackLog'
 import type { KeelItem } from '@/lib/types'
-
-function toDate(v: unknown): Date {
-  if (!v) return new Date()
-  if ((v as any).toDate) return (v as any).toDate()
-  return new Date(v as string)
-}
-
-function docToItem(id: string, d: DocumentData): KeelItem {
-  return {
-    itemId: id, messageId: d.messageId ?? '', threadId: d.threadId ?? '',
-    accountId: d.accountId ?? '', senderEmail: d.senderEmail ?? '',
-    senderName: d.senderName ?? '', subject: d.subject ?? '',
-    receivedAt: toDate(d.receivedAt), categoryId: d.categoryId ?? '',
-    categoryName: d.categoryName ?? '', subcategoryId: null, subcategoryName: null,
-    status: d.status ?? 'awaiting_reply',
-    importanceFlag: d.importanceFlag ?? false,
-    aiImportanceScore: d.aiImportanceScore ?? 0.5,
-    manualPriority: d.manualPriority ?? false,
-    snoozedUntil: null, linkedOutboundId: null, linkedItemId: null,
-    isRecurring: d.isRecurring ?? false, fromTrackedReply: false, trackedReplyId: null,
-    createdAt: toDate(d.createdAt), updatedAt: toDate(d.updatedAt), resolvedAt: null,
-    participants: d.participants ?? [],
-    aiTitle:           d.aiTitle ?? d.subject ?? '',
-    aiSummary:         d.aiSummary ?? '',
-    aiDetailedSummary: d.aiDetailedSummary ?? '',
-    manuallyIgnored:   d.manuallyIgnored ?? false,
-    userNote:          d.userNote ?? null,
-    preSnoozePriority: d.preSnoozePriority ?? null,
-    isOutbound:        d.isOutbound ?? false,
-    mergedThreadIds:   d.mergedThreadIds ?? [],
-  }
-}
 
 function formatRelative(date: Date): string {
   const diff  = Math.floor((Date.now() - date.getTime()) / 86400000)
