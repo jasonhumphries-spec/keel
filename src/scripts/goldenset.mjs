@@ -514,8 +514,24 @@ if (MODE === 'show-review') {
     if (done.length === 0) continue
     console.log(`\nuid ${u.id.slice(0, 10)}…  reviewed ${done.length} of ${snap.size} stale-quieted`)
     for (const d of done.sort((a, b) => (b.expiryReviewScore ?? 0) - (a.expiryReviewScore ?? 0))) {
-      console.log(`  ${d.expiryReviewOpen ? 'SHOWN ' : 'hidden'} score=${(d.expiryReviewScore ?? 0).toFixed(2)}  ${String(d.aiTitle).slice(0, 46)}`)
+      console.log(`  ${d.expiryReviewOpen ? 'SHOWN ' : 'hidden'} score=${(d.expiryReviewScore ?? 0).toFixed(2)}  status=${String(d.status).padEnd(15)} ${String(d.aiTitle).slice(0, 40)}`)
       console.log(`          reason: ${d.expiryReviewReason}`)
+    }
+  }
+  // Did Stage 0's evidence log capture the restores? This is the loop closing:
+  // a rule surfaces an item, the user acts, and the action is recorded as a label.
+  for (const u of users.docs) {
+    const fb = await db.collection(`users/${u.id}/feedback`).get()
+    if (fb.empty) continue
+    const byAction = {}
+    for (const d of fb.docs) { const a = d.data().action; byAction[a] = (byAction[a] ?? 0) + 1 }
+    console.log(`\nfeedback events for ${u.id.slice(0, 10)}…  (${fb.size} total)`)
+    for (const [a, n] of Object.entries(byAction).sort((x, y) => y[1] - x[1]))
+      console.log(`   ${String(n).padStart(4)}  ${a}`)
+    for (const d of fb.docs) {
+      const v = d.data()
+      if (v.action === 'restored_from_quiet')
+        console.log(`      restored: score=${v.prior?.score} quietedBy=${v.facts?.senderDomain ?? '?'} ${String(v.facts?.aiTitle).slice(0, 42)}`)
     }
   }
   process.exit(0)
