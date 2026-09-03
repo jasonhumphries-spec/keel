@@ -13,7 +13,8 @@
     "test:all": "npm run test && npm run test:rules",
     "eval:recon": "node src/scripts/goldenset.mjs",
     "eval:build": "node src/scripts/goldenset.mjs --build",
-    "eval:whoami": "node src/scripts/goldenset.mjs --whoami"
+    "eval:whoami": "node src/scripts/goldenset.mjs --whoami",
+    "eval:rule": "node src/scripts/goldenset.mjs --eval-rule"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

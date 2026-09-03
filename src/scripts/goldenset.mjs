@@ -27,8 +27,11 @@ const UID_ARG = (() => {
   return i !== -1 ? process.argv[i + 1] : null
 })()
 
-const MODE = process.argv.includes('--build')  ? 'build'
-           : process.argv.includes('--whoami') ? 'whoami'
+const MODE = process.argv.includes('--build')      ? 'build'
+           : process.argv.includes('--whoami')     ? 'whoami'
+           : process.argv.includes('--eval-rule')  ? 'eval-rule'
+           : process.argv.includes('--eval-content') ? 'eval-content'
+           : process.argv.includes('--eval-llm')  ? 'eval-llm'
            : 'recon'
 
 // Load .env.local into process.env without printing any values.
@@ -149,6 +152,357 @@ if (UID_ARG && users.docs.length === 0) {
   console.error(`no such uid: ${UID_ARG}`); process.exit(1)
 }
 if (UID_ARG) console.log(`scoped to uid ${UID_ARG}`)
+
+/**
+ * --eval-llm: at expiry, ASK THE MODEL whether the obligation is still open.
+ *
+ * Both predicate rules failed for the same reason. Sender engagement measures
+ * "do I converse with this person"; learned keywords turned out to memorise
+ * "DPC Accountants matter to Jason". Neither asks the question that decides the
+ * case, which is a reading-comprehension one: is there an unmet obligation here?
+ *
+ * The information was never missing — the classifier already read the thread and
+ * called it High or Urgent. A timer then overrode that judgement without consulting
+ * anything. So this tests putting the question to something that can read.
+ *
+ * Cost is the reason this is plausible: ~500 input tokens per item at Flash rates,
+ * i.e. pennies for the whole corpus, and it runs once per item at expiry rather
+ * than on every scan.
+ *
+ * The prompt deliberately does NOT reveal the score, the band, or that the item was
+ * buried — that would leak the label it is being asked to predict.
+ */
+if (MODE === 'eval-llm') {
+  const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
+  const { GoogleGenerativeAI } = await import('@google/generative-ai')
+  const dir   = process.argv[process.argv.indexOf('--labels') + 1]
+  const snapF = process.argv[process.argv.indexOf('--snapshot') + 1]
+  const outF  = process.argv[process.argv.indexOf('--out') + 1]
+
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+    .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
+  const snap = JSON.parse(readFileSync(snapF, 'utf8'))
+  const frozen = new Map(snap.entries.map(e => [e.itemId, e.frozen ?? {}]))
+
+  const j = (v) => Array.isArray(v) ? v.join(' ') : (v ?? '')
+  const model = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+    .getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+  const ask = async (l, attempt = 0) => {
+    const f = frozen.get(l.itemId) ?? {}
+    // v2. v1 asked "is a task open?" and scored 85% recall but 29% precision: it
+    // was technically right — "respond to the Vinted offer" IS an open task — and
+    // still wrong, because the user does not care. The dividing line in the labels
+    // is CONSEQUENCE, not openness. So ask what it costs to never do it.
+    const prompt = `An email thread arrived and the account owner never acted on it. Weeks have passed. It is about to be hidden permanently.
+
+SUBJECT: ${j(f.subject)}
+FROM: ${j(f.senderEmail)}
+SUMMARY: ${j(f.aiSummary)}
+DETAIL: ${j(f.aiDetailedSummary).slice(0, 900)}
+
+Question: if this thread is hidden and the account owner NEVER sees it again, is there a real cost?
+
+Answer YES only if never dealing with it means: money stays owed or unclaimed; a legal, tax or regulatory filing stays incomplete; a document stays unsigned; medical or school administration stays unresolved; or a specific person is left waiting on a reply the owner promised.
+
+Answer NO if it is discretionary or low-stakes, even when a task technically remains: an optional purchase, offer, renewal or upgrade; an invitation the owner can simply decline or ignore; a marketing or loyalty prompt; a survey or feedback request; an app update or account nudge; a delivery, parcel or booking that resolves itself; social plans; anything already handled, superseded, or now in the past.
+
+The test is not "is there something to do" — almost every email has something. The test is whether a real obligation would be silently dropped.
+
+Reply with exactly one line: YES|<six words why> or NO|<six words why>`
+    try {
+      const r = await model.generateContent(prompt)
+      const t = (r.response.text() ?? '').trim()
+      return { open: /^yes/i.test(t), why: t.split('|')[1]?.trim().slice(0, 48) ?? '' }
+    } catch (e) {
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)))
+        return ask(l, attempt + 1)
+      }
+      return { error: String(e).slice(0, 80) }
+    }
+  }
+
+  console.log(`asking the model about ${labels.length} items…`)
+  const out = []
+  let failed = 0
+  for (let i = 0; i < labels.length; i += 8) {
+    const chunk = labels.slice(i, i + 8)
+    const res = await Promise.all(chunk.map(ask))
+    res.forEach((r, k) => {
+      if (r.error) { failed++; return }
+      out.push({ itemId: chunk[k].itemId, verdict: chunk[k].verdict, band: chunk[k].band,
+                 from: chunk[k].from, title: chunk[k].title, open: r.open, why: r.why })
+    })
+    if (i % 80 === 0) process.stdout.write(`  ${i + chunk.length}/${labels.length}\r`)
+  }
+  console.log(`\nanswered ${out.length}, failed ${failed}`)
+  if (outF) writeFileSync(outF, JSON.stringify(out, null, 2))
+
+  const hash = (str) => { let h = 0x811c9dc5
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+    return h }
+  const ev = (set) => {
+    let tp = 0, fp = 0, fn = 0, tn = 0
+    for (const o of set) {
+      if (o.verdict === 'keep') { if (o.open) tp++; else fn++ } else { if (o.open) fp++; else tn++ }
+    }
+    const r = tp + fn ? tp / (tp + fn) : 0, p = tp + fp ? tp / (tp + fp) : 0
+    return { tp, fp, fn, tn, r, p, f1: p + r ? 2 * p * r / (p + r) : 0 }
+  }
+  const show = (n, m) => console.log(`${n.padEnd(24)}${String(m.tp).padStart(5)}/${String(m.tp + m.fn).padEnd(4)}`
+    + `${(m.r * 100).toFixed(0).padStart(7)}%${String(m.fp).padStart(8)}/${String(m.fp + m.tn).padEnd(4)}`
+    + `${(m.p * 100).toFixed(0).padStart(8)}%${m.f1.toFixed(2).padStart(7)}`)
+  console.log(`\n${'set'.padEnd(24)}${'rescued'.padStart(10)}${'recall'.padStart(7)}${'wrongly kept'.padStart(13)}${'prec'.padStart(8)}${'F1'.padStart(7)}`)
+  // The model was given no labels, so nothing is fitted — but the same split is
+  // reported anyway, so this number is comparable with the predicate rules.
+  show('held-out test', ev(out.filter(o => hash(String(o.itemId)) % 3 === 0)))
+  show('train (reference)', ev(out.filter(o => hash(String(o.itemId)) % 3 !== 0)))
+  show('ALL 371', ev(out))
+  process.exit(0)
+}
+
+/**
+ * --eval-content: test whether obligation LANGUAGE separates the wrongly-buried
+ * items better than sender engagement does.
+ *
+ * The sender-prior rule scored 36% recall / 50% precision on held-out data. Its
+ * failure mode is structural: it cannot see `noreply@` senders, and that is exactly
+ * where machine-generated obligations live — e-signature requests, filing
+ * rejections, statutory notices. You cannot reply to Companies House.
+ *
+ * The hypothesis here is that the obligation is stated in the TEXT, and is stated
+ * as plainly by a robot as by a person.
+ *
+ * DISCRIMINATIVE TERMS ARE LEARNED FROM THE TRAIN HALF ONLY. Hand-writing a pattern
+ * list would be contaminated: by this point in the session the whole labelled set
+ * has been read, so "obvious" keywords are partly memorised test answers. Deriving
+ * them mechanically from train, then scoring on test, is the only honest version.
+ */
+if (MODE === 'eval-content') {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const dir  = process.argv[process.argv.indexOf('--labels') + 1]
+  const snapF = process.argv[process.argv.indexOf('--snapshot') + 1]
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+    .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
+
+  // Full frozen text per item — title alone is thin.
+  const snap = JSON.parse(readFileSync(snapF, 'utf8'))
+  const text = new Map()
+  for (const e of snap.entries) {
+    const f = e.frozen ?? {}
+    const j = (v) => Array.isArray(v) ? v.join(' ') : (v ?? '')
+    text.set(e.itemId, `${j(f.aiTitle)} ${j(f.subject)} ${j(f.aiSummary)} ${j(f.aiDetailedSummary)}`.toLowerCase())
+  }
+
+  const hash = (str) => {
+    let h = 0x811c9dc5
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+    return h
+  }
+  const isTest = (l) => hash(String(l.itemId)) % 3 === 0
+  const train = labels.filter(l => !isTest(l))
+  const test  = labels.filter(isTest)
+  console.log(`labels ${labels.length}   train ${train.length} (${train.filter(l=>l.verdict==='keep').length} keep)   test ${test.length} (${test.filter(l=>l.verdict==='keep').length} keep)`)
+
+  // ── learn terms on TRAIN only ────────────────────────────────────────────
+  const toks = (id) => [...new Set((text.get(id) ?? '').match(/[a-z][a-z-]{3,}/g) ?? [])]
+  const inKeep = new Map(), inBury = new Map()
+  let nKeep = 0, nBury = 0
+  for (const l of train) {
+    const bag = toks(l.itemId)
+    if (l.verdict === 'keep') { nKeep++; for (const t of bag) inKeep.set(t, (inKeep.get(t) ?? 0) + 1) }
+    else                      { nBury++; for (const t of bag) inBury.set(t, (inBury.get(t) ?? 0) + 1) }
+  }
+  // Smoothed log-odds; require the term to appear in at least 4 train keeps so a
+  // single memorable email cannot mint a rule.
+  const scored = []
+  for (const [t, k] of inKeep) {
+    if (k < 4) continue
+    const b = inBury.get(t) ?? 0
+    const pk = (k + 0.5) / (nKeep + 1), pb = (b + 0.5) / (nBury + 1)
+    scored.push({ t, k, b, lo: Math.log(pk / pb) })
+  }
+  scored.sort((a, b) => b.lo - a.lo)
+  const TOP = scored.slice(0, 25)
+  console.log(`\nterms learned from TRAIN (${nKeep} keep / ${nBury} bury), top 25 by log-odds:`)
+  for (const x of TOP) console.log(`   ${x.lo.toFixed(2).padStart(6)}  ${x.t.padEnd(18)} keep ${String(x.k).padStart(3)}  bury ${String(x.b).padStart(3)}`)
+
+  const terms = new Set(TOP.map(x => x.t))
+  const hits = (id) => toks(id).filter(t => terms.has(t)).length
+
+  // sender prior, for the union test
+  const snapPri = await db.collection(`users/${UID_ARG}/priors`).get()
+  const priors = new Map()
+  for (const d of snapPri.docs) { const v = d.data(); if (v?.senderEmail) priors.set(v.senderEmail.toLowerCase(), v) }
+  const senderScore = (from) => priors.get(String(from ?? '').toLowerCase())?.smoothedReplyRate ?? 0
+
+  const evaluate = (set, pred) => {
+    let tp = 0, fp = 0, fn = 0, tn = 0
+    for (const l of set) {
+      const keep = pred(l)
+      if (l.verdict === 'keep') { if (keep) tp++; else fn++ } else { if (keep) fp++; else tn++ }
+    }
+    const r = tp + fn ? tp / (tp + fn) : 0, p = tp + fp ? tp / (tp + fp) : 0
+    return { tp, fp, fn, tn, r, p, f1: p + r ? 2 * p * r / (p + r) : 0 }
+  }
+  const row = (name, m, total) => console.log(
+    `${name.padEnd(30)}${String(m.tp).padStart(6)}/${String(m.tp + m.fn).padEnd(4)}`
+    + `${(m.r * 100).toFixed(0).padStart(7)}%${String(m.fp).padStart(9)}/${String(m.fp + m.tn).padEnd(4)}`
+    + `${(m.p * 100).toFixed(0).padStart(8)}%${m.f1.toFixed(2).padStart(7)}`)
+
+  const header = (t) => {
+    console.log(`\n${t}`)
+    console.log(`${'rule'.padEnd(30)}${'rescued'.padStart(11)}${'recall'.padStart(7)}${'wrongly kept'.padStart(14)}${'prec'.padStart(8)}${'F1'.padStart(7)}`)
+  }
+  // choose the hit-count cutoff on train
+  header('TRAIN — choosing the cutoff')
+  let bestN = 1, bestF = -1
+  for (const n of [1, 2, 3, 4]) {
+    const m = evaluate(train, l => hits(l.itemId) >= n)
+    row(`content: >=${n} term(s)`, m)
+    if (m.f1 > bestF) { bestF = m.f1; bestN = n }
+  }
+  console.log(`\nchosen on train: >=${bestN} term(s)`)
+
+  header('TEST — held out')
+  const c = evaluate(test, l => hits(l.itemId) >= bestN)
+  row(`content: >=${bestN} term(s)`, c)
+  const sOnly = evaluate(test, l => senderScore(l.from) >= 0.15)
+  row('sender prior >= 0.15', sOnly)
+  const union = evaluate(test, l => hits(l.itemId) >= bestN || senderScore(l.from) >= 0.15)
+  row('content OR sender', union)
+  const inter = evaluate(test, l => hits(l.itemId) >= bestN && senderScore(l.from) >= 0.15)
+  row('content AND sender', inter)
+  process.exit(0)
+}
+
+/**
+ * --eval-rule: score a proposed fix against real human labels.
+ *
+ * The rule under test: exempt an item from stale expiry when its sender's reply
+ * prior clears a threshold. The claim is that obligations without dates — an
+ * outstanding invoice, an e-signature request — come from people the user
+ * demonstrably answers, so sender engagement separates the items that should have
+ * stayed from the ones correctly buried.
+ *
+ * Labels come from the review artifact (keep = should have stayed, bury = fine to
+ * bury). Priors come from users/{uid}/priors, written by the backfill.
+ *
+ * This is the first eval in the project that scores a proposed behaviour change
+ * against ground truth rather than against one email someone happened to look at.
+ *
+ * TRAIN/TEST SPLIT. The threshold is chosen on the train half and reported on the
+ * held-out half. Sweeping thresholds on all the labels and quoting the best one
+ * would fit the knob to the same data used to score it, and the number would be
+ * optimistic by an unknown margin — the precise self-deception this project exists
+ * to avoid. The split is a hash of itemId, so it is deterministic, stable as more
+ * labels arrive, and independent of label order or verdict.
+ */
+if (MODE === 'eval-rule') {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+    .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
+
+  const uid = UID_ARG
+  if (!uid) { console.error('--eval-rule needs --uid'); process.exit(1) }
+
+  // FNV-1a over the itemId: deterministic, and adding labels never reassigns an
+  // existing one. ~1/3 held out.
+  const hash = (str) => {
+    let h = 0x811c9dc5
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+    return h
+  }
+  const isTest = (l) => hash(String(l.itemId)) % 3 === 0
+  const train = labels.filter(l => !isTest(l))
+  const test  = labels.filter(isTest)
+
+  const snap = await db.collection(`users/${uid}/priors`).get()
+  const priors = new Map()
+  for (const d of snap.docs) {
+    const v = d.data()
+    if (v?.senderEmail) priors.set(v.senderEmail.toLowerCase(), v)
+  }
+  console.log(`labels: ${labels.length}   priors loaded: ${priors.size}`)
+  const kept = (xs) => xs.filter(l => l.verdict === 'keep').length
+  console.log(`train: ${train.length} (${kept(train)} should-have-stayed)   `
+            + `test: ${test.length} (${kept(test)} should-have-stayed)`)
+
+  const domainOf = (e) => { const i = (e ?? '').lastIndexOf('@'); return i > 0 ? e.slice(i + 1).toLowerCase() : '' }
+  // Domain-level fallback for a sender with no prior of their own.
+  const byDomain = new Map()
+  for (const p of priors.values()) {
+    const d = domainOf(p.senderEmail)
+    const a = byDomain.get(d) ?? { inbound: 0, replied: 0 }
+    a.inbound += p.inboundThreads ?? 0; a.replied += p.repliedThreads ?? 0
+    byDomain.set(d, a)
+  }
+
+  const scoreOf = (from) => {
+    const e = (from ?? '').toLowerCase()
+    const p = priors.get(e)
+    if (p) return { v: p.smoothedReplyRate ?? 0, why: `sender ${p.repliedThreads}/${p.inboundThreads}` }
+    const d = byDomain.get(domainOf(e))
+    if (d && d.inbound > 0) return { v: (d.replied + 0.024 * 10) / (d.inbound + 10), why: `domain ${d.replied}/${d.inbound}` }
+    return { v: 0, why: 'unseen' }
+  }
+
+  const sweep = (set) => {
+    const out = []
+    for (const t of [0.02, 0.05, 0.08, 0.10, 0.15, 0.20, 0.30, 0.50]) {
+      let tp = 0, fp = 0, fn = 0, tn = 0
+      for (const l of set) {
+        const exempt = scoreOf(l.from).v >= t
+        if (l.verdict === 'keep') { if (exempt) tp++; else fn++ }
+        else { if (exempt) fp++; else tn++ }
+      }
+      const recall = tp + fn ? tp / (tp + fn) : 0
+      const prec   = tp + fp ? tp / (tp + fp) : 0
+      // F1 picks the threshold: recall alone would exempt everything, precision
+      // alone would exempt nothing.
+      const f1 = prec + recall ? 2 * prec * recall / (prec + recall) : 0
+      out.push({ t, tp, fp, fn, tn, recall, prec, f1 })
+    }
+    return out
+  }
+  const show = (rows, title) => {
+    console.log(`\n${title}`)
+    console.log(`${'thresh'.padEnd(8)}${'kept'.padStart(6)}${'caught'.padStart(8)}${'recall'.padStart(8)}${'wrongly kept'.padStart(14)}${'precision'.padStart(11)}${'F1'.padStart(7)}`)
+    for (const r of rows)
+      console.log(`${r.t.toFixed(2).padEnd(8)}${String(r.tp + r.fp).padStart(6)}${String(r.tp).padStart(8)}`
+        + `${(r.recall * 100).toFixed(0).padStart(7)}%${String(r.fp).padStart(14)}${(r.prec * 100).toFixed(0).padStart(10)}%${r.f1.toFixed(2).padStart(7)}`)
+  }
+
+  const trainRows = sweep(train)
+  show(trainRows, 'TRAIN — choosing the threshold')
+  const chosen = trainRows.slice().sort((a, b) => b.f1 - a.f1)[0]
+  console.log(`\nchosen on train: threshold ${chosen.t} (F1 ${chosen.f1.toFixed(2)})`)
+
+  const testRows = sweep(test)
+  show(testRows, 'TEST — held out, not used to choose anything')
+  const held = testRows.find(r => r.t === chosen.t)
+  console.log(`\n=== HONEST RESULT at threshold ${chosen.t}, on the held-out set ===`)
+  console.log(`  should have stayed, rescued : ${held.tp} of ${held.tp + held.fn}  (recall ${(held.recall * 100).toFixed(0)}%)`)
+  console.log(`  fine to bury, wrongly kept  : ${held.fp} of ${held.fp + held.tn}  (precision ${(held.prec * 100).toFixed(0)}%)`)
+
+  const best = chosen
+  console.log(`\n--- at threshold ${best.t}: what the rule does to each labelled item ---`)
+  console.log('CAUGHT (should have stayed, rule keeps it):')
+  for (const l of labels.filter(l => l.verdict === 'keep' && scoreOf(l.from).v >= best.t))
+    console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  console.log('MISSED (should have stayed, rule still buries):')
+  for (const l of labels.filter(l => l.verdict === 'keep' && scoreOf(l.from).v < best.t))
+    console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  console.log(`WRONGLY KEPT (fine to bury, rule keeps it) — ${best.fp} of ${labels.filter(l => l.verdict === 'bury').length} buriable:`)
+  for (const l of labels.filter(l => l.verdict === 'bury' && scoreOf(l.from).v >= best.t).slice(0, 12))
+    console.log(`   ${String(l.from).slice(0, 34).padEnd(34)} ${scoreOf(l.from).why.padEnd(18)} ${String(l.title).slice(0, 44)}`)
+  process.exit(0)
+}
 
 /** --whoami: map each uid to the account behind it. Identity only, no mail content. */
 if (MODE === 'whoami') {
