@@ -56,13 +56,52 @@ describe('consequence sets the level', () => {
     expect(of('receipt')).toBeGreaterThan(of('resolved'))
   })
 
-  it('a legal or medical flag lifts the floor regardless of class', () => {
-    // The prompt's 0.95 tier: "legal/medical action required, anything the user
-    // absolutely must not miss".
-    expect(consequenceFrom(facts({ obligation: 'informational', consequence: 'legal' })))
+  it('a legal or medical flag floors an ACTIONABLE item', () => {
+    // The prompt's 0.95 tier reads "legal/medical ACTION REQUIRED".
+    expect(consequenceFrom(facts({ obligation: 'action_required', consequence: 'legal' })))
       .toBeGreaterThanOrEqual(0.9)
-    expect(consequenceFrom(facts({ obligation: 'scheduled', consequence: 'medical' })))
+    expect(consequenceFrom(facts({ obligation: 'payment_due', consequence: 'medical' })))
       .toBeGreaterThanOrEqual(0.9)
+  })
+
+  it('REGRESSION: a medical flag does NOT floor something that asks nothing', () => {
+    // Found by eyeballing the first raw-thread comparison: four Pharmacy2U items sat
+    // at 0.90 — prescription DELIVERY notices and weight-management guidance — purely
+    // because `medical` overrode the obligation class. A parcel about medicine is a
+    // parcel. It gets a nudge, not the floor.
+    const notice = consequenceFrom(facts({ obligation: 'informational', consequence: 'medical' }))
+    expect(notice).toBeLessThan(0.6)
+    expect(notice).toBeGreaterThan(consequenceFrom(facts({ obligation: 'informational' })))
+  })
+
+  it('the nudge never exceeds the floor it is standing in for', () => {
+    for (const o of ['informational', 'scheduled', 'receipt', 'resolved'] as const) {
+      expect(consequenceFrom(facts({ obligation: o, consequence: 'legal' })))
+        .toBeLessThanOrEqual(0.9)
+    }
+  })
+})
+
+describe('overdue must be evidenced', () => {
+  it('REGRESSION: "overdue" with no date is not overdue', () => {
+    // The model uses `overdue` as a catch-all for "this was a while ago". The first
+    // raw-thread run scored a garden party reminder and a kids' cricket camp at 0.95
+    // on `overdue / no date`. Treated as an ordinary open action instead.
+    const s = scoreFromFacts(facts({ obligation: 'overdue', daysToDue: null }))
+    expect(bandOf(s.score)).toBe('high')
+    expect(s.score).toBeLessThan(0.85)
+    expect(s.reason).toContain('action_required')
+  })
+
+  it('"overdue" with a FUTURE date is not overdue either', () => {
+    const s = scoreFromFacts(facts({ obligation: 'overdue', daysToDue: 5 }))
+    expect(s.reason).toContain('action_required')
+  })
+
+  it('but a genuinely past date keeps its weight', () => {
+    const s = scoreFromFacts(facts({ obligation: 'overdue', daysToDue: -2 }))
+    expect(bandOf(s.score)).toBe('urgent')
+    expect(s.reason).toContain('overdue')
   })
 })
 

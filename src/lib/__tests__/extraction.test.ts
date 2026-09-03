@@ -56,6 +56,22 @@ describe('the prompt asks for facts, not judgement', () => {
   })
 })
 
+describe('the obligation definitions guard the two failure modes seen live', () => {
+  it('tells the model a past event is not overdue', () => {
+    // A garden party reminder and a kids' cricket camp were both extracted as
+    // `overdue` with no date, and scored 0.95. Nothing was owed in either.
+    expect(prompt()).toContain('An event that merely happened is NOT overdue')
+  })
+
+  it('tells the model unpaid money carries a financial consequence', () => {
+    // "Outstanding Fees from DPC Accountants" — an item the user labelled
+    // should-have-stayed — extracted as overdue/none/no-date, indistinguishable at the
+    // facts level from the garden party. Scoring cannot separate what extraction
+    // conflates; the fix belongs here.
+    expect(prompt()).toContain('whenever money is owed and unpaid')
+  })
+})
+
 describe('parsing', () => {
   const ok = JSON.stringify({
     obligation: 'payment_due', consequence: 'financial_penalty', ballWith: 'owner',

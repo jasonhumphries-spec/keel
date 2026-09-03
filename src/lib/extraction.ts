@@ -72,7 +72,11 @@ Return ONLY valid JSON:
 }
 
 OBLIGATION — what state is this thread in, as of the LAST message?
-  overdue          a payment or deadline has already passed unmet
+  overdue          a payment or deadline has ALREADY PASSED unmet. Use this only when
+                   the thread shows the date has gone or says so outright ("overdue",
+                   "outstanding", "still unpaid", "you missed", a chaser for something
+                   previously requested). An event that merely happened is NOT overdue
+                   — nothing is owed. A reminder about a past party is informational.
   payment_due      money is owed and not yet late
   action_required  the recipient must do something; no money involved
   response_due     someone is waiting on a reply the recipient owes
@@ -88,7 +92,10 @@ OBLIGATION — what state is this thread in, as of the LAST message?
 CONSEQUENCE — only when missing this carries a hard penalty:
   legal              courts, regulators, statutory filings, contracts, company filings
   medical            health, prescriptions, test results, clinical appointments
-  financial_penalty  interest, late fees, cancellation, service cut off
+  financial_penalty  interest, late fees, cancellation, service cut off. ALSO use this
+                     whenever money is owed and unpaid — an outstanding invoice or a
+                     chaser for fees carries a cost by its nature, even when no penalty
+                     is spelled out.
   none               everything else, including most work and school admin
 
 BALLWITH — whose move is it, judged from the LAST message only?

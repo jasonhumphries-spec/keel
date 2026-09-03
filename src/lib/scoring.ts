@@ -86,7 +86,7 @@ const OBLIGATION_WEIGHT: Record<ObligationClass, number> = {
   resolved:        0.10,
 }
 
-/** Flags that lift the floor regardless of timing — the prompt's 0.95 tier. */
+/** The prompt's 0.95 tier: "legal/medical action required, must not miss today". */
 const CONSEQUENCE_FLOOR: Record<ConsequenceFlag, number> = {
   legal:             0.90,
   medical:           0.90,
@@ -94,11 +94,27 @@ const CONSEQUENCE_FLOOR: Record<ConsequenceFlag, number> = {
   none:              0,
 }
 
+/**
+ * Classes where something is actually being ASKED of the recipient.
+ *
+ * The consequence floor applies only to these. Found by inspection: the first
+ * raw-thread comparison put four Pharmacy2U notifications at 0.90 — prescription
+ * DELIVERY notices and weight-management guidance, none of which ask anything — purely
+ * because `medical` floored them regardless of obligation. Read the prompt tier again:
+ * "legal/medical ACTION REQUIRED". A parcel about medicine is a parcel.
+ */
+const ACTIONABLE = new Set<ObligationClass>(['overdue', 'payment_due', 'action_required', 'response_due'])
+
+/** Modest lift for a serious subject that nonetheless asks nothing of anyone. */
+const CONSEQUENCE_NUDGE = 0.10
+
 export function consequenceFrom(facts: ExtractedFacts): number {
-  return Math.max(
-    OBLIGATION_WEIGHT[facts.obligation] ?? 0.5,
-    CONSEQUENCE_FLOOR[facts.consequence] ?? 0,
-  )
+  const base = OBLIGATION_WEIGHT[facts.obligation] ?? 0.5
+  const floor = CONSEQUENCE_FLOOR[facts.consequence] ?? 0
+  if (floor === 0) return base
+  return ACTIONABLE.has(facts.obligation)
+    ? Math.max(base, floor)
+    : Math.min(floor, base + CONSEQUENCE_NUDGE)
 }
 
 // ── Combining them ─────────────────────────────────────────────────────────
@@ -113,7 +129,17 @@ export function consequenceFrom(facts: ExtractedFacts): number {
  * to be bolted on afterwards to undo it. Encoding the precedence removes the need for
  * the correction.
  */
-export function scoreFromFacts(facts: ExtractedFacts): ScoreBreakdown {
+export function scoreFromFacts(factsIn: ExtractedFacts): ScoreBreakdown {
+  // Nothing is overdue without a date that has passed.
+  //
+  // The model uses `overdue` as a catch-all for "this was a while ago", and the first
+  // raw-thread comparison scored a garden-party reminder and a kids' cricket camp at
+  // 0.95 on `overdue / no date`. An unevidenced claim of overdueness should not carry
+  // the highest weight in the table; treat it as an ordinary open action instead.
+  const facts: ExtractedFacts = facts_isUnevidencedOverdue(factsIn)
+    ? { ...factsIn, obligation: 'action_required' }
+    : factsIn
+
   const urgency = urgencyFrom(facts.daysToDue)
   const consequence = consequenceFrom(facts)
 
@@ -157,6 +183,11 @@ export function scoreFromFacts(facts: ExtractedFacts): ScoreBreakdown {
       : `${facts.obligation}, ${facts.daysToDue}d away`
 
   return { score, urgency, consequence, reason }
+}
+
+/** `overdue` claimed with no past date to back it up. */
+function facts_isUnevidencedOverdue(f: ExtractedFacts): boolean {
+  return f.obligation === 'overdue' && (f.daysToDue === null || f.daysToDue >= 0)
 }
 
 /**

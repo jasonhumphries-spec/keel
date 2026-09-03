@@ -5,6 +5,7 @@ import { aiComplete, calcCost, PROVIDER_MODEL, getActiveProvider } from '@/lib/a
 import { runCalendarCheck } from '@/lib/server/calendarCheck'
 import { classifyThread, runInBatches, decodeBody, buildThreadContext, type ClassificationResult } from '@/lib/scanUtils'
 import { loadSenderPriors, lookupSenderPrior, applySenderPrior } from '@/lib/server/senderPrior'
+import { useSplitScoring, classifyThreadSplit } from '@/lib/server/splitScoring'
 
 export const runtime     = 'nodejs'
 export const dynamic     = 'force-dynamic'
@@ -317,6 +318,9 @@ export async function POST(req: NextRequest) {
       // a per-thread read would be one Firestore hit per item on a hot path.
       loadSenderPriors(db, uid),
     ])
+    // Stage 2 switch, per user and instantly reversible. See §9.4.
+    const splitOn = await useSplitScoring(db, uid)
+    if (splitOn) console.log('[Keel] split scoring ENABLED for this scan')
     fbReads += catsSnap.size + hintsSnap.size + 1
 
     const locale              = accountDoc.data()?.locale ?? 'en-GB'
@@ -565,7 +569,14 @@ export async function POST(req: NextRequest) {
           await writeFeed(subject, senderName, 'quietly_logged')
           return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification: synthetic as any }
         }
-        const classification = await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied, accountEmail)
+        // Split path first when flagged on; fall back to the single-pass classifier
+        // if extraction fails, so a flagged user never loses mail to a bad response.
+        const classification =
+          (splitOn
+            ? await classifyThreadSplit(db, { subject, from, threadBody, categories, isUK })
+                .catch(() => null)
+            : null)
+          ?? await classifyThread(db, subject, from, threadBody, categories, hints, isUK, isOutbound, ownerHasReplied, accountEmail)
         await writeFeed(subject, senderName, classification?.status ?? 'processing')
         return { threadId, messageId, rfcMessageId, detail, participants, from, subject, dateStr, senderName, senderEmail, isOutbound, classification }
       }

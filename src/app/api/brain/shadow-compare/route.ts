@@ -48,7 +48,10 @@ export async function POST(req: NextRequest) {
   if (req.headers.get('x-admin-secret') !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: 'unauthorised' }, { status: 401 })
   }
-  const { uid, perBand = 25 } = await req.json()
+  const { uid, perBand = 25, repeats = 1 } = await req.json()
+  // repeats > 1 runs extraction N times over the SAME thread to measure how much of
+  // any agreement change is scoring difference and how much is model variance. Without
+  // this number, a 5-point move between runs cannot be told from noise.
   if (!uid) return NextResponse.json({ error: 'uid required' }, { status: 400 })
 
   const token = await getValidAccessToken(db, uid)
@@ -110,14 +113,18 @@ export async function POST(req: NextRequest) {
         const subject = String(d.subject ?? '')
 
         // Both scorers, same text, same moment.
-        const [oldRes, newRaw] = await Promise.all([
+        const extractionPrompt = buildExtractionPrompt({ subject, from, threadBody: body, todayISO: today })
+        const [oldRes, ...newRuns] = await Promise.all([
           classifyThread(db, subject, from, body, categories, [], true,
                          d.isOutbound ?? false, true, accountEmail),
-          aiComplete(db, buildExtractionPrompt({ subject, from, threadBody: body, todayISO: today }), 700),
+          ...Array.from({ length: Math.max(1, repeats) },
+                        () => aiComplete(db, extractionPrompt, 700)),
         ])
-        const facts = parseExtraction(newRaw.text, today)
+        const allFacts = newRuns.map(r => parseExtraction(r.text, today)).filter(f => f !== null)
+        const facts = allFacts[0]
         if (!oldRes || !facts) { failures.push(`${id}: ${!oldRes ? 'old' : 'new'} classifier returned nothing`); return }
         const scored = scoreFromFacts(facts)
+        const repeatBands = allFacts.map(f => bandOf(scoreFromFacts(f).score))
 
         rows.push({
           itemId: id, storedBand: band,
@@ -128,6 +135,11 @@ export async function POST(req: NextRequest) {
           reason: scored.reason,
           truth: truth.get(id) ?? null,
           title: d.aiTitle ?? subject, from,
+          ...(repeats > 1 ? {
+            repeatBands,
+            repeatStable: repeatBands.every(b => b === repeatBands[0]),
+            repeatObligations: allFacts.map(f => f.obligation),
+          } : {}),
         })
       } catch (e) {
         failures.push(`${id}: ${String(e).slice(0, 60)}`)
@@ -160,6 +172,11 @@ export async function POST(req: NextRequest) {
     failed: failures.length,
     failures: failures.slice(0, 8),
     bandAgreement: rows.length ? +(agree / rows.length).toFixed(3) : 0,
+    ...(repeats > 1 ? {
+      // The floor on any agreement figure: if the same input lands in different bands
+      // across repeats, that share of disagreement is variance, not signal.
+      repeatStability: +(rows.filter(r => r.repeatStable).length / Math.max(1, rows.length)).toFixed(3),
+    } : {}),
     agreementByStoredBand: byStored,
     /** Truth-anchored, on whatever slice of the sample carries a human verdict. */
     separationOnLabelled: separation,
