@@ -948,3 +948,34 @@ adequate list.
 
 Worth noting for anything else built on this model: a guard against one failure mode is
 itself a bias, and needs measuring in both directions.
+
+## 12.2 The same logic at sort time
+
+The suggestion pipeline is reused in the categorise-and-sort flow, with a different
+evidence source: the items currently sitting uncategorised, rather than a sample of raw
+Gmail headers.
+
+That is the sharper signal of the two. Onboarding has to guess from the inbox as a whole
+before anything has been filed. A pile of uncategorised mail is the clearest possible
+statement that the existing categories do not fit, and it says exactly *which* mail had
+nowhere to go. It is also cheaper: senders and titles are already in Firestore, so there
+is no Gmail call at all — one LLM call, no new data leaving the system.
+
+Suggestions **prefill** the create-category form rather than creating anything. The user
+still names it and confirms, which is the same posture as everywhere else in this design:
+the model proposes, the person decides.
+
+On the real personal account (400 uncategorised items, 17 existing categories) it
+proposed Shopping & Deliveries (amazon.co.uk 42, vinted.co.uk 20), Entertainment & Media,
+Hobbies & Interests, Food & Drink and Art & Culture — each citing the domains behind it.
+On an account with no uncategorised items it correctly proposed nothing.
+
+### A spinner that did not spin
+
+Both busy indicators were initially broken in the same way, and it is worth recording
+because it is invisible in code review. `@keyframes spin` was defined in each page, but
+inside a *loading-only* branch — the dashboard's copy is unmounted by the time the modal
+can open, and onboarding's lives in `ScanStep`, which has not rendered when
+`CategoriesStep` needs it. Both rings were therefore static. A spinner that does not spin
+is worse than no spinner: it reads as a hang, which is precisely the impression the busy
+state exists to prevent. The keyframes are now defined where they are used.

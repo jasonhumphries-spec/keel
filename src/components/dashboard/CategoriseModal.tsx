@@ -35,6 +35,48 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
   const [newDesc,      setNewDesc]      = useState('')
   const [creatingError,setCreatingError]= useState('')
 
+  // Categories suggested from the mail that had nowhere to go. A pile of uncategorised
+  // items is the clearest statement that the existing categories do not fit, which
+  // makes this a sharper evidence source than the inbox sample used at onboarding.
+  // See src/lib/server/categorySuggest.ts and docs §12.2.
+  const [suggested,  setSuggested]  = useState<Array<{ id: string; name: string; description: string; evidence: string }>>([])
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestTried, setSuggestTried] = useState(false)
+
+  useEffect(() => {
+    if (!creating || suggestTried || !user) return
+    setSuggestTried(true)
+    setSuggesting(true)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const token = await user.getIdToken()
+        // Bounded, like the onboarding call: this sits in front of someone mid-task, and
+        // suggestions are a convenience — typing a name yourself must never be blocked.
+        const ctl = new AbortController()
+        const timer = setTimeout(() => ctl.abort(), 25_000)
+        const res = await fetch('/api/categories/suggest', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}` },
+          signal: ctl.signal,
+        }).finally(() => clearTimeout(timer))
+        const data = await res.json()
+        if (!cancelled) setSuggested(Array.isArray(data.suggestions) ? data.suggestions : [])
+      } catch {
+        /* silent — the form below works without them */
+      } finally {
+        if (!cancelled) setSuggesting(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [creating, suggestTried, user])
+
+  /** Prefill rather than create: the user still names it and confirms. */
+  const useSuggestion = (sug: { name: string; description: string }) => {
+    setNewName(sug.name)
+    setNewDesc(sug.description)
+  }
+
   // Post-classification scan state (removed — scan caused confusion by finding new items)
   const scanning = false
   const scanDone = false
@@ -242,6 +284,37 @@ export function CategoriseModal({ items: itemsProp, onClose }: CategoriseModalPr
         {/* Create form */}
         {creating ? (
           <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Defined here rather than inherited: the dashboard's copy of these
+                keyframes sits inside its loading branch, which is unmounted by the time
+                this modal can open. */}
+            {suggesting && <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>}
+            {suggesting && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-md)', padding: '10px 12px' }}>
+                <div style={{ width: 16, height: 16, flexShrink: 0, border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ fontSize: 11, color: 'var(--color-accent)', lineHeight: 1.5 }}>
+                  Looking at the mail that had nowhere to go, to suggest categories that would fit it.
+                </div>
+              </div>
+            )}
+            {suggested.length > 0 && (
+              <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12 }}>
+                <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 10, color: 'var(--color-text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>
+                  Suggested from your uncategorised mail
+                </div>
+                {suggested.map(sug => (
+                  <div key={sug.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: '1px solid var(--color-border)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>{sug.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sug.description}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 3, fontFamily: 'var(--font-dm-mono)' }}>{sug.evidence}</div>
+                    </div>
+                    <button onClick={() => useSuggestion(sug)} style={{ flexShrink: 0, background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+                      Use
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', marginBottom: 6 }}>Category name</label>
               <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createAndAssign()}

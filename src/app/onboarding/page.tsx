@@ -451,6 +451,10 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
       <h2 style={stepTitle}>Your categories</h2>
       <p style={stepSubtitle}>Select the areas that apply to you. You can add, rename, or remove these at any time.</p>
 
+      {/* The spin keyframes are defined per-use. The page's other copy lives inside
+          ScanStep, which has not rendered yet at this point, so relying on it would
+          leave this ring frozen — a spinner that does not spin reads as a hang. */}
+      {suggesting && <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>}
       {suggesting && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ width: 18, height: 18, flexShrink: 0, border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
