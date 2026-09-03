@@ -43,6 +43,9 @@ export function DevTools() {
 
       const usageSnap = await fGetDoc(fDoc(fDb, `users/${user.uid}/meta/usage`))
       if (usageSnap.exists()) {
+        // Runs on click, not during render: the archive is stamped with the
+        // moment of the reset.
+        // eslint-disable-next-line react-hooks/purity
         const archiveId = `usage_archive_${Date.now()}`
         await fSetDoc(fDoc(fDb, `users/${user.uid}/meta/${archiveId}`), {
           ...usageSnap.data(),

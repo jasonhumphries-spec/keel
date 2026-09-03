@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext'
 import { buildGmailThreadUrl } from '@/lib/gmailUrl'
-import { docToItem, useUncategorised } from '@/lib/hooks'
+import { docToItem, useNow, useUncategorised } from '@/lib/hooks'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { collection, query, where, onSnapshot } from 'firebase/firestore'
@@ -16,14 +16,9 @@ interface TopbarProps {
 }
 
 function useRelativeTime(date: Date | null): string {
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    if (!date) return
-    const interval = setInterval(() => setTick(t => t + 1), 30000)
-    return () => clearInterval(interval)
-  }, [date])
+  const now = useNow(30_000)
   if (!date) return ''
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+  const diff = Math.floor((now - date.getTime()) / 1000)
   if (diff < 60)    return 'just now'
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
@@ -142,9 +137,6 @@ export function Topbar({ greeting, onSettingsOpen, onCategoriseOpen }: TopbarPro
     ? (lastBackgroundScanned > lastScanned ? lastBackgroundScanned : lastScanned)
     : (lastBackgroundScanned ?? lastScanned)
   const lastScanText   = useRelativeTime(mostRecentScan)
-  const isBackgroundFresh = lastBackgroundScanned
-    ? (Date.now() - lastBackgroundScanned.getTime()) < 10 * 60 * 1000 // within 10 min
-    : false
   const isScanning   = scanProgress.status === 'scanning'
   const isDone       = scanProgress.status === 'done'
   const isError      = scanProgress.status === 'error'
