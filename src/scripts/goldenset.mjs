@@ -22,6 +22,13 @@
 import { readFileSync } from 'node:fs'
 import admin from 'firebase-admin'
 
+/** Value after a flag, or null. indexOf(-1)+1 lands on argv[0] (the node binary),
+ *  which is how a missing --out once tried to overwrite /usr/local/bin/node. */
+function argValue(flag) {
+  const i = process.argv.indexOf(flag)
+  return i === -1 ? null : (process.argv[i + 1] ?? null)
+}
+
 const UID_ARG = (() => {
   const i = process.argv.indexOf('--uid')
   return i !== -1 ? process.argv[i + 1] : null
@@ -35,6 +42,7 @@ const MODE = process.argv.includes('--build')      ? 'build'
            : process.argv.includes('--show-review') ? 'show-review'
            : process.argv.includes('--save-labels') ? 'save-labels'
            : process.argv.includes('--eval-lift')   ? 'eval-lift'
+           : process.argv.includes('--shadow')      ? 'shadow'
            : 'recon'
 
 // Load .env.local into process.env without printing any values.
@@ -178,9 +186,9 @@ if (UID_ARG) console.log(`scoped to uid ${UID_ARG}`)
 if (MODE === 'eval-llm') {
   const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
-  const dir   = process.argv[process.argv.indexOf('--labels') + 1]
-  const snapF = process.argv[process.argv.indexOf('--snapshot') + 1]
-  const outF  = process.argv[process.argv.indexOf('--out') + 1]
+  const dir   = argValue('--labels')
+  const snapF = argValue('--snapshot')
+  const outF  = argValue('--out')
 
   const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
     .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
@@ -285,8 +293,8 @@ Reply with exactly one line: YES|<six words why> or NO|<six words why>`
  */
 if (MODE === 'eval-content') {
   const { readdirSync, readFileSync } = await import('node:fs')
-  const dir  = process.argv[process.argv.indexOf('--labels') + 1]
-  const snapF = process.argv[process.argv.indexOf('--snapshot') + 1]
+  const dir  = argValue('--labels')
+  const snapF = argValue('--snapshot')
   const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
     .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
     .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
@@ -406,7 +414,7 @@ if (MODE === 'eval-content') {
  */
 if (MODE === 'eval-rule') {
   const { readdirSync, readFileSync } = await import('node:fs')
-  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const dir = argValue('--labels')
   const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
     .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
     .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
@@ -508,6 +516,138 @@ if (MODE === 'eval-rule') {
 }
 
 /**
+ * --shadow: run the Stage 2 split over the labelled corpus and compare it with the
+ * scores the current single-pass prompt produced.
+ *
+ * Nothing is written and nothing is switched. The question is narrow and answerable:
+ * does the split reproduce the current behaviour, and where it diverges, does it
+ * diverge in the direction the human labels say is right?
+ *
+ * The frozen entries hold the OLD prompt's summaries, not raw threads, so extraction
+ * runs over those. That understates what the split would do on real threads — it is
+ * reading a lossy paraphrase — which makes any agreement here a lower bound.
+ */
+if (MODE === 'shadow') {
+  const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
+  const { GoogleGenerativeAI } = await import('@google/generative-ai')
+  const dir   = argValue('--labels')
+  const snapF = argValue('--snapshot')
+  const outF  = argValue('--out')
+  const limit = Number(argValue('--limit')) || 9999
+
+  const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
+    .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
+    .slice(0, limit)
+  const snap = JSON.parse(readFileSync(snapF, 'utf8'))
+  const frozen = new Map(snap.entries.map(e => [e.itemId, e.frozen ?? {}]))
+  const j = (v) => Array.isArray(v) ? v.join(' ') : (v ?? '')
+
+  // Mirrors src/lib/scoring.ts. Kept inline because a .mjs script cannot import the
+  // TS module without a build step; if these drift the shadow stops describing the
+  // shipped behaviour, so any change to scoring.ts must be echoed here.
+  const OBL = { overdue:0.95, payment_due:0.80, action_required:0.72, response_due:0.70,
+                scheduled:0.62, informational:0.35, receipt:0.25, resolved:0.10 }
+  const CONS = { legal:0.90, medical:0.90, financial_penalty:0.90, none:0 }
+  const urgencyFrom = (d) => d === null ? 0 : d < 0 ? 1 : d <= 1 ? 0.95 : d <= 3 ? 0.8
+                      : d <= 7 ? 0.6 : d <= 14 ? 0.4 : d <= 30 ? 0.2 : 0.1
+  const scoreFromFacts = (f) => {
+    const u = urgencyFrom(f.daysToDue)
+    const c = Math.max(OBL[f.obligation] ?? 0.5, CONS[f.consequence] ?? 0)
+    if (f.isNoise) return 0.10
+    if (f.obligation === 'resolved') return 0.10
+    if (f.obligation === 'receipt') return 0.25
+    const lifted = c + (1 - c) * u * 0.85
+    const capped = f.obligation === 'scheduled' && f.consequence === 'none' ? Math.min(lifted, 0.78) : lifted
+    return Math.min(1, Math.round(capped * 100) / 100)
+  }
+  const band = (s) => s >= 0.85 ? 'urgent' : s >= 0.70 ? 'high' : s >= 0.40 ? 'med' : 'low'
+
+  const today = new Date().toISOString().slice(0, 10)
+  const model = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+    .getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+  const extract = async (l, attempt = 0) => {
+    const f = frozen.get(l.itemId) ?? {}
+    const prompt = `You are reading one email thread and reporting what is objectively in it.
+
+Report facts only. Do NOT judge how important this is, do not assign a priority.
+
+TODAY IS: ${today}
+
+SUBJECT: ${j(f.subject)}
+FROM: ${j(f.senderEmail)}
+SUMMARY OF THREAD: ${j(f.aiSummary)}
+DETAIL: ${String(j(f.aiDetailedSummary)).slice(0, 900)}
+
+Return ONLY valid JSON:
+{"obligation":"overdue|payment_due|action_required|response_due|scheduled|informational|receipt|resolved","consequence":"legal|medical|financial_penalty|none","isNoise":boolean,"signals":[{"type":"payment|deadline|event|rsvp","date":"YYYY-MM-DD"|null}]}
+
+OBLIGATION is the state as of the last message. A payment taken automatically is a receipt. A document merely available to view is informational.
+CONSEQUENCE only when missing it carries a hard penalty: legal (courts, regulators, filings), medical, financial_penalty (interest, late fees, cut off), else none.
+ISNOISE true for marketing, newsletters, review requests, loyalty prompts, automated notifications with nothing to do.
+SIGNALS dated things only; omit promotional expiry dates.`
+    try {
+      const r = await model.generateContent(prompt)
+      const m = (r.response.text() ?? '').match(/\{[\s\S]*\}/)
+      if (!m) throw new Error('no json')
+      const raw = JSON.parse(m[0])
+      const sigs = Array.isArray(raw.signals) ? raw.signals : []
+      let days = null
+      for (const s of sigs) {
+        if (!s?.date || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) continue
+        const d = Math.round((Date.parse(s.date + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000)
+        if (d < 0) continue
+        if (days === null || d < days) days = d
+      }
+      return { obligation: raw.obligation, consequence: raw.consequence ?? 'none',
+               isNoise: raw.isNoise === true, daysToDue: days }
+    } catch (e) {
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 800 * 2 ** attempt)); return extract(l, attempt + 1) }
+      return null
+    }
+  }
+
+  console.log(`extracting ${labels.length} items…`)
+  const rows = []
+  let failed = 0
+  for (let i = 0; i < labels.length; i += 8) {
+    const chunk = labels.slice(i, i + 8)
+    const res = await Promise.all(chunk.map(extract))
+    res.forEach((f, k) => {
+      if (!f) { failed++; return }
+      const l = chunk[k]
+      rows.push({ itemId: l.itemId, verdict: l.verdict, oldScore: Number(l.score ?? 0),
+                  newScore: scoreFromFacts(f), facts: f, title: l.title, from: l.from })
+    })
+    if (i % 80 === 0) process.stdout.write(`  ${i + chunk.length}/${labels.length}\r`)
+  }
+  console.log(`\nextracted ${rows.length}, failed ${failed}`)
+  if (outF) writeFileSync(outF, JSON.stringify(rows, null, 2))
+
+  const agree = rows.filter(r => band(r.oldScore) === band(r.newScore)).length
+  console.log(`\nband agreement with the current prompt: ${agree}/${rows.length} (${(100*agree/rows.length).toFixed(0)}%)`)
+
+  const mean = (a) => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0
+  const keep = rows.filter(r => r.verdict === 'keep')
+  const bury = rows.filter(r => r.verdict === 'bury')
+  const pad22 = ' '.repeat(22)
+  console.log(`\n${pad22}${'old mean'.padStart(10)}${'new mean'.padStart(10)}`)
+  console.log(`${'should have stayed'.padEnd(22)}${mean(keep.map(r=>r.oldScore)).toFixed(3).padStart(10)}${mean(keep.map(r=>r.newScore)).toFixed(3).padStart(10)}`)
+  console.log(`${'fine to bury'.padEnd(22)}${mean(bury.map(r=>r.oldScore)).toFixed(3).padStart(10)}${mean(bury.map(r=>r.newScore)).toFixed(3).padStart(10)}`)
+  const sep = (f) => mean(keep.map(f)) - mean(bury.map(f))
+  console.log(`${'separation'.padEnd(22)}${sep(r=>r.oldScore).toFixed(3).padStart(10)}${sep(r=>r.newScore).toFixed(3).padStart(10)}`)
+  console.log(sep(r=>r.newScore) > sep(r=>r.oldScore)
+    ? '  -> the split separates the human labels BETTER than the current prompt.'
+    : '  -> the split does NOT separate them better. Do not switch on this evidence.')
+
+  const counts = {}
+  for (const r of rows) counts[r.facts.obligation] = (counts[r.facts.obligation] ?? 0) + 1
+  console.log(`\nobligation mix: ${JSON.stringify(counts)}`)
+  process.exit(0)
+}
+
+/**
  * --eval-lift: does the sender-prior lift actually separate the two classes?
  *
  * Before a bounded nudge goes anywhere near live scoring, check it on the 371 labels:
@@ -518,7 +658,7 @@ if (MODE === 'eval-lift') {
   const { readdirSync, readFileSync } = await import('node:fs')
   const { loadSenderPriors, lookupSenderPrior, applySenderPrior } =
     await import('../lib/server/senderPrior.js').catch(() => ({}))
-  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const dir = argValue('--labels')
   const labels = readdirSync(dir).filter(f => f.endsWith('.json'))
     .map(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')))
     .filter(l => l.verdict === 'keep' || l.verdict === 'bury')
@@ -591,7 +731,7 @@ if (MODE === 'eval-lift') {
  */
 if (MODE === 'save-labels') {
   const { readdirSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs')
-  const dir = process.argv[process.argv.indexOf('--labels') + 1]
+  const dir = argValue('--labels')
   const uid = UID_ARG
   if (!uid || !dir) { console.error('--save-labels needs --uid and --labels <dir>'); process.exit(1) }
 
