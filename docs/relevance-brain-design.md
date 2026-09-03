@@ -775,3 +775,70 @@ deciding from use rather than from argument.
    multiple accounts; personal and work relevance models are plausibly distinct.
 5. Golden set size and refresh policy. 200 threads is a guess; it should be sized from
    the variance observed on the first eval runs.
+
+## 11. Calendar matching — participants, not prose
+
+Two defects, found by resetting an account and onboarding it fresh. Neither is visible
+in steady-state use, which is why both had survived.
+
+**The check was never running.** `runCalendarCheck` was dispatched fire-and-forget after
+the scan response was built. On a serverless runtime that is a race with the freeze: the
+handler returns, the instance can be reclaimed, and the in-flight check dies. Nothing is
+logged, because the failure is the process going away. Every signal kept
+`calendarStatus: null`, and the UI reads null as "not on the calendar" — so it offered
+"Add to calendar" for meetings that were already there, which reads as a matching bug and
+sends you looking in the wrong file. Now awaited, still non-fatal.
+
+**Same-day title matching cannot find a proposed meeting.** The observed case: mail from
+`Joseph1.Guo@landisgyr.com` proposing a meeting on 2 Sept; calendar entry
+"Resonant Grid | L+G - Sync Up" on 9 Sept, organised by `joseph1.guo@landisgyr.com`. The
+matcher required an event on the signal's date and compared it against the signal
+description. Both fail, and they fail for the whole class: a "shall we meet Wednesday?"
+thread carries the one date guaranteed to be wrong once the meeting is booked, under a
+title chosen by whoever created it.
+
+The unused evidence was the event's own attendee list — an exact address match, sitting
+in a field the check never fetched.
+
+### Why participants are evidence and not a gate
+
+The obvious design is to require the sender to be on the event. That is wrong often
+enough to matter: invitations come from assistants, booking systems, no-reply addresses
+and colleagues forwarding someone else's thread, and in none of those cases does the
+sender attend. Equally, one sender may have several meetings in the window, so an address
+match alone cannot say *which*.
+
+So each signal contributes weight, and confidence requires agreement:
+
+| Signal | Weight | Independent? |
+|---|---|---|
+| Sender is organiser or attendee | 0.45 | yes |
+| Sender's *domain* is on the event | 0.20 | yes |
+| Graded title overlap (8+ char words count double) | ×0.35 | yes if > 0 |
+| Sender's domain appears in the event title | 0.15 | yes |
+| Date proximity, decaying across ±30 days | ×0.20 | only within 3 days |
+
+`on_cal` needs score ≥ 0.55, **at least two independent signals**, and a ≥ 0.12 margin
+over the best differently-titled rival. Anything weaker that still clears 0.35 is
+`probable` — which shows the user the possibility without asserting it. Instances of one
+recurring series are exempt from the margin test: `singleEvents=true` expands a weekly
+sync into a dozen identical entries, and without the exemption a genuinely unambiguous
+match could never satisfy it.
+
+The weights are judgement, not measurement. There is no labelled set of signal-to-event
+pairs to fit them against, and they are written out so they can be argued with.
+
+Freemail domains are excluded from domain evidence. Without that, every Gmail sender
+matches every event with a Gmail attendee, and the false positives would be silent.
+
+The new matching runs only where same-day title matching found nothing, so it can add
+matches but never remove one.
+
+### On the tests
+
+All 17 passed on first run, which is when a test deserves least trust. Mutation testing
+found two of them blind: "an address match alone is never enough" was being caught by the
+score floor rather than the signal-count rule, and the ambiguity case never reached the
+margin test at all — both rules the tests claimed to cover were untested. Rewritten with
+dates and scores chosen so each rule is the only thing that can refuse the match. Six
+mutations now caught, none surviving.

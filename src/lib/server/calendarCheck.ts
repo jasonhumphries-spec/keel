@@ -98,6 +98,214 @@ export function senderMatchesCalTitle(senderEmail: string, calTitle: string): bo
   })
 }
 
+
+// ── Participant-aware matching ────────────────────────────────────────────────
+//
+// WHY THIS EXISTS. Same-day title matching cannot find a meeting that was merely
+// PROPOSED in the mail. "Shall we meet Wednesday?" carries the one date guaranteed to
+// be wrong once the meeting is actually booked, and the booked event is titled by
+// whoever created it. The real case this was built from: an email from
+// Joseph1.Guo@landisgyr.com proposing a meeting on 2 Sept, and a calendar entry
+// "Resonant Grid | L+G - Sync Up" on 9 Sept organised by joseph1.guo@landisgyr.com.
+// No same-day event, no title overlap with the signal description — but an exact
+// address match sitting in the event's organizer field, unread.
+//
+// WHY NOTHING HERE IS A GATE. The obvious design is "require the sender to be on the
+// event". That is wrong often enough to matter: invitations are sent by assistants,
+// booking systems, no-reply addresses and colleagues forwarding someone else's thread,
+// and in none of those cases is the sender an attendee. Equally, one sender may have
+// several meetings in the window, so an address match alone cannot say WHICH. So every
+// signal here is evidence, weighted and summed, and a confident match needs two
+// independent signals to agree plus a clear margin over the runner-up. When the
+// evidence is real but ambiguous the answer is 'probable', not a guess.
+
+export interface CalEventLike {
+  summary?:   string
+  start?:     { date?: string; dateTime?: string }
+  attendees?: Array<{ email?: string }>
+  organizer?: { email?: string }
+  calendarName?: string
+}
+
+function normEmail(e: string | undefined): string {
+  return (e ?? '').trim().toLowerCase()
+}
+
+/** Every address on the event: organiser plus attendees. */
+export function eventParticipants(e: CalEventLike): string[] {
+  const out = new Set<string>()
+  const org = normEmail(e.organizer?.email)
+  if (org) out.add(org)
+  for (const a of e.attendees ?? []) {
+    const em = normEmail(a.email)
+    if (em) out.add(em)
+  }
+  return [...out]
+}
+
+// Shared-domain evidence is worthless for consumer mail — half the world is on gmail,
+// so "same domain" would match every personal address against every other.
+const FREEMAIL_DOMAINS = new Set([
+  'gmail.com','googlemail.com','outlook.com','hotmail.com','yahoo.com','yahoo.co.uk',
+  'icloud.com','me.com','mac.com','live.com','live.co.uk','aol.com','msn.com',
+  'protonmail.com','proton.me','pm.me','gmx.com','mail.com','btinternet.com',
+])
+
+/**
+ * How strongly the sender is tied to this event.
+ *
+ * 'exact'  — the sender is the organiser or an attendee.
+ * 'domain' — someone from the sender's organisation is on the event. This is what
+ *            catches the assistant who sends the invite on someone else's behalf, and
+ *            the booking address that never attends anything. Freemail domains are
+ *            excluded because they carry no organisational meaning.
+ */
+export function participantEvidence(senderEmail: string, e: CalEventLike): 'exact' | 'domain' | null {
+  const sender = normEmail(senderEmail)
+  if (!sender || !sender.includes('@')) return null
+  const parts = eventParticipants(e)
+  if (parts.includes(sender)) return 'exact'
+
+  const domain = sender.split('@')[1] ?? ''
+  if (!domain || FREEMAIL_DOMAINS.has(domain)) return null
+  return parts.some(p => p.split('@')[1] === domain) ? 'domain' : null
+}
+
+/**
+ * Graded title overlap, 0..1 — the continuous cousin of `titlesMatch`.
+ *
+ * Distinctive words count double: sharing "resonant" says far more than sharing
+ * "meeting", and a boolean match cannot express that difference. Used to choose
+ * BETWEEN candidates, which is where a yes/no answer is useless.
+ */
+export function titleOverlapScore(a: string, b: string): number {
+  const wa = new Set(sigWords(a))
+  const wb = sigWords(b)
+  if (!wa.size || !wb.length) return 0
+  const hits = wb.filter(w => wa.has(w))
+  if (!hits.length) return 0
+  const weight = hits.reduce((n, w) => n + (w.length >= 8 ? 2 : 1), 0)
+  return Math.min(1, weight / Math.max(wa.size, wb.length))
+}
+
+/**
+ * Weights. These are judgement, not measurement — there is no labelled set of
+ * signal-to-event pairs to fit them against, and they are written out here so they can
+ * be argued with rather than reverse-engineered.
+ *
+ * An exact address match is the single most trustworthy thing available, because it is
+ * string equality on an identifier rather than fuzzy overlap on prose. It is still not
+ * allowed to decide alone: MIN_SIGNALS below is what stops a weekly 1:1 with the same
+ * person from swallowing every unrelated mention of them.
+ */
+const W_PARTICIPANT_EXACT  = 0.45
+const W_PARTICIPANT_DOMAIN = 0.20
+const W_TITLE              = 0.35
+const W_SENDER_IN_TITLE    = 0.15
+const W_DATE               = 0.20
+
+/** A confident match needs this score AND this many independent signals AND the margin. */
+const CONFIDENT_SCORE  = 0.55
+const PROBABLE_SCORE   = 0.35
+const MIN_SIGNALS      = 2
+const CONFIDENT_MARGIN = 0.12
+/** Days either side of the signal's date to consider. */
+export const MATCH_WINDOW_DAYS = 30
+
+export interface CalMatchContext {
+  /** Address the mail came from. May be a robot; may not attend anything. */
+  senderEmail: string
+  /** Signal description and item title — whichever matches best is used. */
+  texts:       string[]
+  /** The date the MAIL claimed, which for a proposal is a hypothesis, not a fact. */
+  sigDate:     Date
+}
+
+export interface ScoredCandidate {
+  event:   CalEventLike
+  score:   number
+  /** Which independent signals fired — carried so a match can be explained. */
+  signals: string[]
+  dayGap:  number
+}
+
+function eventDate(e: CalEventLike): Date | null {
+  const raw = e.start?.dateTime ?? e.start?.date ?? ''
+  if (!raw) return null
+  const d = new Date(raw)
+  return isNaN(d.getTime()) ? null : d
+}
+
+export function scoreCandidate(
+  ctx: CalMatchContext,
+  e: CalEventLike,
+  windowDays = MATCH_WINDOW_DAYS,
+): ScoredCandidate | null {
+  const d = eventDate(e)
+  if (!d) return null
+
+  const dayGap = Math.abs(d.getTime() - ctx.sigDate.getTime()) / 86400000
+  if (dayGap > windowDays) return null
+
+  const calTitle = e.summary ?? ''
+  const signals: string[] = []
+  let score = 0
+
+  const pe = participantEvidence(ctx.senderEmail, e)
+  if (pe === 'exact')  { score += W_PARTICIPANT_EXACT;  signals.push('participant:exact') }
+  if (pe === 'domain') { score += W_PARTICIPANT_DOMAIN; signals.push('participant:domain') }
+
+  const title = Math.max(0, ...ctx.texts.map(t => (t ? titleOverlapScore(t, calTitle) : 0)))
+  if (title > 0) { score += title * W_TITLE; signals.push('title') }
+
+  if (ctx.senderEmail && calTitle && senderMatchesCalTitle(ctx.senderEmail, calTitle)) {
+    score += W_SENDER_IN_TITLE
+    signals.push('sender-in-title')
+  }
+
+  // Date proximity decays across the window. It contributes score always, but only
+  // counts as an independent SIGNAL when it is tight — an event three weeks away is
+  // not evidence of anything on its own.
+  score += (1 - dayGap / windowDays) * W_DATE
+  if (dayGap <= 3) signals.push('date')
+
+  return { event: e, score: Math.min(1, score), signals, dayGap }
+}
+
+/**
+ * Choose the calendar event a signal refers to, if any.
+ *
+ * Returns `confident: false` when the evidence is real but cannot distinguish between
+ * candidates — several meetings with the same person, none of whose titles resemble the
+ * mail. The caller turns that into 'probable', which shows the user the possibility
+ * without asserting it.
+ */
+export function pickCalendarEvent(
+  ctx: CalMatchContext,
+  events: CalEventLike[],
+  windowDays = MATCH_WINDOW_DAYS,
+): { event: CalEventLike; confident: boolean; signals: string[]; score: number } | null {
+  const scored = events
+    .map(e => scoreCandidate(ctx, e, windowDays))
+    .filter((c): c is ScoredCandidate => c !== null && c.score >= PROBABLE_SCORE)
+    .sort((a, b) => b.score - a.score || a.dayGap - b.dayGap)
+
+  if (!scored.length) return null
+  const top = scored[0]
+
+  const strong = top.score >= CONFIDENT_SCORE && top.signals.length >= MIN_SIGNALS
+  if (!strong) return { event: top.event, confident: false, signals: top.signals, score: top.score }
+
+  // Instances of one recurring series are not competing candidates — they are the same
+  // meeting. Without this, singleEvents=true expansion turns a weekly sync into a dozen
+  // identical rivals and the margin test can never be satisfied.
+  const norm = (t?: string) => (t ?? '').trim().toLowerCase()
+  const rival = scored.slice(1).find(c => norm(c.event.summary) !== norm(top.event.summary))
+  const clear = !rival || (top.score - rival.score) >= CONFIDENT_MARGIN
+
+  return { event: top.event, confident: clear, signals: top.signals, score: top.score }
+}
+
 // ── Main check function ───────────────────────────────────────────────────────
 
 export async function runCalendarCheck(
@@ -137,7 +345,7 @@ export async function runCalendarCheck(
   }
 
   // Fetch events from all calendars
-  type CalEvent = { summary?: string; start?: { date?: string; dateTime?: string }; calendarName: string }
+  type CalEvent = CalEventLike & { calendarName: string }
   const allEvents: CalEvent[] = []
 
   await Promise.all(calendarIds.map(async ({ id, name }) => {
@@ -246,10 +454,27 @@ export async function runCalendarCheck(
           || (itemTitle && titlesMatchProbable(itemTitle, calTitle))
     })
 
-    const newStatus: string = matchedEvent ? 'on_cal' : probableEvent ? 'probable' : 'not_on_cal'
+    // Second pass — only runs when same-day title matching found nothing confident, so
+    // it can add matches but never take one away. This is what catches a meeting that
+    // was proposed for one date and booked for another, under a title the user chose.
+    const ctx = { senderEmail, texts: [sigDesc, itemTitle], sigDate }
+    const participantHit = matchedEvent ? null : pickCalendarEvent(ctx, allEvents)
+
+    const confidentEvent = matchedEvent
+      ?? (participantHit?.confident ? (participantHit.event as typeof allEvents[number]) : undefined)
+    // An exact-address match that cannot pick between candidates still beats a single
+    // fuzzy word shared with a same-day event, so it is preferred for 'probable' too.
+    const weakEvent = probableEvent
+      ?? (participantHit && !participantHit.confident ? (participantHit.event as typeof allEvents[number]) : undefined)
+
+    const matchedEventFinal = confidentEvent
+    const newStatus: string = confidentEvent ? 'on_cal' : weakEvent ? 'probable' : 'not_on_cal'
+    if (participantHit && !matchedEvent) {
+      console.log(`[CalCheck] participant pass: "${participantHit.event.summary}" score=${participantHit.score.toFixed(2)} signals=[${participantHit.signals.join(',')}] confident=${participantHit.confident}`)
+    }
     const update: Record<string, any> = { calendarStatus: newStatus, updatedAt: Timestamp.now() }
-    if (matchedEvent?.calendarName && matchedEvent.calendarName !== 'Primary') {
-      update.matchedCalendarName = matchedEvent.calendarName
+    if (matchedEventFinal?.calendarName && matchedEventFinal.calendarName !== 'Primary') {
+      update.matchedCalendarName = matchedEventFinal.calendarName
     } else {
       update.matchedCalendarName = null
     }
