@@ -263,6 +263,42 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
   const [descIndex, setDescIndex] = useState(0)
   const [descriptions, setDescriptions] = useState<Record<string, string>>({})
 
+  // Categories suggested from the account's own mail. See
+  // src/lib/server/categorySuggest.ts — the model proposes, the user decides, and
+  // nothing here is applied until they tick it.
+  const { user: authUser } = useAuth()
+  const [suggested,  setSuggested]  = useState<Array<{ id: string; name: string; description: string; evidence: string }>>([])
+  const [suggesting, setSuggesting] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (!authUser) { setSuggesting(false); return }
+        const token = await authUser.getIdToken()
+        const res = await fetch('/api/onboarding/suggest-categories', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ existing: initialCats.map(c => c.name) }),
+        })
+        const data = await res.json()
+        if (!cancelled) setSuggested(Array.isArray(data.suggestions) ? data.suggestions : [])
+      } catch {
+        // Silent: suggestions are a bonus, and the presets are already on screen.
+      } finally {
+        if (!cancelled) setSuggesting(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [authUser, initialCats])
+
+  const acceptSuggestion = (s: { id: string; name: string; description: string }) => {
+    setCats(prev => prev.some(c => c.id === s.id)
+      ? prev.map(c => c.id === s.id ? { ...c, selected: true } : c)
+      : [...prev, { id: s.id, name: s.name, selected: true, description: s.description }])
+    setSuggested(prev => prev.filter(x => x.id !== s.id))
+  }
+
   const toggle = (id: string) => setCats(prev => prev.map(c => c.id === id ? { ...c, selected: !c.selected } : c))
 
   const startAddCustom = () => {
@@ -423,6 +459,29 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
           </button>
         ))}
       </div>
+
+      {(suggesting || suggested.length > 0) && (
+        <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 14 }}>
+          <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: suggesting ? 0 : 10, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+            {suggesting ? 'Reading your mail for suggestions…' : 'Suggested from your mail'}
+          </div>
+          {suggested.map(sug => (
+            <div key={sug.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{sug.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sug.description}</div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 3, fontFamily: 'var(--font-dm-mono)' }}>{sug.evidence}</div>
+              </div>
+              <button onClick={() => acceptSuggestion(sug)} style={{ flexShrink: 0, background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-dm-sans)' }}>
+                Add
+              </button>
+              <button onClick={() => setSuggested(prev => prev.filter(x => x.id !== sug.id))} style={{ flexShrink: 0, background: 'transparent', color: 'var(--color-text-muted)', border: 'none', padding: '5px 4px', fontSize: 12, cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!showDescInput ? (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>

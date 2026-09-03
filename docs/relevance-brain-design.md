@@ -880,3 +880,47 @@ a property of the fixture, not of any real calendar; the fix was to make the fix
 realistic rather than to loosen the thresholds. Separately, mutation testing showed the
 participant rarity floor was never actually exercised — every end-to-end case was refused
 by the score floor first — so it is now asserted directly on the signals array.
+
+## 12. Onboarding categories from the mail itself
+
+Onboarding asks people to pick categories before keel has read anything, from a fixed
+list that cannot know what the account is for. A freshly onboarded work account got
+Clients / Finance / HR / Legal / Projects / Suppliers — none of which name the things it
+actually deals with: grid hardware partners, investor pipeline, cloud infrastructure
+spend.
+
+The evidence to do better is already in hand. One page of message **headers** — sender
+domains, counts and subject lines — says plainly who this person corresponds with. That
+is one cheap Gmail call and one LLM call, which is what makes it affordable inside the
+onboarding flow rather than after it.
+
+**Suggested, never applied.** Categories chosen at onboarding are baked into every item
+classified afterwards, so a wrong one is expensive to unwind. The model proposes with its
+evidence shown ("landisgyr.com (12)"), and the user ticks what they want — the same shape
+as the Stage 4 profile candidate, for the same reason: this is a layer that can be
+confidently wrong in a way that reads as competent.
+
+**Why not web search or a LinkedIn scrape.** It was considered and rejected. It adds an
+external dependency and a new failure mode at the most fragile moment in the product, it
+widens the privacy story from "reads your mail" to "researches you", and it is strictly
+worse evidence than what is already held: a few hundred threads of real correspondence
+say more about what an account is *for* than a company page does. If a first pass over
+the mail proves insufficient, that is the point to reach outside.
+
+### The injection path this opens, and what closes it
+
+Reflection (§3, L5) sees only counts, which is what lets it guarantee that no stranger's
+words reach a prompt. This cannot — you cannot infer topics from domains alone, so
+subject lines must be read. Four things contain it:
+
+- Subjects are sanitised (control characters, code fences) and truncated to 120 chars.
+- The prompt states the block is untrusted data and must not be followed as instructions.
+- Output is constrained to short names and validated against the same instruction-like
+  patterns as the profile candidate.
+- Nothing is written until the user ticks it.
+
+The threshold is 25 messages. Below that a model asked to categorise a mailbox will
+invent a life, exactly as it will invent a personality from 22 evidence events.
+
+An empty suggestion list is an explicitly good answer, stated in the prompt. Without
+that, the model is pushed into inventing a category to look useful.
