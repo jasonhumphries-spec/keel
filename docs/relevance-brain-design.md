@@ -538,7 +538,99 @@ building the box.
 
 ---
 
-## 10. Dependencies and open questions
+## 10. The stale-expiry fix — measured, then specified (2026-09-02)
+
+### 10.1 What the labels say
+
+All 371 High/Urgent items silenced by `expire_on_scan_stale` were hand-labelled in a
+review artifact. Not an estimate:
+
+| Band | n | Should have stayed | Rate | 95% CI |
+|---|---|---|---|---|
+| Urgent | 103 | 13 | 12.6% | 8–20% |
+| High | 268 | 73 | **27.2%** | 22–33% |
+| **Total** | **371** | **86** | **23.2%** | 19–28% |
+
+High items are wrongly buried at **more than twice** the rate of Urgent ones. Urgent
+items are mostly either genuinely handled or genuinely noise; High is where real
+obligations go to die.
+
+### 10.2 Four predicates, all short of shippable
+
+Every result below is on the same held-out third (`FNV-1a(itemId) % 3`, deterministic,
+stable as labels accumulate). Definitions: **recall** = of the items that should have
+stayed, how many the rule rescues — this is the expensive error, a missed statutory
+filing. **Precision** = of the items the rule keeps, how many actually mattered — this
+is the noise error, and it erodes trust in the dashboard.
+
+| Rule | Recall | Precision | F1 |
+|---|---|---|---|
+| Sender reply prior ≥ 0.15 | 32% | 50% | 0.39 |
+| Learned obligation keywords | 52% | 45% | 0.48 |
+| Content OR sender | 60% | 42% | 0.49 |
+| Ask the model — v1 "is a task open?" | **80%** | 26% | 0.40 |
+| Ask the model — v2 "what does it cost to never act?" | 76% | 35% | 0.47 |
+
+Each failure was informative:
+
+- **The sender prior is blind to `noreply@`**, which is exactly where machine-generated
+  obligations live. `irisopenspace` sent seven e-signature requests across 23 threads
+  with zero replies; Companies House rejected a Resonant Grid filing. Replying is not
+  the action, so no reply-rate threshold can ever reach them.
+- **Learned keywords collapsed 69% → 52% recall** from train to test. The terms it
+  learned were `openspace`, `iris`, `accountants`, `seymour` — it memorised *which
+  institutions matter to this user* and presented it as content analysis. A sender rule
+  in a content costume.
+- **The model at v1 was technically correct and still wrong.** *"Respond to the Vinted
+  offer"* is a genuine open task; the user buried it. The dividing line in the labels is
+  **consequence**, not openness. v2 asks what it costs to never act, which cut wrongly-kept
+  items 56 → 36 while holding recall. v2 shows no train/test gap, so the gain is real.
+
+**The ceiling is in the framing, not the parameters.** Four attempts to find a predicate
+that decides keep-vs-bury, best F1 0.49. The answer is to stop deciding.
+
+### 10.3 Spec — a review queue, not a predicate
+
+The bug was never "the exemption rule is miscalibrated". It is that **a timer silently
+overrides a judgement the classifier already made**. The item was read, scored High, and
+then deleted from view by a `Date.now()` comparison that consulted nothing.
+
+So: stop deleting. Surface instead, and use v2 to *rank* rather than to *decide* — at
+76% recall it is more than good enough to order a list, and its 35% precision stops
+mattering when a human is doing the final pass.
+
+**Behaviour.** `expire_on_scan_stale` and `nightly_expiry_stale` keep quieting Low and
+Medium items exactly as now. For High and Urgent they still set `quietly_logged` — no new
+status, no migration — but additionally stamp a review score. The existing
+`/quietly-logged` page gains a "Buried this month" section filtered to
+`quietedBy == 'expiry:stale'` with a High/Urgent band, ordered by that score.
+
+**Fields** (on `KeelItem`):
+
+```
+expiryReviewScore   0–1, the model's judgement at expiry time
+expiryReviewReason  the six-word why, shown in the list
+expiryReviewedAt    when it was asked
+```
+
+**Cost.** One Flash call per High/Urgent stale expiry. Measured rate: 371 over twelve
+months on the personal account, ~31/month, ~500 input tokens each. Pennies per year, and
+it runs once per item at expiry rather than on every scan. Low/Medium items are never
+asked about — there is no evidence they matter.
+
+**Expected effect on this corpus.** 371 items a year would surface for review instead of
+vanishing. Ranked by v2, the ~86 that mattered cluster at the top. One glance a month
+recovers what the timer currently costs.
+
+**How it gets measured.** The 371 labels are the eval. A change to the ranking is
+scored with `npm run eval:llm` against them before it ships — the first time this project
+can answer "did that help?" with a number rather than an anecdote.
+
+**Open.** Whether to notify at all, or leave it as a passive list. A monthly digest risks
+becoming another ignored email; the passive list risks never being looked at. Worth
+deciding from use rather than from argument.
+
+## 11. Dependencies and open questions
 
 **Prerequisite (in progress):** eliminate the duplicated classifier in
 `functions/src/scan.ts`. The brain assumes exactly one classification implementation.
