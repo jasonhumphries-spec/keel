@@ -462,6 +462,48 @@ access denied throughout. Run it after any rules change and before deploying.
 This is the first automated test in the repository. Stage 1's harness should build on it
 rather than beside it.
 
+### 9.5 Stage 4 built — reflection, generation only (2026-09-03)
+
+`src/lib/server/reflection.ts` and `/api/brain/reflect` turn the evidence log into a
+candidate narrative profile.
+
+**The input is the LOG, not the mail.** Reflection reads action counts, sender
+addresses and rule-override tallies — never bodies, subjects or summaries. This is a
+security decision before a design one: the profile is destined for a prompt, so
+anything in it is effectively an instruction, and keeping mail content out closes the
+path from a stranger's email to the classifier's behaviour. A regex guard rejects
+instruction-like candidates as belt-and-braces; the first version of it allowed one
+modifier word and missed *"ignore all previous instructions"*, which is worth
+remembering — a guard that is too narrow reads as protection while providing none.
+
+**Generation and promotion are separate, and only generation is built.** A candidate is
+written, versioned and shown; nothing reads it. This is the one layer that regresses
+silently — a wrong score is on screen, a buried item is countable, but a profile that
+has drifted into a false belief produces fluent output that is quietly worse.
+
+**The evidence threshold is 150 events and the log holds 25.** So on real data the
+route correctly refuses:
+
+```
+{ generated: false, reason: "only 25 events; need 150" }
+```
+
+Forced for inspection, the candidate demonstrates exactly why the threshold exists:
+
+> - This person opened 10 emails and marked 7 as done.
+> - They restored 2 emails from quiet, specifically from donotreply@sbc.sage.com and
+>   kmk1001@cam.ac.uk.
+> - They dismissed 2 emails from temu@eu.temuemail.com.
+
+Accurate, grounded, and useless — it is a transcript of a single afternoon, not a
+profile. It reports *"marked emails from googledevelopers-noreply@google.com as done
+twice"* as though that were a preference. **Stage 4 is built and cannot yet do its
+job**; it needs months of ordinary use, not more code.
+
+**Still to build:** promotion gated on a shadow score against the 371 labels, and
+injection into the L1/L3 prompts. Neither is worth writing until a profile exists that
+is worth promoting.
+
 ### 9.2 Stage 1 progress — the override suite
 
 `vitest` is in (`npm test`), and `src/lib/__tests__/scanUtils.overrides.test.ts` pins
