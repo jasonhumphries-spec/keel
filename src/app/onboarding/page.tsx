@@ -276,11 +276,17 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
       try {
         if (!authUser) { setSuggesting(false); return }
         const token = await authUser.getIdToken()
+        // Hard ceiling. The picker is disabled while this runs, so a hung request would
+        // otherwise strand someone on this step with no way forward. Suggestions are a
+        // bonus; the presets alone are a complete answer.
+        const ctl = new AbortController()
+        const timer = setTimeout(() => ctl.abort(), 25_000)
         const res = await fetch('/api/onboarding/suggest-categories', {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
           body: JSON.stringify({ existing: initialCats.map(c => c.name) }),
-        })
+          signal: ctl.signal,
+        }).finally(() => clearTimeout(timer))
         const data = await res.json()
         if (!cancelled) setSuggested(Array.isArray(data.suggestions) ? data.suggestions : [])
       } catch {
@@ -445,10 +451,21 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
       <h2 style={stepTitle}>Your categories</h2>
       <p style={stepSubtitle}>Select the areas that apply to you. You can add, rename, or remove these at any time.</p>
 
+      {suggesting && (
+        <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 14, fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)' }}>
+          Reading your mail to suggest categories…
+        </div>
+      )}
+
+      {/* Everything below is inert until the suggestions land. Choosing from the presets
+          first would mean choosing without the evidence this step exists to provide. */}
+      <div aria-busy={suggesting} style={{ opacity: suggesting ? 0.4 : 1, pointerEvents: suggesting ? 'none' : 'auto', transition: 'opacity 0.25s' }}>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
         {cats.map(cat => (
           <button
             key={cat.id}
+            disabled={suggesting}
             onClick={() => toggle(cat.id)}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: `1.5px solid ${cat.selected ? 'var(--color-accent)' : 'var(--color-border)'}`, background: cat.selected ? 'var(--color-accent-sub)' : 'var(--color-surface)', cursor: 'pointer', textAlign: 'left' as const, transition: 'all 0.15s' }}
           >
@@ -460,10 +477,10 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
         ))}
       </div>
 
-      {(suggesting || suggested.length > 0) && (
+      {suggested.length > 0 && (
         <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 14 }}>
-          <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: suggesting ? 0 : 10, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
-            {suggesting ? 'Reading your mail for suggestions…' : 'Suggested from your mail'}
+          <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 10, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+            Suggested from your mail
           </div>
           {suggested.map(sug => (
             <div key={sug.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: '1px solid var(--color-border)' }}>
@@ -489,10 +506,11 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
             value={newCat}
             onChange={e => setNewCat(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && startAddCustom()}
+            disabled={suggesting}
             placeholder="Add a custom category..."
             style={{ flex: 1, background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-dm-sans)', outline: 'none' }}
           />
-          <button onClick={startAddCustom} disabled={!newCat.trim()} style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', cursor: newCat.trim() ? 'pointer' : 'not-allowed', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-dm-sans)' }}>
+          <button onClick={startAddCustom} disabled={suggesting || !newCat.trim()} style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', cursor: newCat.trim() ? 'pointer' : 'not-allowed', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-dm-sans)' }}>
             + Add
           </button>
         </div>
@@ -527,10 +545,16 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
         {selected.length} categor{selected.length === 1 ? 'y' : 'ies'} selected
       </div>
 
+      </div>
+
       <div style={{ display: 'flex', gap: 10 }}>
         <button onClick={onBack} style={ghostBtn}>← Back</button>
-        <button onClick={goToDescribe} disabled={selected.length === 0} style={{ ...primaryBtn, flex: 1, opacity: selected.length === 0 ? 0.5 : 1 }}>
-          Start scanning →
+        <button
+          onClick={goToDescribe}
+          disabled={suggesting || selected.length === 0}
+          style={{ ...primaryBtn, flex: 1, opacity: (suggesting || selected.length === 0) ? 0.5 : 1 }}
+        >
+          {suggesting ? 'Reading your mail…' : 'Start scanning →'}
         </button>
       </div>
     </div>
