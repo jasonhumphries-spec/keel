@@ -351,6 +351,7 @@ function SidebarInner() {
             </button>
           )}
           {[
+            { label: 'Awaiting Reply',  href: '/awaiting-reply', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z', count: counts.awaitingReply, v: 'mute' as const },
             { label: 'Ignored',         href: '/quietly-logged', icon: 'M21 8v13H3V8M1 3h22v5H1zM10 12h4', count: counts.quietlyLogged, v: 'mute' as const },
             { label: 'Payment History', href: '/payments',       icon: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1zM8 10h8M8 14h8', count: 0, v: 'dark' as const },
             { label: 'All Mail',        href: '/all-mail',       icon: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6', count: 0, v: 'mute' as const },
