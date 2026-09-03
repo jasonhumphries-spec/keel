@@ -94,6 +94,22 @@ export interface KeelItem {
    * prevent. Without this field the two are indistinguishable.
    */
   quietedFromStatus?: ItemStatus | null
+
+  /**
+   * Expiry review — see docs/relevance-brain-design.md §10.3.
+   *
+   * Set only on High/Urgent items the stale timer buried. 23% of those turned out to
+   * matter (86 of 371 hand-labelled), so instead of deleting them from view the model
+   * is asked what it costs to never see the item again, and the answer surfaces the
+   * item for review.
+   */
+  /** The measured judgement: would a real obligation be silently dropped? */
+  expiryReviewOpen?:   boolean | null
+  /** 0–1 severity for ORDERING the review list. Not validated — never gate on it. */
+  expiryReviewScore?:  number | null
+  /** Short why, shown beside the item in the review list. */
+  expiryReviewReason?: string | null
+  expiryReviewedAt?:   Date | null
 }
 
 /** Cause of a quietly_logged transition. Prefix = who decided. */

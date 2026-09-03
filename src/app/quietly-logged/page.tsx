@@ -218,7 +218,20 @@ export default function QuietlyLoggedPage() {
       )
     : visible
 
-  const groups = groupByWeek(filtered)
+  /**
+   * Buried by the stale timer, but the model says a real obligation remains.
+   *
+   * 23% of High/Urgent items the timer hid turned out to matter — 86 of 371
+   * hand-labelled (docs/relevance-brain-design.md §10). These are surfaced rather
+   * than deleted from view. The score ORDERS this list; it never decides anything,
+   * because only the open/closed judgement was measured.
+   */
+  const buried = filtered
+    .filter(i => i.expiryReviewOpen === true)
+    .sort((a, b) => (b.expiryReviewScore ?? 0) - (a.expiryReviewScore ?? 0)
+                 || b.receivedAt.getTime() - a.receivedAt.getTime())
+  const buriedIds = new Set(buried.map(i => i.itemId))
+  const groups = groupByWeek(filtered.filter(i => !buriedIds.has(i.itemId)))
 
   return (
     <PageShell>
@@ -266,7 +279,42 @@ export default function QuietlyLoggedPage() {
           ) : filtered.length === 0 ? (
             <EmptyState />
           ) : (
-            groups.map(group => (
+            <>
+            {buried.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px' }}>
+                  <div style={{ fontSize: 'var(--fs-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Buried, but may still need you
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-dm-mono)', fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)' }}>
+                    {buried.length}
+                  </div>
+                </div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', padding: '0 2px 4px', lineHeight: 1.5, maxWidth: '62ch' }}>
+                  These were hidden automatically because they sat unactioned past the time
+                  limit — not because anything judged them unimportant. Roughly one in four
+                  turns out to still matter.
+                </div>
+                <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', padding: '4px 0' }}>
+                  {buried.map((item, i) => (
+                    <div key={item.itemId}>
+                      {i > 0 && <div style={{ height: 1, background: 'var(--color-border)', margin: '0 12px' }} />}
+                      {item.expiryReviewReason && (
+                        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-dm-mono)', padding: '6px 14px 0' }}>
+                          {item.expiryReviewReason}
+                        </div>
+                      )}
+                      <LoggedItem
+                        item={item}
+                        uid={user.uid}
+                        onMoved={() => setMovedIds(prev => new Set([...prev, item.itemId]))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {groups.map(group => (
               <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <SectionHeader label={group.label} count={group.items.length} />
                 <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', padding: '4px 0' }}>
@@ -282,7 +330,8 @@ export default function QuietlyLoggedPage() {
                   ))}
                 </div>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </div>

@@ -64,6 +64,10 @@ export function docToItem(id: string, d: DocumentData): KeelItem {
     autoQuietedReason: d.autoQuietedReason ?? null,
     quietedBy:         d.quietedBy ?? null,
     quietedFromStatus: d.quietedFromStatus ?? null,
+    expiryReviewOpen:   d.expiryReviewOpen   ?? null,
+    expiryReviewScore:  d.expiryReviewScore  ?? null,
+    expiryReviewReason: d.expiryReviewReason ?? null,
+    expiryReviewedAt:   d.expiryReviewedAt ? toDate(d.expiryReviewedAt) : null,
   }
 }
 
