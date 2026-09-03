@@ -104,7 +104,9 @@ ${existing.map(e => `  ${e}`).join('\n') || '  (none)'}
 MAIL SUMMARY (${s.totalMessages} messages):
 ${lines}
 
-Suggest at most 5 categories that the list above does not already cover and that this account clearly needs. If the existing list is adequate, return an empty array — that is a good answer, not a failure.
+List EVERY category the evidence clearly supports, up to a maximum of 5. Do not stop early: if four distinct areas of this person's mail are unrepresented by the list above, name all four. Only return fewer when the evidence genuinely does not support more, and return an empty array if the existing list is already adequate — that is a good answer, not a failure.
+
+Judge each candidate on whether a reasonable person would want that mail filed separately, not on whether it is the most interesting thing in the summary.
 
 Return ONLY a JSON array, no prose:
 [{"name": "Short Name", "description": "One line describing what belongs here.", "evidence": "why, citing domains and counts"}]`

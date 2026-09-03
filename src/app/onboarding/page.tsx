@@ -452,8 +452,17 @@ function CategoriesStep({ initialCats, onNext, onBack }: { initialCats: typeof D
       <p style={stepSubtitle}>Select the areas that apply to you. You can add, rename, or remove these at any time.</p>
 
       {suggesting && (
-        <div style={{ background: 'var(--color-surface-recessed)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 14, fontFamily: 'var(--font-dm-mono)', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          Reading your mail to suggest categories…
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-accent-sub)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ width: 18, height: 18, flexShrink: 0, border: '2px solid var(--color-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-accent)' }}>
+              Reading your recent mail…
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+              Working out who writes to you most, so we can suggest categories that fit this
+              account rather than a generic list. Takes a few seconds.
+            </div>
+          </div>
         </div>
       )}
 

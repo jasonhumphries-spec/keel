@@ -924,3 +924,27 @@ invent a life, exactly as it will invent a personality from 22 evidence events.
 
 An empty suggestion list is an explicitly good answer, stated in the prompt. Without
 that, the model is pushed into inventing a category to look useful.
+
+### 12.1 Run-to-run variance, measured
+
+The first live run produced one suggestion where an earlier run on the same account had
+produced three. Temperature is already 0 for both providers, so the obvious explanation
+was wrong.
+
+Measured directly — identical headers, identical prompt, five runs:
+
+| | counts | naming |
+|---|---|---|
+| Original prompt | 5, 5, 3 | changed entirely between runs |
+| Revised prompt | 4, 4, 4, 4, 4 | 3 of 4 identical every run |
+
+Two findings. Gemini is **not deterministic at temperature 0** — batched serving varies —
+so some variance is inherent and cannot be prompted away. But most of the instability was
+mine: "Suggest at most 5" combined with "an empty array is a good answer" biases hard
+toward minimising. Having written those guards to prevent over-suggesting, I got
+under-suggesting. The prompt now asks for every category the evidence supports up to five
+and says explicitly not to stop early, keeping the empty-array escape for a genuinely
+adequate list.
+
+Worth noting for anything else built on this model: a guard against one failure mode is
+itself a bias, and needs measuring in both directions.
