@@ -79,12 +79,12 @@ export async function summariseEvidence(db: Firestore, uid: string): Promise<Evi
   }
 
   const engaged = [...perSender.entries()]
-    .filter(([, e]) => e.pos.size > 0)
+    .filter(([, e]) => e.pos.size > 0 && e.n >= MIN_SENDER_ACTIONS)
     .map(([sender, e]) => ({ sender, domain: e.domain, actions: [...e.pos], n: e.n }))
     .sort((a, b) => b.n - a.n).slice(0, 25)
 
   const dismissed = [...perSender.entries()]
-    .filter(([, e]) => e.neg > 0 && e.pos.size === 0)
+    .filter(([, e]) => e.neg >= MIN_SENDER_ACTIONS && e.pos.size === 0)
     .map(([sender, e]) => ({ sender, domain: e.domain, n: e.neg }))
     .sort((a, b) => b.n - a.n).slice(0, 25)
 
@@ -97,12 +97,46 @@ export async function summariseEvidence(db: Firestore, uid: string): Promise<Evi
 /**
  * How much evidence before a profile is worth generating at all.
  *
- * Below this the log describes a handful of afternoons, not a person, and an LLM asked
- * to characterise it will confabulate a personality from noise. The number is a
- * judgement rather than a measurement — there is no data yet to fit it — and it is
- * stated here so it can be argued with.
+ * This was 150, which was wrong — not because the reasoning behind it was wrong, but
+ * because it answered the wrong question. Measured on real accounts, the log grows at
+ * roughly 20-25 events in three days, so 150 is about three weeks of use before anything
+ * is learned at all. That is far too slow to iterate on.
+ *
+ * The number was conflating two questions that deserve separate answers:
+ *
+ *   1. Should a profile be GENERATED? Cheap, versioned, and never applied without a
+ *      human promoting it — so the cost of generating early is low.
+ *   2. How much may the profile CLAIM? That is not about total volume at all. It is
+ *      about how much evidence stands behind each individual statement.
+ *
+ * Answering them separately is what makes an early profile honest rather than
+ * confabulated: it is allowed to exist, and allowed to say very little.
  */
-export const MIN_EVENTS_FOR_PROFILE = 150
+export const MIN_EVENTS_FOR_PROFILE = 20
+
+/**
+ * A sender must have been acted on more than once to be named.
+ *
+ * One action is an anecdote. On the real logs, 17 distinct senders had been touched but
+ * only 5 more than once — so without this a profile would confidently describe a
+ * "pattern" that happened a single time.
+ */
+export const MIN_SENDER_ACTIONS = 2
+
+/**
+ * How many claims the evidence can support.
+ *
+ * A ladder rather than a formula, so the steps are arguable. The point is that a profile
+ * built on 20 events must not be allowed to make six confident assertions — the number
+ * of bullets IS the confidence, and the model will fill whatever budget it is given.
+ */
+export function bulletBudget(events: number): number {
+  if (events < 40)  return 2
+  if (events < 80)  return 3
+  if (events < 140) return 4
+  if (events < 200) return 5
+  return 6
+}
 
 export function hasEnoughEvidence(summary: EvidenceSummary): boolean {
   return summary.events >= MIN_EVENTS_FOR_PROFILE
@@ -116,6 +150,7 @@ export function hasEnoughEvidence(summary: EvidenceSummary): boolean {
  * invented preferences that reads well and is wrong.
  */
 export function buildProfilePrompt(s: EvidenceSummary): string {
+  const budget = bulletBudget(s.events)
   return `Below is a summary of what one person has DONE in their email triage app. Write a short profile of what they treat as important.
 
 Ground every sentence in the counts below. Do not infer personality, profession, family or circumstances. If the evidence is thin on something, say nothing about it rather than guessing.
@@ -134,7 +169,9 @@ ${s.dismissed.map(e => `  ${e.sender} (${e.n})`).join('\n') || '  none yet'}
 AUTO-QUIET RULES THEY OVERTURNED:
 ${Object.entries(s.overturnedRules).map(([k, v]) => `  ${k}: ${v}`).join('\n') || '  none'}
 
-Write at most 6 bullet points, each one sentence, each traceable to a count above. Prefer concrete senders and domains over adjectives. Write nothing you cannot point at.
+Write AT MOST ${budget} bullet point${budget === 1 ? '' : 's'}, each one sentence, each traceable to a count above. This budget reflects how much evidence there is — do not pad to reach it. Two well-grounded bullets are a better answer than ${budget} that stretch.
+
+Prefer concrete senders and domains over adjectives. Write nothing you cannot point at.
 
 Output only the bullets, each starting with "- ".`
 }
@@ -154,13 +191,15 @@ export interface ProfileCandidate {
  * Cheap guards against the two ways this goes wrong quietly: a profile that has
  * invented detail (too long, too confident) and one that says nothing (all hedging).
  */
-export function validateCandidate(markdown: string): { ok: boolean; reason?: string } {
+export function validateCandidate(markdown: string, maxBullets = 8): { ok: boolean; reason?: string } {
   const text = (markdown ?? '').trim()
   if (!text) return { ok: false, reason: 'empty' }
 
   const bullets = text.split('\n').filter(l => l.trim().startsWith('- '))
   if (bullets.length === 0) return { ok: false, reason: 'no bullets' }
-  if (bullets.length > 8) return { ok: false, reason: `too many bullets (${bullets.length})` }
+  // The budget is the confidence claim. A profile from 20 events that comes back with
+  // six assertions has gone beyond its evidence, whatever the prose looks like.
+  if (bullets.length > maxBullets) return { ok: false, reason: `too many bullets (${bullets.length} > ${maxBullets})` }
   if (text.length > 1500) return { ok: false, reason: 'too long — likely confabulating' }
 
   // An instruction reaching a prompt is the injection risk this design closes by not

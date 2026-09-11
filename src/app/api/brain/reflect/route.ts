@@ -28,7 +28,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
 import {
   summariseEvidence, hasEnoughEvidence, buildProfilePrompt, validateCandidate,
-  MIN_EVENTS_FOR_PROFILE,
+  MIN_EVENTS_FOR_PROFILE, bulletBudget,
 } from '@/lib/server/reflection'
 
 export const maxDuration = 300
@@ -56,7 +56,9 @@ async function reflectUser(uid: string, force: boolean) {
   }
 
   const { text } = await aiComplete(db, buildProfilePrompt(summary), 500)
-  const check = validateCandidate(text)
+  // Validate against the same budget the prompt was given, so an over-long candidate is
+  // refused rather than quietly accepted.
+  const check = validateCandidate(text, bulletBudget(summary.events))
   if (!check.ok) {
     return { uid, generated: false, reason: `candidate rejected: ${check.reason}` }
   }

@@ -1037,3 +1037,47 @@ Stage 4 reflection is built to consume.
 Note also that these corrections would be the first evidence able to falsify the split
 scorer's `ballWith` judgement against real user intent, rather than against a labelled set
 built by inspection.
+
+## 14. Reflection threshold: generate early, claim little
+
+`MIN_EVENTS_FOR_PROFILE` was 150. Measured on real accounts the evidence log grows at
+roughly 20–25 events in three days, so 150 meant about three weeks of use before anything
+was learned — far too slow to iterate on.
+
+The number was answering the wrong question. It conflated two that deserve separate
+answers:
+
+1. **Should a profile be generated?** Cheap, versioned, never applied without a human
+   promoting it. The cost of generating early is low.
+2. **How much may it claim?** Not a function of total volume at all, but of how much
+   evidence stands behind each individual statement.
+
+| | Before | After |
+|---|---|---|
+| Generation gate | 150 events | 20 |
+| Claims allowed | up to 6, always | 2 below 40 events, rising to 6 at 200 |
+| Naming a sender | any single action | 2+ actions |
+
+The bullet count *is* the confidence claim: the model fills whatever budget it is given,
+and prose cannot show that six assertions rest on twenty events. `validateCandidate` now
+refuses a candidate over its budget, so the limit is enforced rather than requested. The
+sender minimum came from the data — 17 distinct senders touched, only 5 more than once.
+
+### What the first real profiles said
+
+Generated at the new threshold on 11 Sept 2026:
+
+- **Work account, 21 events** — two bullets: marks mail done most often (12), including
+  all four Revolut actions; engages with a Vanta contact, including a note.
+- **Personal account, 25 events** — two bullets: marked two Google Developers emails done;
+  lowered the priority of five emails.
+
+Nothing was invented and every claim traces to a count, so the budget does its job. But
+these profiles are **descriptive, not yet prescriptive**: they say what happened rather
+than what the classifier should change. That is the expected state at this volume and the
+right trade for fast iteration.
+
+One weakness they expose: "lowered the priority of five emails" names no sender, because
+the prompt passes priority corrections only as aggregate counts. Attributing corrections
+to senders would make exactly those bullets actionable, and is the cheapest improvement
+available here.

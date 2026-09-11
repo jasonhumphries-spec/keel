@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildProfilePrompt, validateCandidate, hasEnoughEvidence,
-  MIN_EVENTS_FOR_PROFILE, type EvidenceSummary,
+  MIN_EVENTS_FOR_PROFILE, MIN_SENDER_ACTIONS, bulletBudget, type EvidenceSummary,
 } from '@/lib/server/reflection'
 
 const summary = (o: Partial<EvidenceSummary> = {}): EvidenceSummary => ({
@@ -25,15 +25,65 @@ const summary = (o: Partial<EvidenceSummary> = {}): EvidenceSummary => ({
 })
 
 describe('evidence threshold', () => {
-  it('refuses to characterise a person from a handful of afternoons', () => {
-    // 22 events is what the log held the day this was written. Asked to describe a
-    // person from that, an LLM will confabulate a personality out of noise.
-    expect(hasEnoughEvidence(summary({ events: 22 }))).toBe(false)
+  // This gate was 150, which answered the wrong question. Measured on real accounts the
+  // log grows ~20-25 events in three days, so 150 was three weeks before anything was
+  // learned. Generating is cheap and never applied without a human promoting it; what
+  // actually needs limiting is how much the profile may CLAIM. Those are now separate.
+
+  it('still refuses a log of a few clicks', () => {
+    expect(hasEnoughEvidence(summary({ events: 8 }))).toBe(false)
     expect(hasEnoughEvidence(summary({ events: MIN_EVENTS_FOR_PROFILE - 1 }))).toBe(false)
   })
 
-  it('allows generation once there is a body of behaviour', () => {
+  it('allows generation from a few days of real use', () => {
+    // 22 events is what the personal log held the day this was rewritten.
+    expect(hasEnoughEvidence(summary({ events: 22 }))).toBe(true)
     expect(hasEnoughEvidence(summary({ events: MIN_EVENTS_FOR_PROFILE }))).toBe(true)
+  })
+})
+
+describe('the claim budget IS the confidence', () => {
+  it('allows only two claims from a few days of evidence', () => {
+    expect(bulletBudget(20)).toBe(2)
+    expect(bulletBudget(39)).toBe(2)
+  })
+
+  it('widens as the evidence accumulates, and stops widening', () => {
+    expect(bulletBudget(80)).toBe(4)
+    expect(bulletBudget(200)).toBe(6)
+    expect(bulletBudget(5000)).toBe(6)
+  })
+
+  it('never narrows as evidence grows', () => {
+    let prev = 0
+    for (let n = 0; n <= 400; n += 7) {
+      const b = bulletBudget(n)
+      expect(b).toBeGreaterThanOrEqual(prev)
+      prev = b
+    }
+  })
+
+  it('tells the model its budget and warns against padding', () => {
+    const p = buildProfilePrompt(summary({ events: 20 }))
+    expect(p).toContain('AT MOST 2 bullet points')
+    expect(p).toContain('do not pad to reach it')
+  })
+
+  it('REFUSES a candidate that claims more than its evidence allows', () => {
+    // The model will fill whatever budget it is given, and prose alone cannot show that
+    // six assertions rest on twenty events. The count is the only honest limit.
+    const six = Array.from({ length: 6 }, (_, i) => `- Grounded claim ${i}.`).join('\n')
+    expect(validateCandidate(six, bulletBudget(20)).ok).toBe(false)
+    expect(validateCandidate(six, bulletBudget(20)).reason).toContain('too many bullets')
+    expect(validateCandidate(six, bulletBudget(200)).ok).toBe(true)
+  })
+})
+
+describe('a sender must be a pattern, not an anecdote', () => {
+  it('does not name a sender acted on only once', () => {
+    // On the real log 17 senders had been touched and only 5 more than once. Without
+    // this the profile describes a "pattern" that happened a single time.
+    expect(MIN_SENDER_ACTIONS).toBeGreaterThan(1)
   })
 })
 
