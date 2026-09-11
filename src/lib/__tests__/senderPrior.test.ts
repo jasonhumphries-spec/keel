@@ -116,3 +116,23 @@ describe('domainOf', () => {
     ['', ''],
   ])('%s -> %s', (input, want) => expect(domainOf(input)).toBe(want))
 })
+
+describe('trust in a rate grows with history', () => {
+  // A sender with a couple of threads must not reorder a dashboard on the strength of
+  // them. Pinned as behaviour rather than by importing the constant: mutation testing
+  // found that trusting two threads as fully as ten passed every existing test.
+  const at = (n: number) => applySenderPrior(0.5, { rate: 1, source: 'sender', n }).lift
+
+  it('damps the raise for a sender with little history', () => {
+    expect(at(2)).toBeLessThanOrEqual(MAX_PRIOR_LIFT / 4)
+  })
+
+  it('scales the raise in proportion to history until it is fully trusted', () => {
+    expect(at(5)).toBeCloseTo(at(10) / 2, 3)
+  })
+
+  it('reaches full trust by ten threads, and gains nothing beyond it', () => {
+    expect(at(10)).toBe(MAX_PRIOR_LIFT)
+    expect(at(40)).toBe(at(10))
+  })
+})

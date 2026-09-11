@@ -355,6 +355,7 @@ function SidebarInner() {
             { label: 'Ignored',         href: '/quietly-logged', icon: 'M21 8v13H3V8M1 3h22v5H1zM10 12h4', count: counts.quietlyLogged, v: 'mute' as const },
             { label: 'Payment History', href: '/payments',       icon: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1zM8 10h8M8 14h8', count: 0, v: 'dark' as const },
             { label: 'All Mail',        href: '/all-mail',       icon: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6', count: 0, v: 'mute' as const },
+            { label: 'What keel learned', href: '/learned',      icon: 'M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z', count: 0, v: 'mute' as const },
           ].map(item => (
             <Link key={item.href} href={item.href} scroll={false} style={navStyle(isActive(item.href))}
               onMouseOver={e => { if (!isActive(item.href)) e.currentTarget.style.background = 'rgba(44,40,36,0.04)' }}

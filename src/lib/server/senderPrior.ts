@@ -24,6 +24,17 @@ import type { Firestore } from 'firebase-admin/firestore'
 /** Maximum the prior may move a score, in either direction of the band it sits in. */
 export const MAX_PRIOR_LIFT = 0.08
 
+/**
+ * Reply rate a sender must beat before engagement earns any lift. Roughly six times the
+ * measured 2.4% base rate — a sender the user genuinely answers, not one they answered
+ * once. Named so the "What keel has learned" view can show the rule it is applying
+ * rather than a number copied out of this file.
+ */
+export const ENGAGEMENT_THRESHOLD = 0.15
+
+/** Observed threads at which a sender's rate is trusted at full weight. */
+export const FULL_CONFIDENCE_THREADS = 10
+
 export interface SenderPriorLookup {
   /** Smoothed reply rate for this sender, via the sender ← domain ← user chain. */
   rate:   number
@@ -31,6 +42,24 @@ export interface SenderPriorLookup {
   source: 'sender' | 'domain' | 'user' | 'none'
   /** Raw counts behind it, for the same reason. */
   n:      number
+}
+
+/**
+ * Read one stored prior document into the shape scoring consults.
+ *
+ * Shared by the scan path and the learned-weightings view so the view can never show a
+ * rate that differs from the one actually applied.
+ */
+export function priorFromDoc(v: Record<string, unknown> | undefined | null): { email: string; prior: SenderPriorLookup } | null {
+  if (!v?.senderEmail) return null
+  return {
+    email: String(v.senderEmail).toLowerCase(),
+    prior: {
+      rate:   Number(v.smoothedReplyRate ?? 0),
+      source: 'sender',
+      n:      Number(v.inboundThreads ?? 0),
+    },
+  }
 }
 
 /**
@@ -45,13 +74,8 @@ export async function loadSenderPriors(db: Firestore, uid: string): Promise<Map<
   try {
     const snap = await db.collection(`users/${uid}/priors`).get()
     for (const d of snap.docs) {
-      const v = d.data()
-      if (!v?.senderEmail) continue
-      out.set(String(v.senderEmail).toLowerCase(), {
-        rate:   Number(v.smoothedReplyRate ?? 0),
-        source: 'sender',
-        n:      Number(v.inboundThreads ?? 0),
-      })
+      const p = priorFromDoc(d.data())
+      if (p) out.set(p.email, p.prior)
     }
   } catch {
     // A missing or unreadable priors collection must not break a scan. No priors
@@ -81,18 +105,25 @@ export function lookupSenderPrior(
   const exact = priors.get(email)
   if (exact) return exact
 
-  // Aggregate the domain's senders. Cheap: the map is already in memory.
-  const dom = domainOf(email)
-  if (dom) {
-    let n = 0, weighted = 0
-    for (const [k, v] of priors) {
-      if (domainOf(k) !== dom) continue
-      n += v.n
-      weighted += v.rate * v.n
-    }
-    if (n > 0) return { rate: weighted / n, source: 'domain', n }
-  }
+  const dom = domainPrior(priors, domainOf(email))
+  if (dom.source !== 'none') return dom
   return { rate: 0, source: 'none', n: 0 }
+}
+
+/**
+ * The rate an unseen sender at `domain` inherits: the domain's senders, weighted by how
+ * many threads each contributed. Cheap — the map is already in memory.
+ */
+export function domainPrior(priors: Map<string, SenderPriorLookup>, domain: string): SenderPriorLookup {
+  const dom = (domain ?? '').toLowerCase()
+  if (!dom) return { rate: 0, source: 'none', n: 0 }
+  let n = 0, weighted = 0
+  for (const [k, v] of priors) {
+    if (domainOf(k) !== dom) continue
+    n += v.n
+    weighted += v.rate * v.n
+  }
+  return n > 0 ? { rate: weighted / n, source: 'domain', n } : { rate: 0, source: 'none', n: 0 }
 }
 
 /**
@@ -115,12 +146,12 @@ export function applySenderPrior(
 
   // Confidence ramps to full at ~10 observed threads. Below that the lift is damped,
   // so one interaction with a new sender cannot reorder a dashboard.
-  const confidence = Math.min(1, prior.n / 10)
+  const confidence = Math.min(1, prior.n / FULL_CONFIDENCE_THREADS)
 
   // Only engagement clearly above the population base rate earns anything. 0.15 is
   // roughly six times the measured 2.4% base rate — a sender the user genuinely
   // answers, not one they answered once.
-  const excess = Math.max(0, prior.rate - 0.15) / 0.85
+  const excess = Math.max(0, prior.rate - ENGAGEMENT_THRESHOLD) / (1 - ENGAGEMENT_THRESHOLD)
 
   const lift = Math.min(MAX_PRIOR_LIFT, MAX_PRIOR_LIFT * excess * confidence)
   return { score: Math.min(1, Math.round((base + lift) * 1000) / 1000), lift: Math.round(lift * 1000) / 1000 }

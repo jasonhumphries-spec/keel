@@ -19,6 +19,7 @@
  */
 
 import type { Firestore } from 'firebase-admin/firestore'
+import { Timestamp } from 'firebase-admin/firestore'
 
 export interface EvidenceSummary {
   /** Total judgement actions available. */
@@ -219,4 +220,99 @@ export function validateCandidate(markdown: string, maxBullets = 8): { ok: boole
     return { ok: false, reason: 'contains instruction-like text' }
 
   return { ok: true }
+}
+
+// ── Draft lifecycle ───────────────────────────────────────────────────────────
+//
+// A generated profile is a DRAFT. It becomes the active profile only when the user
+// approves it in "What keel has learned" (src/app/learned). Until review existed,
+// candidates carried only `promoted: false` and nothing could ever change it.
+
+export type CandidateStatus = 'pending' | 'promoted' | 'rejected' | 'superseded'
+
+/** Read a candidate's status, treating pre-review documents as awaiting review. */
+export function candidateStatus(c: { status?: unknown; promoted?: unknown } | null | undefined): CandidateStatus {
+  const st = c?.status
+  if (st === 'pending' || st === 'promoted' || st === 'rejected' || st === 'superseded') return st
+  return c?.promoted === true ? 'promoted' : 'pending'
+}
+
+/**
+ * Is there already a usable draft describing exactly this much evidence?
+ *
+ * The nightly sweep would otherwise write a fresh, near-identical draft every day that
+ * nobody has reviewed. A draft that exceeds the current claim budget does not count —
+ * drafts written before the budget existed claim six things from 25 events and can
+ * never be approved as they stand, so they must be replaced rather than preserved.
+ */
+export function hasCurrentDraft(
+  pending: Array<{ markdown?: unknown; basedOn?: { events?: unknown } | null }>,
+  events: number,
+): boolean {
+  return pending.some(p =>
+    Number(p.basedOn?.events ?? -1) === events &&
+    validateCandidate(String(p.markdown ?? ''), bulletBudget(events)).ok)
+}
+
+export type AiComplete = (db: Firestore, prompt: string, maxTokens: number) => Promise<{ text: string }>
+
+export interface GenerationResult {
+  uid:          string
+  generated:    boolean
+  reason?:      string
+  candidateId?: string
+  markdown?:    string
+  basedOn:      { events: number; engaged: number; dismissed: number; budget: number }
+}
+
+/**
+ * Generate a draft profile and store it for review.
+ *
+ * Shared by the nightly sweep (/api/brain/reflect) and the user's own "generate a new
+ * draft" button (/api/brain/learned). One draft awaits review at a time: generating a
+ * new one marks any older unreviewed draft superseded, since it describes less evidence
+ * and would only compete with the new one.
+ */
+export async function generateProfileCandidate(
+  db: Firestore,
+  uid: string,
+  aiComplete: AiComplete,
+  { force = false, skipIfUnchanged = true }: { force?: boolean; skipIfUnchanged?: boolean } = {},
+): Promise<GenerationResult> {
+  const summary = await summariseEvidence(db, uid)
+  const budget  = bulletBudget(summary.events)
+  const basedOn = {
+    events: summary.events, engaged: summary.engaged.length,
+    dismissed: summary.dismissed.length, budget,
+  }
+
+  if (!force && !hasEnoughEvidence(summary)) {
+    return { uid, generated: false, reason: `only ${summary.events} events; need ${MIN_EVENTS_FOR_PROFILE}`, basedOn }
+  }
+
+  const candidatesCol = db.collection(`users/${uid}/brain/profile/candidates`)
+  const existing = await candidatesCol.get()
+  const pending  = existing.docs.filter(d => candidateStatus(d.data()) === 'pending')
+
+  if (skipIfUnchanged && hasCurrentDraft(pending.map(d => d.data()), summary.events)) {
+    return { uid, generated: false, reason: 'no new evidence since the draft awaiting review', basedOn }
+  }
+
+  const { text } = await aiComplete(db, buildProfilePrompt(summary), 500)
+  const check = validateCandidate(text, budget)
+  if (!check.ok) return { uid, generated: false, reason: `candidate rejected: ${check.reason}`, basedOn }
+
+  const ref   = candidatesCol.doc()
+  const now   = Timestamp.now()
+  const batch = db.batch()
+  // Versioned, never overwritten: a profile's history is how drift becomes visible.
+  batch.set(ref, {
+    markdown: text.trim(), generatedAt: now,
+    basedOn: { ...basedOn, overturnedRules: summary.overturnedRules },
+    status: 'pending', promoted: false,
+  })
+  for (const d of pending) batch.update(d.ref, { status: 'superseded', supersededAt: now, supersededBy: ref.id })
+  await batch.commit()
+
+  return { uid, generated: true, candidateId: ref.id, markdown: text.trim(), basedOn }
 }

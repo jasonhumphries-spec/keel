@@ -1,17 +1,18 @@
 /**
  * POST /api/brain/reflect
  *
- * Stage 4 — see docs/relevance-brain-design.md §3 (L5).
+ * Stage 4 — see docs/relevance-brain-design.md §3 (L5) and §14.
  *
  * Reads the evidence log, summarises what the user has actually DONE, and generates a
- * candidate narrative profile. Stores it as a candidate. Does not promote it, and
- * nothing reads a candidate.
+ * draft narrative profile for review. Generation lives in
+ * src/lib/server/reflection.ts (`generateProfileCandidate`) so the nightly sweep and
+ * the user's own "generate a new draft" button share one implementation.
  *
  * WHY GENERATION AND PROMOTION ARE SEPARATE. This is the one layer that can regress
  * silently. A wrong score is visible on screen; a buried item is countable; a profile
  * that has drifted into a false belief about someone produces fluent, plausible output
- * that is quietly worse, and there is no obvious signal. So a candidate is written,
- * versioned and shown — and a human decides.
+ * that is quietly worse, and there is no obvious signal. So a draft is written,
+ * versioned and shown — and a human decides, in "What keel has learned".
  *
  * WHAT REACHES THE MODEL. Action counts, sender addresses and rule-override tallies.
  * Never email bodies, subjects or summaries. The profile is destined for a prompt, so
@@ -24,12 +25,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { getFirestore } from 'firebase-admin/firestore'
 import { aiComplete } from '@/lib/aiComplete'
-import {
-  summariseEvidence, hasEnoughEvidence, buildProfilePrompt, validateCandidate,
-  MIN_EVENTS_FOR_PROFILE, bulletBudget,
-} from '@/lib/server/reflection'
+import { generateProfileCandidate } from '@/lib/server/reflection'
 
 export const maxDuration = 300
 
@@ -44,54 +42,13 @@ if (getApps().length === 0) {
 }
 const db = getFirestore()
 
-async function reflectUser(uid: string, force: boolean) {
-  const summary = await summariseEvidence(db, uid)
-
-  if (!force && !hasEnoughEvidence(summary)) {
-    return {
-      uid, generated: false,
-      reason: `only ${summary.events} events; need ${MIN_EVENTS_FOR_PROFILE}`,
-      summary: { events: summary.events, engaged: summary.engaged.length, dismissed: summary.dismissed.length },
-    }
-  }
-
-  const { text } = await aiComplete(db, buildProfilePrompt(summary), 500)
-  // Validate against the same budget the prompt was given, so an over-long candidate is
-  // refused rather than quietly accepted.
-  const check = validateCandidate(text, bulletBudget(summary.events))
-  if (!check.ok) {
-    return { uid, generated: false, reason: `candidate rejected: ${check.reason}` }
-  }
-
-  // Versioned, never overwritten: a profile's history is how drift becomes visible.
-  const candidateRef = db.collection(`users/${uid}/brain/profile/candidates`).doc()
-  await candidateRef.set({
-    markdown: text.trim(),
-    generatedAt: Timestamp.now(),
-    basedOn: {
-      events: summary.events,
-      engaged: summary.engaged.length,
-      dismissed: summary.dismissed.length,
-      overturnedRules: summary.overturnedRules,
-    },
-    promoted: false,
-  })
-
-  return {
-    uid, generated: true, candidateId: candidateRef.id,
-    markdown: text.trim(),
-    basedOn: { events: summary.events, engaged: summary.engaged.length, dismissed: summary.dismissed.length },
-    note: 'candidate only — not promoted, and nothing reads a candidate',
-  }
-}
-
 export async function POST(req: NextRequest) {
   if (req.headers.get('x-admin-secret') !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: 'unauthorised' }, { status: 401 })
   }
   const { uid, force = false } = await req.json()
   if (!uid) return NextResponse.json({ error: 'uid required' }, { status: 400 })
-  return NextResponse.json(await reflectUser(uid, force))
+  return NextResponse.json(await generateProfileCandidate(db, uid, aiComplete, { force }))
 }
 
 /** Scheduled sweep. Same auth shape as the expiry review. */
@@ -104,7 +61,7 @@ export async function GET(req: NextRequest) {
   const users = await db.collection('users').get()
   const results = []
   for (const u of users.docs) {
-    try { results.push(await reflectUser(u.id, false)) }
+    try { results.push(await generateProfileCandidate(db, u.id, aiComplete)) }
     catch (e) { results.push({ uid: u.id, generated: false, reason: String(e).slice(0, 120) }) }
   }
   return NextResponse.json({ users: users.size, generated: results.filter(r => r.generated).length, results })

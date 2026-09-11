@@ -1081,3 +1081,93 @@ One weakness they expose: "lowered the priority of five emails" names no sender,
 the prompt passes priority corrections only as aggregate counts. Attributing corrections
 to senders would make exactly those bullets actionable, and is the cheapest improvement
 available here.
+
+## 15. What keel has learned — the view
+
+Stage 4 promised that a person approves a profile before it is used. None of that
+existed: `promoteProfile` was named in a comment and never written, there was nowhere to
+review a draft, and nothing read an approved profile. Drafts were generated into a
+collection nobody looked at. `/learned` is that missing review step, plus a view of the
+weightings keel has learned and what they are changing.
+
+| Section | Question it answers | Source |
+|---|---|---|
+| 1. What keel believes about you | What does it think, and do I agree? | draft and active profile |
+| 2. Weightings it has learned | What has it learned from my replies, and what does each weighting add? | sender priors |
+| 3. What it's actually changing | Has any of this moved a score? | items carrying `senderPriorLift` |
+
+### Two rules the view is built around
+
+**It must never disagree with scoring.** Every weighting is computed by calling the
+functions the scan path calls — `priorFromDoc`, `domainPrior`, `applySenderPrior` — not
+by re-deriving their arithmetic. To make that possible, `senderPrior.ts` gained named
+constants (`ENGAGEMENT_THRESHOLD`, `FULL_CONFIDENCE_THREADS`) and the domain fallback
+and document parsing were extracted as shared functions. This codebase has been bitten
+three times by a private copy of shared logic drifting (the `docToItem` duplicates); a
+view of learned behaviour showing different numbers from the behaviour would be worse
+than no view. Tests assert the view's lift equals scoring's to the thousandth.
+
+**It must never imply an effect that does not exist.** An approved profile is recorded
+but not read by any classifier, so `PROFILE_USED_IN_SCORING = false` is a constant shown
+on the page as "Not yet". And when no mail has been processed for three days or more, the
+page says scanning looks stalled — because "nothing was raised" means something different
+when nothing was processed.
+
+### Draft lifecycle
+
+A draft is `pending`, then `promoted`, `rejected` or `superseded`. Drafts from before
+review existed carry only `promoted: false` and are read as pending.
+
+- Generating a draft supersedes any older unreviewed one, so one draft awaits review at
+  a time.
+- The nightly sweep skips generation when a usable draft already describes the same
+  amount of evidence — otherwise it writes a near-identical draft every day. A draft over
+  its claim budget does not count as usable, so it cannot block its own replacement.
+- An **edited** profile is held to the same claim budget and instruction-like guard as a
+  generated one. The person decides what is true; the guards exist because the text is
+  destined for a prompt, and that does not change because a person typed it.
+- User-triggered generation has a ten-minute cooldown.
+- Approval and rejection run in a transaction, server-side, behind a verified Firebase ID
+  token. The client can read its brain but never write it.
+
+### Chart decisions
+
+Reply rates are drawn as thin bars on a fixed 0–100% scale with the 15% engagement
+threshold as a solid hairline. **Position against that line is the primary encoding** of
+whether a sender earns a raise; colour repeats it, and the "Raises score by" column states
+it in text. That mattered, because measured contrast against the surface in every theme
+showed the accent passes 3:1 everywhere except electric-lime (1.98), while the
+de-emphasis grey sits at 2.0–2.9 in every light theme. Below 3:1 is legal only with a
+relief channel, and every value is present as text in the row. Section 3 uses stat tiles,
+not charts. The "scanning looks stalled" notice uses the reserved warning colour, paired
+with an icon and a written label.
+
+### What it showed on real data (11 Sept 2026)
+
+Personal account: base reply rate 2.0% across 20,243 threads; 1,554 learned senders, 125
+of which earn a raise, 92 with enough history to show. The strongest weighting is
++0.042. Twelve scores have consulted a weighting and **none has been raised** — because no
+mail has been processed since 3 September. The one draft profile, from before the claim
+budget, makes six claims from 25 actions and is correctly refused approval until cut to
+two.
+
+Two findings the view surfaced immediately, recorded rather than fixed:
+
+- **Forwarding counts as replying.** On the work account the two strongest weightings are
+  Stripe invoice-statement addresses, at 77% and 82%. Nobody replies to Stripe; the owner
+  forwards the statements, and a forward in the thread is counted as a reply. Arguably the
+  right answer — those threads do get acted on — but for the wrong reason.
+- **Freemail pools unrelated people.** `gmail.com` pools 30 senders at 23.7%, so every
+  new Gmail address inherits +0.008. The domain fallback assumes a domain is an
+  organisation, which is false for freemail — the same trap calendar matching and
+  category suggestion both already exclude.
+
+### Verification
+
+Mutation testing caught 20 of 21 mutations. The survivor was not in the new code: trusting
+two threads as fully as ten passed every existing scoring test, because nothing pinned the
+confidence ramp. Naming the constant is what exposed it; the ramp is now pinned by
+behaviour. Against a running server, with a real signed-in token: 401 without a token,
+200 with, the same numbers as the offline run, and every refusal path returning before any
+write. The populated page has not been visually checked locally, because the preview
+browser cannot sign in.
